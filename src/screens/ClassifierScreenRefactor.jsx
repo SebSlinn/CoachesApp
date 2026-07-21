@@ -15,7 +15,7 @@ export function ClassifierScreenRefactor({
   setSelectedZone,
   classifierDrill,
   setClassifierDrill,
-  singleResult,
+  singleResult: rawSingleResult,
   seqResult,
   resultView,
   setResultView,
@@ -23,6 +23,7 @@ export function ClassifierScreenRefactor({
   derivedProfile,
   poolDisplay,
   setPoolDisplay,
+  selectedElement,
   onExitRefactor,
   // Set builder integration (optional — Add to Set button)
   sbNewLine,
@@ -47,6 +48,7 @@ export function ClassifierScreenRefactor({
 
   const zoneColors = {HVO:'#FF2D55',LT:'#FF5500',LP:'#FF9500',AT:'#FFCC00',CS:'#30B0C7',A3:'#34C759',A2:'#30B0C7',A1:'#007AFF'};
   const selectedSuggestion = classifierSuggestion && selectedZone ? classifierSuggestion[selectedZone] : null;
+  const singleResult = seqResult || rawSingleResult;
 
 
   const restTypeOpt = REST_TYPE_OPTS.find(o => o.v === inputs.restType);
@@ -77,13 +79,7 @@ export function ClassifierScreenRefactor({
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: '#1a1a2e', color: '#fff', fontFamily: 'monospace', padding: '16px 12px' }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <h3 style={{ color:'#fff', margin:0 }}>Classifier Refactor</h3>
-        <button onClick={onExitRefactor} style={{ padding:'6px 10px', fontSize:11, borderRadius:5, border:'1px solid rgba(255,255,255,0.2)', background:'rgba(255,255,255,0.05)', color:'#fff', cursor:'pointer' }}>
-          Back to Legacy UI
-        </button>
-      </div>
+    <div>
       {activeAthlete && (
         <div style={{ background:'rgba(52,199,89,0.08)', border:'1px solid rgba(52,199,89,0.25)', borderRadius:8, padding:'8px 14px', marginBottom:12, display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px' }}>
           <span style={{ fontSize:10, color:'rgba(52,199,89,0.9)', letterSpacing:'0.06em' }}>
@@ -96,6 +92,17 @@ export function ClassifierScreenRefactor({
           </span>
         </div>
       )}
+      {selectedElement && seqResult && !editingBlock && (
+        <div style={{ background:'rgba(48,176,199,0.08)', border:'1px solid rgba(48,176,199,0.25)', borderRadius:8, padding:'8px 12px', marginBottom:8, fontSize:10, color:'rgba(48,176,199,0.9)', letterSpacing:'0.04em' }}>
+          Showing SetBuilder {selectedElement.type} analysis — numeric inputs are paused.
+          <span style={{ opacity:0.6 }}> Open a block to edit to re-activate inputs.</span>
+        </div>
+      )}
+      {selectedElement && seqResult && editingBlock && (
+        <div style={{ background:'rgba(52,199,89,0.08)', border:'1px solid rgba(52,199,89,0.25)', borderRadius:8, padding:'8px 12px', marginBottom:8, fontSize:10, color:'rgba(52,199,89,0.9)', letterSpacing:'0.04em' }}>
+          Editing block — classifier active. Use Add To Set to append lines to the open block.
+        </div>
+      )}
 
             {/* Inputs */}
     <div style={{ background:"rgba(255,255,255,0.025)", border:"1px solid rgba(255,255,255,0.07)",
@@ -104,6 +111,13 @@ export function ClassifierScreenRefactor({
         {/* Row 1: numeric inputs */}
       
       <div style={{ background:'rgba(255,255,255,0.025)', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, padding:'10px 14px', marginBottom:14 }}>
+
+        {/* Numeric inputs row — greyed when SetBuilder element is selected */}
+        <div style={{
+          opacity: (selectedElement && seqResult && !editingBlock) ? 0.3 : 1,
+          pointerEvents: (selectedElement && seqResult && !editingBlock) ? 'none' : 'auto',
+          transition: 'opacity 0.2s',
+        }}>
         <div style={{ display:'grid', gridTemplateColumns:'70px 110px 48px 72px 72px 78px', gap:'6px', alignItems:'end', marginBottom:8 }}>
           <div>
             <label style={lb}>Stroke</label>
@@ -133,6 +147,7 @@ export function ClassifierScreenRefactor({
             <input style={{ ...inp, padding:'5px 6px', width:'78px' }} value={inputs.pace200} onChange={e => set('pace200', e.target.value)} />
           </div>
         </div>
+        </div> {/* end greyed numeric inputs wrapper */}
 
         <div style={{ display:'flex', gap:4, marginBottom:6 }}>
           {['HVO','LT','LP','AT','CS','A3','A2','A1'].map(function(z) {
@@ -323,7 +338,8 @@ export function ClassifierScreenRefactor({
             var inSec = parseTime(inputs.targetTime)||0;
             var onStr = inputs.onTime || (inSec > 0 ? String(Math.round(inSec)) : "");
             var newLine = sbNewLine({
-              dist:inputs.distM, stroke:inputs.stroke, qty:inputs.qty,
+              distM:inputs.distM, stroke:inputs.stroke, qty:inputs.qty,
+              targetTime:inputs.targetTime, onTime:onStr,
               target:inputs.targetTime, turnaround:onStr,
               intensity:selectedZone||(singleResult&&singleResult.primary?singleResult.primary.id:"A2"),
               note:classifierDrill||"",
@@ -379,7 +395,7 @@ export function ClassifierScreenRefactor({
       )}
       {selectedZone === "LP" && singleResult && (() => {
         const inRange = singleResult.speedRatio >= 0.97 && singleResult.speedRatio < 1.025;
-        const restOk  = singleResult.restWorkRatio >= 0.9;
+        const restOk  = singleResult.restWorkRatio >= 1.0 && singleResult.restWorkRatio <= 1.2;
         const distOk  = parseFloat(inputs.distM) <= 100;
         const isLP    = inRange && restOk && distOk;
         return (
@@ -393,7 +409,7 @@ export function ClassifierScreenRefactor({
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10 }}>
               <span style={{ color: inRange ? "#34C759" : "rgba(255,255,255,0.3)" }}>Pace {inRange?"✓":"✗"} {secToDisplay(singleResult.repPace100)}/100m</span>
               {" · "}
-              <span style={{ color: restOk ? "#34C759" : "rgba(255,255,255,0.3)" }}>Rest {restOk?"✓":"✗"} {singleResult.restWorkRatio.toFixed(2)}:1 (need ≥1:1)</span>
+              <span style={{ color: restOk ? "#34C759" : "rgba(255,255,255,0.3)" }}>Rest {restOk?"✓":"✗"} {singleResult.restWorkRatio.toFixed(2)}:1 (need 1.0–1.2)</span>
               {" · "}
               <span style={{ color: distOk ? "#34C759" : "rgba(255,255,255,0.3)" }}>Dist {distOk?"✓":"✗"} {inputs.distM}m (25–100m)</span>
             </div>
@@ -412,8 +428,8 @@ export function ClassifierScreenRefactor({
               {inR ? "✓ " + selectedZone : "✗ Outside " + selectedZone}
             </span>
             {secToDisplay(singleResult.repPace100)}/100m · rest:work {singleResult.restWorkRatio.toFixed(1)}:1
-            {selectedZone === "AT" && " · target 1.5–2:1 work:rest"}
-            {selectedZone === "A3" && " · target 0.25–0.5:1 rest:work"}
+            {selectedZone === "AT" && " · target 1.8–3.3:1 work:rest"}
+            {selectedZone === "A3" && " · target 6.7–∞:1 work:rest"}
           </div>
         );
       })()}

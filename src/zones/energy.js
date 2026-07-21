@@ -1,3 +1,4 @@
+//zones/energy.js - Core energy system modeling for classification and suggestions.
 import { STROKE_MULT } from './constants.js';
 
 function glycoCapacity(phvStatus) {

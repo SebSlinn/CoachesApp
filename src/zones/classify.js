@@ -1,10 +1,12 @@
+// Zones/classify.js
 import { STROKE_MULT, ZONES } from './constants.js';
 import { parseTime, fmtTime } from './helpers.js';
-import { validatePace } from './validatePace.js';
+import { validatePaceWithContext } from './validatePace.js';
 import { phvZoneCaps, repEnergy, paceImpairment, consistencyCheck } from './energy.js';
 
 function classifySet({ distM, qty, targetTimeSec, restSec, pace200Sec,
-                        stroke, phvStatus, lactateClearMult = 1.0 }) {
+                        stroke, phvStatus, lactateClearMult = 1.0,
+                        cssValue = null, athleteCtx = null }) {
   if (!distM || !qty || !targetTimeSec || restSec === null || restSec === undefined || isNaN(restSec) || !pace200Sec) return null;
 
   const mult        = STROKE_MULT[stroke] || 1.0;
@@ -142,13 +144,49 @@ function classifySet({ distM, qty, targetTimeSec, restSec, pace200Sec,
     phvStatus, lactateClearMult, distM,
   });
 
+  // ── CS detection ──────────────────────────────────────────────────────────
+  // Checks whether a single set qualifies as Critical Speed training.
+  // Requires cssValue (seconds per 100m) — derived from athlete's 200m + 400m PBs.
+  let csDetection = null;
+  if (cssValue) {
+    const mCssLow  = cssValue * 0.95;
+    const mCssHigh = cssValue * 1.05;
+    const mSpeedOk = repPace100 >= mCssLow && repPace100 <= mCssHigh;
+
+    // Work:rest ratio — CS requires approx 1.2:1 to 2.5:1 (work time : rest time)
+    const mWorkRestRatio = restSec > 0 ? targetTimeSec / restSec : Infinity;
+    const mRestOk  = mWorkRestRatio >= 1.2 && mWorkRestRatio <= 2.5;
+
+    // Volume — 22–38 min total work time
+    const mTotalWorkMin = (targetTimeSec * qty) / 60;
+    const mVolumeOk = mTotalWorkMin >= 22 && mTotalWorkMin <= 38;
+
+    const mMatchCount = [mSpeedOk, mRestOk, mVolumeOk].filter(Boolean).length;
+
+    csDetection = {
+      isCS:          mMatchCount === 3,
+      partial:       mMatchCount === 2,
+      speedOk:       mSpeedOk,
+      restOk:        mRestOk,
+      volumeOk:      mVolumeOk,
+      cssPace:       cssValue,
+      repPace100:    repPace100,
+      totalWorkMin:  mTotalWorkMin.toFixed(1),
+      workRest:      mWorkRestRatio === Infinity ? '∞' : mWorkRestRatio.toFixed(2),
+    };
+  }
+
   return {
     breakdown, primary: breakdown[0], repResults, speedRatio,
     workDur: targetTimeSec, restWorkRatio: restSec / targetTimeSec,
     base100Pace, repPace100, totalVolume: distM * qty,
     avgAtpcp, avgGlycolytic, avgAerobic,
-    paceValidation: validatePace({ distM, targetTimeSec, pace200Sec, stroke }),
+    paceValidation: validatePaceWithContext(
+      { distM, targetTimeSec, restSec, qty, pace200Sec, stroke },
+      athleteCtx
+    ),
     phvStatus, phvWarning, consistencyWarning,
+    csDetection,
     restoreCheck: {
       atpcpRestored: restSec >= targetTimeSec * 6,
       atpcpRestorePct: Math.min(100, Math.round(restSec * atpcpRestoreRate * 100)),

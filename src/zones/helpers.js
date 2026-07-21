@@ -1,3 +1,4 @@
+//zones/helpers.js - Utility functions for time parsing and formatting, plus any other shared helpers for zones.
 function parseTime(s) {
   if (!s) return null;
   s = s.trim();

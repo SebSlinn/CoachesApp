@@ -1,3 +1,4 @@
+//zones/constants.js - Core data for zones and energy systems.
 const STROKE_MULT = { FS: 1.0, BK: 1.045, BR: 1.254, Fly: 1.051, IM: 1.082 };
 
 // ─── Rest type lactate clearance multipliers ────────────────────────────────
@@ -225,19 +226,25 @@ const ZONE_WRITEUPS = {
   },
 };
 
+// ─── Zone color map (canonical source for all zone coloring) ────────────────
+const ZONE_COLORS = {
+  HVO: "#FF2D55", LT: "#FF5500", LP: "#FF9500", AT: "#FFCC00",
+  A3: "#34C759", A2: "#30B0C7", A1: "#007AFF",
+};
+
 const ZONES = [
-  { id: "HVO", name: "HVO / ATP-CP",            color: "#FF2D55", textColor: "#fff", rpe: "Max",   bbm: "N/A",   desc: "Alactic sprints. Pure phosphocreatine — exhausted in 10-15s. Needs 6:1+ rest to replenish." },
-  { id: "LT",  name: "LT / Lactate Tolerance",  color: "#FF5500", textColor: "#fff", rpe: "18-20", bbm: "5-15",  desc: "High-speed glycolytic work with significant lactate accumulation. Post-PHV athletes." },
-  { id: "LP",  name: "LP / Lactate Production", color: "#FF9500", textColor: "#fff", rpe: "17-19", bbm: "10-20", desc: "Glycolytic system building lactate. Hard sustained efforts. Early season focus." },
-  { id: "AT",  name: "AT / Anaerobic Threshold",color: "#FFCC00", textColor: "#1a1a2e", rpe: "15-17", bbm: "20-30", desc: "Lactate/aerobic crossover. Key race-pace zone. Lactate produced ≈ lactate cleared." },
-  { id: "A3",  name: "A3 / Hard Aerobic",        color: "#34C759", textColor: "#fff", rpe: "14-15", bbm: "30-40", desc: "Upper aerobic. Challenging but aerobically sustainable. Good for fitness base." },
-  { id: "A2",  name: "A2 / Moderate Aerobic",    color: "#30B0C7", textColor: "#fff", rpe: "11-13", bbm: "40-50", desc: "Moderate aerobic. Cardiovascular development. Drill-compatible." },
-  { id: "A1",  name: "A1 / Easy Aerobic",         color: "#007AFF", textColor: "#fff", rpe: "7-10",  bbm: "50-70", desc: "Recovery and technique. Aerobic base. Suitable all ages." },
-];
+  { id: "HVO", name: "HVO / ATP-CP",            textColor: "#fff", rpe: "Max",   bbm: "N/A",   desc: "Alactic sprints. Pure phosphocreatine — exhausted in 10-15s. Needs 6:1+ rest to replenish." },
+  { id: "LT",  name: "LT / Lactate Tolerance",  textColor: "#fff", rpe: "18-20", bbm: "5-15",  desc: "High-speed glycolytic work with significant lactate accumulation. Post-PHV athletes." },
+  { id: "LP",  name: "LP / Lactate Production", textColor: "#fff", rpe: "17-19", bbm: "10-20", desc: "Glycolytic system building lactate. Hard sustained efforts. Early season focus." },
+  { id: "AT",  name: "AT / Anaerobic Threshold",textColor: "#1a1a2e", rpe: "15-17", bbm: "20-30", desc: "Lactate/aerobic crossover. Key race-pace zone. Lactate produced ≈ lactate cleared." },
+  { id: "A3",  name: "A3 / Hard Aerobic",        textColor: "#fff", rpe: "14-15", bbm: "30-40", desc: "Upper aerobic. Challenging but aerobically sustainable. Good for fitness base." },
+  { id: "A2",  name: "A2 / Moderate Aerobic",    textColor: "#fff", rpe: "11-13", bbm: "40-50", desc: "Moderate aerobic. Cardiovascular development. Drill-compatible." },
+  { id: "A1",  name: "A1 / Easy Aerobic",         textColor: "#fff", rpe: "7-10",  bbm: "50-70", desc: "Recovery and technique. Aerobic base. Suitable all ages." },
+].map(z => ({ ...z, color: ZONE_COLORS[z.id] || "#fff" }));
 
 // ─── Drill Library ──────────────────────────────────────────────────────────
 
 export {
   STROKE_MULT, REST_TYPE_OPTS, ATHLETE_TYPE_OPTS,
-  ENERGY_SYSTEMS, ZONE_GROUPS, ZONES, ZONE_WRITEUPS,
+  ENERGY_SYSTEMS, ZONE_GROUPS, ZONES, ZONE_WRITEUPS, ZONE_COLORS,
 };

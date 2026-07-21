@@ -21,13 +21,13 @@ function SbBlockView({ block, onEdit, onDelete, onMoveUp, onMoveDown,
     var zoneScores = { LT:0, LP:0, AT:0, A3:0, A2:0, A1:0 };
     var totalDist3 = 0;
     function scoreLine(line) {
-      if (line.type !== "swim" || !line.dist || !line.target) return;
+      if (line.type !== "swim" || !line.distM || !line.targetTime) return;
       var s3 = line.stroke || "FS";
       var p3 = pace200Map[s3] || pace200Map["FS"];
       if (!p3) return;
       var base3 = (p3 * (SMULT3[s3]||1.0)) / 2;
-      var d3 = parseFloat(line.dist) || 0;
-      var ts3 = String(line.target); var tc3 = ts3.indexOf(":");
+      var d3 = parseFloat(line.distM) || 0;
+      var ts3 = String(line.targetTime); var tc3 = ts3.indexOf(":");
       var w3 = tc3 > -1 ? parseInt(ts3.slice(0,tc3))*60+parseFloat(ts3.slice(tc3+1)) : parseFloat(ts3)||0;
       if (!w3 || !d3) return;
       var sr3 = (w3/d3*100)/base3;
@@ -54,8 +54,7 @@ function SbBlockView({ block, onEdit, onDelete, onMoveUp, onMoveDown,
       });
       if (topZone && topVal/totalDist3 > 0.25) {
         blockZone = topZone;
-        var BZC = { LT:"#FF5500", LP:"#FF9500", AT:"#FFCC00", A3:"#34C759", A2:"#30B0C7", A1:"#007AFF" };
-        blockZoneColor = BZC[topZone] || "rgba(255,255,255,0.3)";
+        blockZoneColor = sbZoneColor(topZone);
       }
     }
   }

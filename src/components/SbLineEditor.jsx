@@ -50,12 +50,12 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
           gridTemplateColumns: "38px 55px 52px 58px 62px 62px 62px 1fr" }}>
           {[
             { k:"qty",        lb:"QTY",     ph:"1",     tp:"number" },
-            { k:"dist",       lb:"DIST(m)", ph:"100",   tp:"number" },
+            { k:"distM",      lb:"DIST(m)", ph:"100",   tp:"number" },
             { k:"stroke",     lb:"STROKE",  ph:"",      tp:"sel", opts:["FS","BK","BR","Fly","IM","Kick"] },
             { k:"modifier",   lb:"TYPE",    ph:"",      tp:"sel", opts:["Full","Drill","Tech","Focus","Kick","Broken"] },
             { k:"intensity",  lb:"ZONE",    ph:"",      tp:"sel", opts:["A1","A2","A3","AT","CS","HVO","LP","LT","Drill","Skills"] },
-            { k:"target",     lb:"IN",      ph:"1:10" },
-            { k:"turnaround", lb:"ON",      ph:"1:20" },
+            { k:"targetTime", lb:"IN",      ph:"1:10" },
+            { k:"onTime",     lb:"ON",      ph:"1:20" },
             { k:"note",       lb:"NOTE",    ph:"Fast, drill name…" },
           ].map(f => (
             <div key={f.k}>
@@ -117,7 +117,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
       var p5 = pace200Map[drillStroke] || pace200Map["FS"];
       var zoneSR = { A1:1.52, A2:1.30, A3:1.16, AT:1.06, LP:1.00, LT:0.96, HVO:0.88, CS:1.06 };
       var sr5 = zoneSR[line.intensity] || 1.30;
-      var dist5 = parseFloat(line.dist) || 100;
+      var dist5 = parseFloat(line.distM) || 100;
       if (p5) {
         var base5 = (p5 * (SMULT5[drillStroke]||1.0)) / 2;
         var rawSec = base5 * (dist5/100) * selDrill.paceFactor * sr5;
@@ -143,13 +143,13 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
               var p7 = pace200Map[line.stroke||"FS"] || pace200Map["FS"];
               var zoneSR7 = { A1:1.52, A2:1.30, A3:1.16, AT:1.06, LP:1.00, LT:0.96, HVO:0.88, CS:1.06 };
               var sr7 = zoneSR7[line.intensity] || 1.30;
-              var dist7 = parseFloat(line.dist) || 100;
+              var dist7 = parseFloat(line.distM) || 100;
               if (p7) {
                 var base7 = (p7 * (SMULT7[line.stroke||"FS"]||1.0)) / 2;
                 var raw7 = base7 * (dist7/100) * chosen.paceFactor * sr7;
                 var m7 = Math.floor(raw7/60); var s7 = Math.round(raw7%60);
                 if (s7 === 60) { m7++; s7 = 0; }
-                updates.target = m7 > 0 ? m7+":"+(s7<10?"0":"")+s7 : String(s7);
+                updates.targetTime = m7 > 0 ? m7+":"+(s7<10?"0":"")+s7 : String(s7);
               }
             }
             onChange({...line, ...updates});
@@ -171,7 +171,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
             })}
           </select>
           {sugTime && (
-            <button onClick={function(){onChange({...line, target:sugTime});}}
+            <button onClick={function(){onChange({...line, targetTime:sugTime});}}
               style={{ padding:"3px 8px", background:zc5+"15",
                 border:"1px solid "+zc5+"40", borderRadius:4,
                 color:zc5, cursor:"pointer", fontFamily:"monospace",
@@ -211,12 +211,12 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
   })()}
 
       {/* Zone suggestion */}
-  {line.type === "swim" && line.intensity && line.dist && pace200Map && (function() {
+  {line.type === "swim" && line.intensity && line.distM && pace200Map && (function() {
     var SMULT4 = { FS:1.0, BK:1.045, BR:1.254, Fly:1.051, IM:1.082 };
     var s4 = line.stroke || "FS";
     var p4 = pace200Map[s4] || pace200Map["FS"];
     if (!p4) return null;
-    var sg4 = suggestTimes(line.intensity, line.dist, s4, p4);
+    var sg4 = suggestTimes(line.intensity, line.distM, s4, p4);
     if (!sg4) return null;
     var ZC4 = { HVO:"#FF2D55",LT:"#FF5500",LP:"#FF9500",AT:"#FFCC00",
       A3:"#34C759",A2:"#30B0C7",A1:"#007AFF" };
@@ -232,7 +232,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
         </span>
         <span style={{ fontSize:8, color:"rgba(255,255,255,0.6)",
           cursor:"pointer", textDecoration:"underline" }}
-          onClick={function(){onChange({...line, target:sg4.inMidStr});}}>
+          onClick={function(){onChange({...line, targetTime:sg4.inMidStr});}}>
           IN {sg4.inLowStr}–{sg4.inHighStr}
         </span>
         <span style={{ fontSize:8, color:"rgba(255,255,255,0.4)",
@@ -240,8 +240,8 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
           onClick={function(){
             var onSec4 = Math.round((sg4.onLow+sg4.onHigh)/2);
             var inSec4 = Math.round((sg4.inLow+sg4.inHigh)/2);
-            onChange({...line, target:sg4.inMidStr,
-              turnaround:sg4.onMidStr});
+            onChange({...line, targetTime:sg4.inMidStr,
+              onTime:sg4.onMidStr});
           }}>
           ON {sg4.onLowStr}–{sg4.onHighStr}
         </span>
@@ -254,8 +254,8 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
           {line.type === "rest" && (
             <div>
               <label style={lbl}>DURATION</label>
-              <input placeholder="2:00" value={line.turnaround}
-                onChange={e => onChange({ ...line, turnaround: e.target.value })} style={inp} />
+              <input placeholder="2:00" value={line.onTime}
+                onChange={e => onChange({ ...line, onTime: e.target.value })} style={inp} />
             </div>
           )}
           <div>

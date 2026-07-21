@@ -6,7 +6,7 @@ import SbLineEditor from './SbLineEditor.jsx';
 function SbBlockEditor({ block, onChange, onCommit, onCancel,
   sbNewLine, sbNewBlock, sbAddChild, sbDeleteChild, sbUpdateChild, sbMoveChild,
   sbParseSec, sbFmtDur, sbZoneColor, sbLineRest, sbBlockVolume, sbBlockTotalTime,
-  pace200Map }) {
+  pace200Map, poolDisplay = '25SC' }) {
 
   const [addingInner, setAddingInner] = useState(false);
   const [innerBlock, setInnerBlock] = useState(null);
@@ -110,7 +110,7 @@ function SbBlockEditor({ block, onChange, onCommit, onCancel,
                 pace200Map={pace200Map} />
             )}
             <button onClick={() => onChange(sbUpdateChild(block, child.id, {
-                ...child, children: [...child.children, sbNewLine()]
+                ...child, children: [...child.children, sbNewLine({ poolType: poolDisplay })]
               }))}
               style={{ width:"100%", marginTop:4, padding:"4px",
                 background:"rgba(255,255,255,0.02)",
@@ -131,7 +131,7 @@ function SbBlockEditor({ block, onChange, onCommit, onCancel,
       {/* Add line / inner block buttons */}
       {!addingInner && (
         <div style={{ display: "flex", gap: 6, marginTop: 4, marginBottom: 10 }}>
-          <button onClick={() => onChange(sbAddChild(block, sbNewLine()))}
+          <button onClick={() => onChange(sbAddChild(block, sbNewLine({ poolType: poolDisplay })))}
             style={{ flex: 2, padding: "7px", background: "rgba(255,255,255,0.03)",
               border: "1px dashed rgba(255,255,255,0.10)", borderRadius: 6,
               color: "rgba(255,255,255,0.3)", cursor: "pointer",
@@ -185,7 +185,7 @@ function SbBlockEditor({ block, onChange, onCommit, onCancel,
           ))}
           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
             <button onClick={() => setInnerBlock(b => ({ ...b,
-              children: [...b.children, sbNewLine()] }))}
+              children: [...b.children, sbNewLine({ poolType: poolDisplay })] }))}
               style={{ flex: 2, padding: "6px", background: "rgba(255,255,255,0.03)",
                 border: "1px dashed rgba(255,255,255,0.1)", borderRadius: 5,
                 color: "rgba(255,255,255,0.3)", cursor: "pointer",

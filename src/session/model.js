@@ -1,3 +1,4 @@
+//
 import { STROKE_MULT, ZONES } from '../zones/constants.js';
 import { phvZoneCaps, repEnergy } from '../zones/energy.js';
 
@@ -9,15 +10,16 @@ function flattenBlock(block, pace200Map, phvStatus) {
     (block.children || []).forEach(function(child) {
       if (child.children !== undefined) {
         flattenBlock(child, pace200Map, phvStatus).forEach(function(s) { seq.push(s); });
-      } else if (child.type === "swim" && child.dist && child.target) {
+      } else if (child.type === "swim" && child.distM && child.targetTime) {
         var stroke = child.stroke || "FS";
         var pace200 = pace200Map[stroke] || pace200Map["FS"] || 120;
         var base100 = (pace200 * (SMULT[stroke]||1.0)) / 2;
-        var dist = parseFloat(child.dist) || 100;
-        var tStr = String(child.target);
+        var dist = parseFloat(child.distM) || 100;
+        var tStr = String(child.targetTime || "");
         var tc = tStr.indexOf(":");
         var workSec = tc > -1 ? parseInt(tStr.slice(0,tc))*60+parseFloat(tStr.slice(tc+1)) : parseFloat(tStr)||60;
-        var oStr = child.turnaround ? String(child.turnaround) : tStr;
+        var oSource = child.onTime;
+        var oStr = oSource ? String(oSource) : tStr;
         var oc = oStr.indexOf(":");
         var onSec = oc > -1 ? parseInt(oStr.slice(0,oc))*60+parseFloat(oStr.slice(oc+1)) : parseFloat(oStr)||workSec;
         var lineQty = parseInt(child.qty) || 1;
