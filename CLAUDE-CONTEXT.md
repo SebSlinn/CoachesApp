@@ -1,7 +1,27 @@
-# SwimZone — Claude project context (updated 2026-06-10 · Phase 7 complete)
+# SwimZone — Claude project context (updated 2026-09-19 · Phase 9 in progress)
 
-Upload this file at the start of every new Claude chat on the main app.
-For zone criteria work only, use ZONE-CRITERIA-CONTEXT.md + zoneCriteria.js instead.
+Upload this file at the start of a new Claude chat that spans the whole app
+or touches more than one module. **For single-module work, use one of the
+five focused docs instead — they're cheaper and keep the chat from loading
+code it doesn't need:**
+
+| Module | Doc |
+|---|---|
+| Login & Memberships | `LOGIN-MEMBERSHIPS-CONTEXT.md` |
+| Athlete Times & Results | `ATHLETE-CONTEXT.md` |
+| Analysis (Classifier screen) | `ANALYSIS-CONTEXT.md` |
+| Swim Sets (Set Builder) | `SWIM-SETS-CONTEXT.md` |
+| Classification (zone/energy engine) | `CLASSIFICATION-MODULE-CONTEXT.md` |
+
+`MODULE-SPLIT-PLAN.md` is the master doc behind that split — current
+architecture, a dead-code/doc-drift findings list, and the proposed
+repository (data-storage) tier. Read it before restructuring folders or
+adding the repository tier described there.
+
+(Note: earlier versions of this file pointed to a `ZONE-CRITERIA-CONTEXT.md`
+— that file was never actually created; `CLASSIFICATION-MODULE-CONTEXT.md`
+is the real one and every reference below has been corrected to point at it.)
+
 **Update "Phase status" after each completed step.**
 
 ---
@@ -44,7 +64,13 @@ Runs client-side. Supabase credentials go in `.env.local` (not in repo).
 ```
 
 `zoneCriteria.js` sits in `zones/` but is independently extractable —
-zero imports, pure JS. See ZONE-CRITERIA-CONTEXT.md for its own context.
+zero imports, pure JS. See `CLASSIFICATION-MODULE-CONTEXT.md` for its own context.
+
+**Gap in this diagram, found 2026-09-16:** there's no data-storage tier
+drawn here because there isn't really one yet — `pages/` calls
+`lib/storage.js` directly and `services/auth.js`/`users.js` call
+`supabaseClient.js` directly, bypassing the service layer for storage.
+`MODULE-SPLIT-PLAN.md` proposes a `repositories/` tier to close this.
 
 ---
 
@@ -83,7 +109,6 @@ src/
   main.jsx
   App.jsx               37 ln  Router shell ✓
   supabaseClient.js
-  styles/theme.js
 
   pages/
     Login.jsx
@@ -100,9 +125,11 @@ src/
       Stroke select dark-styled ✓
       Dist M input 60px (5 digits) ✓
       Add To Set beside 200PB ✓
-      ZoneMatchBanner receives activeAthlete ✓
       Redundant CS-only card removed ✓
       ACHIEVED ZONE card always shows primary zone ✓
+      ⚠ Its only component imports are EnergyGraph, RepChart, ZoneBar
+        (verified 2026-09-16). It does NOT import ZoneMatchBanner,
+        ResultWarnings, SuggestPanel, or ZoneWriteupCard — see below.
 
   components/
     ProtectedRoute.jsx
@@ -113,13 +140,18 @@ src/
     ZoneBar.jsx          22 ln
     EnergyGraph.jsx      76 ln
     RepChart.jsx         33 ln
-    SuggestPanel.jsx     ~90 ln  Zone suggest times + drill selector ✓
+    ⚠ WRITTEN BUT NOT WIRED IN (re-confirmed 2026-09-19 — imported
+      from NOWHERE, including ClassifierScreenRefactor.jsx and Classifier.jsx.
+      Deliberately parked, not backlog-by-accident: decided 2026-09-19 to
+      wire these in only once each earlier cleanup/repository step has been
+      run up and checked — see Phase 9 below and ANALYSIS-CONTEXT.md):
+    SuggestPanel.jsx     ~90 ln  Zone suggest times + drill selector
     ZoneMatchBanner.jsx  ~90 ln  Selected vs achieved zone banners;
                                  reads from evaluateZoneMatch();
-                                 passes athleteContext {css, pace200Sec, athleteType} ✓
-    ResultWarnings.jsx   ~70 ln  PL/pace/consistency/PHV warnings ✓
-                                 Pace warning guards on warningMsg not warningLevel ✓
-    ZoneWriteupCard.jsx  ~75 ln  Zone detail writeup card ✓
+                                 passes athleteContext {css, pace200Sec, athleteType}
+    ResultWarnings.jsx   ~70 ln  PL/pace/consistency/PHV warnings
+                                 Pace warning guards on warningMsg not warningLevel
+    ZoneWriteupCard.jsx  ~75 ln  Zone detail writeup card
 
   hooks/
     useAuth.js           59 ln
@@ -147,8 +179,13 @@ src/
     suggest.js                suggestTimes()
     validatePace.js           validatePace()
     zoneCriteria.js           evaluateZoneMatch() — zero imports, extractable ✓
-                              See ZONE-CRITERIA-CONTEXT.md for full docs
-    index.js                  Re-exports all of the above ← always import from here
+                              See CLASSIFICATION-MODULE-CONTEXT.md for full docs
+    index.js                  Re-exports constants/helpers/validatePace/energy/
+                              classify/suggest/zoneCriteria/speedChart (fixed
+                              2026-09-19 — zones-index.js's extra exports were
+                              folded in and zones-index.js deleted). Live code
+                              (ZoneMatchBanner.jsx, parked) still imports
+                              zoneCriteria.js directly — fine either way now.
 
   session/
     model.js            131 ln  flattenBlock(), classifySequence()
@@ -157,8 +194,11 @@ src/
     index.js                   Re-exports model.js + utils.js ← import from here
 
   athlete/
-    parse.js            220 ln  deriveAthleteType(), CSS calculation etc.
-    index.js                   Re-exports parse.js ← import from here
+    parse.js            ~140 ln  deriveAthleteType(), CSS calculation etc.
+                                (dead unreachable handleParse() removed 2026-09-19)
+    index.js                   Re-exports parse.js — currently unused (live code
+                              imports parse.js directly); kept for the barrel
+                              convention this project uses elsewhere
 
   drills/
     library.js          331 ln
@@ -166,9 +206,34 @@ src/
 ```
 
 **Import rule:** always import from barrel `index.js`, not individual files.
-Exception: `athleteService.js` imports from `../athlete/parse.js` directly.
-Exception: `ZoneMatchBanner.jsx` imports `evaluateZoneMatch` from
-`../zones/zoneCriteria.js` directly (avoids barrel re-export issue).
+Exception: `athleteService.js` and `AthleteSetup.jsx` import from
+`../athlete/parse.js` directly (the `athlete/index.js` barrel is unused).
+Exception: `ZoneMatchBanner.jsx` (parked, not wired in) imports
+`evaluateZoneMatch` from `../zones/zoneCriteria.js` directly — no longer
+necessary now the barrel re-exports it too, but harmless either way.
+
+**Dead files.** Re-verified 2026-09-19 by tracing every import reachable
+from `src/main.jsx` (not just grepping for the filenames) — confirms every
+item `MODULE-SPLIT-PLAN.md` flagged, plus one it missed (`styles/theme.js`,
+only ever imported by the dead `App-modular-attempt.jsx`). Two were fixed
+in place rather than deleted: `zones/index.js` now re-exports
+`zoneCriteria.js`/`speedChart.js` (folded in from `zones-index.js`), and
+the dead `handleParse()` function was removed from inside `athlete/parse.js`.
+Everything else below is queued for deletion via
+`delete-dead-files.ps1` in the project root (run it, then `npm run build`
+to confirm nothing broke) — do not edit or upload these to a chat meanwhile:
+- `src/hooks/{athlete,components,pages,screens,services,session,styles,zones,lib}/*`
+  — an entire duplicate copy of `src/` nested inside `hooks/`, unimported.
+- `src/hooks/index.js`, `useClassifier.js`, `useSessionBuilder.js`,
+  `useAthleteSetup.js` and their private deps `src/lib/classifier/*`,
+  `src/lib/sessions/*`, `src/lib/zones/*` — an abandoned second
+  state-management layer. (`hooks/useAuth.js` is live — keep it.)
+- `src/session/session-index.js` (dup of `session/index.js`),
+  `src/session/sessionService.js` (dup of `services/sessionService.js`),
+  `src/athlete/athlete-index.js` (dup of `athlete/index.js` — keep `index.js`
+  itself, it's the intentional barrel, just currently unused).
+- `src/App-original.jsx`, `src/App-modular-attempt.jsx`, `src/SupabaseTest.jsx`,
+  `src/styles/theme.js` — not imported by `main.jsx`/`App.jsx`.
 
 ---
 
@@ -271,7 +336,35 @@ centralisation, tidy loose ends — all done)
 - restSec derived from onTime−targetTime (was hardcoded '20')
 - lactateClearMult wired from restType × athleteType (was hardcoded 1.0)
 
-### Phase 8 — Next
+### Phase 8 ✅ Complete (2026-09-16)
+- Read the actual code (not just this doc) end-to-end and corrected drift:
+  four components (`ZoneMatchBanner`, `ResultWarnings`, `SuggestPanel`,
+  `ZoneWriteupCard`) were marked "✓" here but aren't imported anywhere
+  — fixed above.
+- Inventoried dead/duplicate files (see list above and `MODULE-SPLIT-PLAN.md`)
+- Split the app into 5 module context docs (Login & Memberships, Athlete,
+  Analysis, Swim Sets, Classification) so single-module Claude chats don't
+  need to load the whole app
+- Wrote `MODULE-SPLIT-PLAN.md`: proposed repository (data-storage) tier
+  between services and `lib/storage.js`/`supabaseClient.js`, and a target
+  module boundary table — not yet implemented, planning only
+
+### Phase 9 — In progress (2026-09-19)
+- ✅ Decided: park the 4 orphaned components for now — wire them in only
+  after each earlier step (cleanup, then the repository tier) has been run
+  up and verified, not bundled into this pass
+- ✅ Re-verified the full dead-file list against live code (import-graph
+  trace from `main.jsx`, not just grep) — one more file found (`styles/theme.js`)
+- ✅ Folded `zones/zones-index.js`'s extra exports (zoneCriteria, speedChart)
+  into `zones/index.js`; `zones-index.js` itself queued for deletion below
+- ✅ Removed the dead unreachable `handleParse()` from `athlete/parse.js`
+- ⏳ Delete the dead files: `delete-dead-files.ps1` written to the project
+  root — run it, then `npm run build` to confirm the app still builds, then
+  tick this off and commit
+- Once cleanup is confirmed working: add the `repositories/` tier from
+  `MODULE-SPLIT-PLAN.md`, smallest module first (Login & Memberships) —
+  do this one module at a time, verifying the build after each
+- Then: wire in the 4 parked components (see above)
 - A3 volumeByAthleteType (ranges TBD)
 - HR condition type in zoneCriteria.js
 - PHV zone caps referenced from zoneCriteria (currently in energy.js only)
@@ -293,22 +386,28 @@ centralisation, tidy loose ends — all done)
 
 ## Zip / file-sharing guide
 
-**For main app work:**
+**For main app / cross-module work:**
 Include `src/` + `vite.config.js` + `package.json` + `index.html`
-Exclude `node_modules/` `.git/` `dist/` `.env.local`
+Exclude `node_modules/` `.git/` `dist/` `.env.local` and the dead files
+listed above.
 
-**For zone criteria work only:**
-Upload `ZONE-CRITERIA-CONTEXT.md` + `src/zones/zoneCriteria.js`
-No other files needed.
+**For single-module work:** don't zip anything — use the matching
+`-CONTEXT.md` file from the table at the top of this doc; each one lists
+the exact (small) file set to upload.
 
 ---
 
 ## How to start a new chat
 
-**Main app:** Upload `CLAUDE-CONTEXT.md` + only the file(s) being worked on.
+**Whole app / cross-module work:** Upload `CLAUDE-CONTEXT.md` + only the
+file(s) being worked on.
 
-**Zone criteria only:** Upload `ZONE-CRITERIA-CONTEXT.md` + `zoneCriteria.js`.
-That's it — no screens, no storage, no auth needed.
+**One module:** Upload that module's `-CONTEXT.md` file (see table at top)
++ the files it lists. That's it — no other module's screens, storage, or
+auth code needed.
+
+**Restructuring the boundaries themselves** (adding the repository tier,
+moving files into module folders): upload `MODULE-SPLIT-PLAN.md`.
 
 **Within an ongoing conversation:** don't re-upload the context doc —
 Claude can already see the conversation history.

@@ -1,5 +1,10 @@
 # SwimZone — Classification & Verification Module Context
 
+Updated 2026-09-16 — checked against the live code (still accurate except
+the one barrel note below). This file is now one of five focused module
+context docs — see `MODULE-SPLIT-PLAN.md` for how it fits with the other
+four (Login & Memberships, Athlete Times & Results, Analysis, Swim Sets).
+
 Upload this file + the listed source files to work on zone classification
 and set validation in a focused thread. No app code, no React, no storage.
 
@@ -34,7 +39,15 @@ src/zones/
   validatePace.js   — validatePaceWithContext() — validation hierarchy
   speedChart.js     — getSpeedProfile(), predictFinishFromSplit()
   zoneCriteria.js   — evaluateZoneMatch() — criteria-based zone matching
-  index.js          — re-exports all of the above
+  index.js          — re-exports constants/helpers/validatePace/energy/
+                       classify/suggest ONLY — does NOT currently re-export
+                       zoneCriteria.js or speedChart.js (verified against the
+                       code 2026-09-16). Callers outside this module import
+                       those two directly, e.g. ZoneMatchBanner.jsx does
+                       `import { evaluateZoneMatch } from '../zones/zoneCriteria.js'`.
+                       A more complete barrel exists at zones/zones-index.js
+                       (unused) — folding its extra exports into index.js and
+                       deleting zones-index.js would close this gap.
 
 src/session/
   model.js          — flattenBlock(), classifySequence() — multi-line

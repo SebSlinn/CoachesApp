@@ -13,12 +13,18 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error } = await signIn(email, password)
-    if (error) {
-      setError(error.message)
+
+    try {
+      const { error } = await signIn(email, password)
+      if (error) {
+        setError(error.message)
+        setLoading(false)
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err) {
+      setError(err.message || 'Sign-in failed unexpectedly.')
       setLoading(false)
-    } else {
-      navigate('/dashboard')
     }
   }
 

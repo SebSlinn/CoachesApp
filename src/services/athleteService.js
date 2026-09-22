@@ -1,12 +1,37 @@
 // src/services/athleteService.js
 // All athlete data operations: parse, build, save, load, export, import.
-// Pure functions — no React, no DOM, no localStorage side-effects (callers handle those).
-// Future: replace function bodies with fetch('/api/athlete/…') calls; signatures stay the same.
+// Parse/build/export/import are pure — no React, no DOM. loadAthlete/
+// saveAthlete are the one exception: they go through IAthleteRepository
+// (see repositories/RepositoryFactory.js) instead of pages touching
+// localStorage directly, which is what used to happen in AthleteSetup.jsx,
+// Classifier.jsx and SetBuilder.jsx.
+// Future: swap the repository's implementation for a remote one; these
+// function signatures stay the same either way.
 
 import {
   STALE_MONTHS, VALID_DISTS, STROKE_NAMES,
   parseDateToAge, splitTimeToken, parseTimeToSec, deriveAthleteType,
 } from '../athlete/parse.js';
+import { getAthleteRepository } from '../repositories/RepositoryFactory.js';
+
+// ─── Load / Save ──────────────────────────────────────────────────────────────
+
+/**
+ * Load the currently saved athlete, if any.
+ * @returns {Promise<Object|null>}
+ */
+export async function loadAthlete() {
+  return getAthleteRepository().get();
+}
+
+/**
+ * Persist an athlete object built by buildAthleteObject().
+ * @param {Object} pAthlete
+ * @returns {Promise<void>}
+ */
+export async function saveAthlete(pAthlete) {
+  return getAthleteRepository().save(pAthlete);
+}
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
 

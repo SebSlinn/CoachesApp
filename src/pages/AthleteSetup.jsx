@@ -12,8 +12,9 @@ import {
   buildAthleteObject,
   exportAthleteJson,
   importAthleteJson,
+  loadAthlete,
+  saveAthlete,
 } from '../services/athleteService.js';
-import { storage, KEYS } from '../lib/storage.js';
 
 export default function AthleteSetup() {
   const navigate = useNavigate();
@@ -28,18 +29,21 @@ export default function AthleteSetup() {
   const [parseLog,       setParseLog]       = useState([]);
   const [derivedProfile, setDerivedProfile] = useState(null);
 
-  // ── Load from localStorage on mount ─────────────────────────────────────
+  // ── Load saved athlete on mount (via athleteService -> IAthleteRepository) ──
   useEffect(() => {
-    const mData = storage.get(KEYS.ATHLETE);
-    if (!mData) return;
-    const mTimes = mData.times || {};
-    setAthleteName(mData.name        || '');
-    setSeNumber(mData.seNumber       || '');
-    setClubName(mData.club           || '');
-    setAthleteType(mData.athleteType || 'allround');
-    setPhvStatus(mData.phvStatus     || 'post');
-    setAthleteTimes(mTimes);
-    setDerivedProfile(mData.derivedProfile || deriveAthleteType(mTimes) || null);
+    let mCancelled = false;
+    loadAthlete().then(mData => {
+      if (mCancelled || !mData) return;
+      const mTimes = mData.times || {};
+      setAthleteName(mData.name        || '');
+      setSeNumber(mData.seNumber       || '');
+      setClubName(mData.club           || '');
+      setAthleteType(mData.athleteType || 'allround');
+      setPhvStatus(mData.phvStatus     || 'post');
+      setAthleteTimes(mTimes);
+      setDerivedProfile(mData.derivedProfile || deriveAthleteType(mTimes) || null);
+    });
+    return () => { mCancelled = true; };
   }, []);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
@@ -54,13 +58,13 @@ export default function AthleteSetup() {
     if (mResult.club)     setClubName(mResult.club);
   }
 
-  function handleSave() {
+  async function handleSave() {
     const mAthlete = buildAthleteObject({
       name: athleteName, seNumber, club: clubName,
       times: athleteTimes, athleteType, phvStatus, derivedProfile,
     });
     setDerivedProfile(mAthlete.derivedProfile);
-    storage.set(KEYS.ATHLETE, mAthlete);
+    await saveAthlete(mAthlete);
     alert('Athlete saved!');
   }
 

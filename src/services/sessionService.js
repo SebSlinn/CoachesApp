@@ -1,7 +1,35 @@
 // src/services/sessionService.js
 // All session data operations: validate, parse/import, export.
-// Pure functions — no React, no DOM, no localStorage side-effects (callers handle those).
-// Future: replace function bodies with fetch('/api/session/…') calls; signatures stay the same.
+// validate/import/export are pure — no React, no DOM. loadSession/
+// saveSession/getActiveGroup/setActiveGroup are the exception: they go
+// through ISessionRepository (see repositories/RepositoryFactory.js)
+// instead of pages touching localStorage directly, which is what used to
+// happen in SetBuilder.jsx and Classifier.jsx. These four stay synchronous
+// — see ISessionRepository's header comment for why.
+
+import { getSessionRepository } from '../repositories/RepositoryFactory.js';
+
+// ─── Load / Save ──────────────────────────────────────────────────────────────
+
+/** @returns {Object|null} the stored session, or null if none saved yet */
+export function loadSession() {
+  return getSessionRepository().get();
+}
+
+/** @param {Object} pSession */
+export function saveSession(pSession) {
+  return getSessionRepository().save(pSession);
+}
+
+/** @returns {string|null} */
+export function getActiveGroup() {
+  return getSessionRepository().getActiveGroup();
+}
+
+/** @param {string|null} pGroupId  falsy clears the stored value */
+export function setActiveGroup(pGroupId) {
+  return getSessionRepository().setActiveGroup(pGroupId);
+}
 
 // ─── Validate ────────────────────────────────────────────────────────────────
 

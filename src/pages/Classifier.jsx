@@ -16,6 +16,12 @@ import {
   classifySet, suggestTimes,
 } from '../zones/index.js';import { flattenBlock, classifySequence } from '../session/model.js';
 import { sbNewLine, sbNewBlock } from '../session/utils.js';
+import { loadAthlete } from '../services/athleteService.js';
+import {
+  loadSession as loadSessionRecord,
+  saveSession,
+  getActiveGroup,
+} from '../services/sessionService.js';
 import EnergyGraph from '../components/EnergyGraph.jsx';
 import ZoneBar     from '../components/ZoneBar.jsx';
 import RepChart    from '../components/RepChart.jsx';
@@ -44,36 +50,39 @@ export default function Classifier() {
   const [selectedElement, setSelectedElement] = useState(() => storage.get(KEYS.SELECTED_ELEMENT));
   const [editingBlock,    setEditingBlock]    = useState(() => storage.get(KEYS.EDITING_BLOCK));
 
-  // ── Load athlete from AthleteSetup ───────────────────────────────────────
+  // ── Load athlete from AthleteSetup (via athleteService -> IAthleteRepository)
   useEffect(() => {
-    const mData = storage.get(KEYS.ATHLETE);
-    if (!mData) return;
-    const mProfile = mData.derivedProfile || null;
-    setInputs(i => ({
-      ...i,
-      athleteType: mData.athleteType || 'allround',
-      phvStatus:   mData.phvStatus   || 'post',
-      pace200:     mData.pace200     || i.pace200,
-    }));
-    setDerivedProfile(mProfile);
-    setActiveAthlete({
-      name:           mData.name          || '',
-      seNumber:       mData.seNumber      || '',
-      club:           mData.club          || '',
-      times:          mData.times         || {},
-      derivedProfile: mProfile,
-      athleteType:    mData.athleteType   || 'allround',
-      phvStatus:      mData.phvStatus     || 'post',
-      pace200:        mData.pace200       || '',
+    let mCancelled = false;
+    loadAthlete().then(mData => {
+      if (mCancelled || !mData) return;
+      const mProfile = mData.derivedProfile || null;
+      setInputs(i => ({
+        ...i,
+        athleteType: mData.athleteType || 'allround',
+        phvStatus:   mData.phvStatus   || 'post',
+        pace200:     mData.pace200     || i.pace200,
+      }));
+      setDerivedProfile(mProfile);
+      setActiveAthlete({
+        name:           mData.name          || '',
+        seNumber:       mData.seNumber      || '',
+        club:           mData.club          || '',
+        times:          mData.times         || {},
+        derivedProfile: mProfile,
+        athleteType:    mData.athleteType   || 'allround',
+        phvStatus:      mData.phvStatus     || 'post',
+        pace200:        mData.pace200       || '',
+      });
     });
+    return () => { mCancelled = true; };
   }, []);
 
   // ── Input helper ─────────────────────────────────────────────────────────
   function set(k, v) { setInputs(p => ({ ...p, [k]: v })); }
 
-  // ── Session bridge ────────────────────────────────────────────────────────
+  // ── Session bridge (via sessionService -> ISessionRepository) ────────────
   function loadSession() {
-    const mParsed = storage.get(KEYS.SESSION);
+    const mParsed = loadSessionRecord();
     const mEmpty  = { title: '', groups: [{ id: 'g1', label: 'Main Set', blocks: [] }] };
     return mParsed?.groups?.length ? mParsed : mEmpty;
   }
@@ -84,13 +93,13 @@ export default function Classifier() {
       ? mSession.groups
       : [{ id: 'g1', label: 'Main Set', blocks: [] }];
     const mTargetId = (() => {
-      const mSaved = storage.getRaw(KEYS.ACTIVE_GROUP);
+      const mSaved = getActiveGroup();
       return mSaved && mGroups.some(g => g.id === mSaved) ? mSaved : mGroups[0].id;
     })();
     const mUpdated  = mGroups.map(g =>
       g.id === mTargetId ? { ...g, blocks: [...(g.blocks || []), pBlock] } : g
     );
-    storage.set(KEYS.SESSION, { ...mSession, groups: mUpdated });
+    saveSession({ ...mSession, groups: mUpdated });
   }
 
   // ── Live single-set classification ───────────────────────────────────────

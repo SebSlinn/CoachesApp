@@ -1,37 +1,17 @@
-import { supabase } from '../supabaseClient'
+//services/users.js
+// Same exported function names/signatures as before — hooks/useAuth.js is
+// untouched by this refactor. This file no longer touches supabaseClient.js
+// directly, it goes through IMembershipRepository via the RepositoryFactory.
+import { getMembershipRepository } from '../repositories/RepositoryFactory'
 
 export const getProfile = async (userId) => {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', userId)
-    .single()
-  return { data, error }
+  return getMembershipRepository().getProfile(userId)
 }
 
 export const createProfile = async (userId, email, fullName) => {
-  const { data, error } = await supabase
-    .from('users')
-    .insert({ id: userId, email, full_name: fullName })
-    .select()
-    .single()
-  return { data, error }
+  return getMembershipRepository().createProfile(userId, email, fullName)
 }
 
 export const getMemberships = async (userId) => {
-  const { data, error } = await supabase
-    .from('memberships')
-    .select(`
-      id,
-      role,
-      status,
-      organisations (
-        id,
-        name,
-        org_type
-      )
-    `)
-    .eq('user_id', userId)
-    .eq('status', 'active')
-  return { data, error }
+  return getMembershipRepository().getMemberships(userId)
 }

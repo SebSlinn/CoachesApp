@@ -12,8 +12,12 @@ import {
   sbZoneColor, sbBlockVolume, sbBlockTotalTime, sbLineRest, sbFmtTime,
 } from '../session/index.js';
 import { parseTime } from '../zones/index.js';
-import { validateSession, importSessionJson, exportSessionJson } from '../services/sessionService.js';
+import {
+  validateSession, importSessionJson, exportSessionJson,
+  loadSession, saveSession, getActiveGroup, setActiveGroup as persistActiveGroup,
+} from '../services/sessionService.js';
 import { generateSessionPrintHtml } from '../services/classifierService.js';
+import { loadAthlete } from '../services/athleteService.js';
 import { storage, KEYS, convertTimeForDisplay } from '../lib/storage.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -29,7 +33,7 @@ const DEFAULT_SESSION = () => ({
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function loadSavedSession() {
-  const mParsed = storage.get(KEYS.SESSION);
+  const mParsed = loadSession();
   return validateSession(mParsed) ? mParsed : DEFAULT_SESSION();
 }
 
@@ -58,7 +62,7 @@ export default function SetBuilder() {
   const [session,         setSession]         = useState(mInitialSession);
   const [activeGroup, setActiveGroup] = useState(() => {
     const mDefault = mInitialSession.groups?.[0]?.id || 'g1';
-    const mSaved   = storage.getRaw(KEYS.ACTIVE_GROUP);
+    const mSaved   = getActiveGroup();
     if (mSaved && mInitialSession.groups.some(g => g.id === mSaved)) return mSaved;
     if (mInitialSelectedElement) return findSelectedElementGroup(mInitialSession, mInitialSelectedElement) || mDefault;
     return mDefault;
@@ -76,7 +80,7 @@ export default function SetBuilder() {
   // ── Persistence effects ───────────────────────────────────────────────────
 
   useEffect(() => {
-    storage.set(KEYS.SESSION, JSON.parse(exportSessionJson(session)));
+    saveSession(JSON.parse(exportSessionJson(session)));
   }, [session]);
 
   useEffect(() => {
@@ -90,14 +94,13 @@ export default function SetBuilder() {
   }, [editingBlock]);
 
   useEffect(() => {
-    if (activeGroup) storage.setRaw(KEYS.ACTIVE_GROUP, activeGroup);
-    else storage.remove(KEYS.ACTIVE_GROUP);
+    persistActiveGroup(activeGroup || null);
   }, [activeGroup]);
 
   // ── Athlete data ──────────────────────────────────────────────────────────
 
-  function loadAthleteData() {
-    const mData = storage.get(KEYS.ATHLETE);
+  async function loadAthleteData() {
+    const mData = await loadAthlete();
     if (!mData) { setPace200Map(null); setActiveAthlete(null); return; }
     setPhvStatus(mData.phvStatus || 'post');
     setActiveAthlete({
@@ -128,7 +131,7 @@ export default function SetBuilder() {
   function updateSession(pUpdater) {
     setSession(mPrev => {
       const mNext = typeof pUpdater === 'function' ? pUpdater(mPrev) : pUpdater;
-      storage.set(KEYS.SESSION, mNext);
+      saveSession(mNext);
       return mNext;
     });
   }
@@ -196,7 +199,7 @@ export default function SetBuilder() {
       const mResult = importSessionJson(mEl.value);
       setSession(mResult);
       setActiveGroup(mResult.groups[0]?.id || 'g1');
-      storage.set(KEYS.SESSION, mResult);
+      saveSession(mResult);
       setImportError('');
       mEl.value = '';
       setShowCsv(false);
