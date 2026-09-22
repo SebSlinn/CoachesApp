@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b8fa8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Poolside">
+<title>Poolside Splits</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a2233; --paper:#eef7f9; --surface:#ffffff; --surface-2:#e3f0f3;
+    --accent:#0b8fa8; --accent-ink:#04333d; --lane:#ff7a3d; --lane-ink:#3a1a06;
+    --line:#c9dfe4; --muted:#527080; --good:#0f9d68; --good-bg:#e2f6ec;
+    --warn:#b5730a; --warn-bg:#fdf0dc; --shadow:0 1px 2px rgba(10,34,51,.06),0 6px 20px -8px rgba(10,34,51,.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#e8f4f7; --paper:#071923; --surface:#0e2530; --surface-2:#123140;
+      --accent:#38c6df; --accent-ink:#02222b; --lane:#ff9a63; --lane-ink:#2c1204;
+      --line:#1c3c48; --muted:#8fb1bc; --good:#3fd196; --good-bg:#0e3327;
+      --warn:#f2b654; --warn-bg:#3a2a0c; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -10px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#e8f4f7; --paper:#071923; --surface:#0e2530; --surface-2:#123140;
+    --accent:#38c6df; --accent-ink:#02222b; --lane:#ff9a63; --lane-ink:#2c1204;
+    --line:#1c3c48; --muted:#8fb1bc; --good:#3fd196; --good-bg:#0e3327;
+    --warn:#f2b654; --warn-bg:#3a2a0c; --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -10px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+    -webkit-tap-highlight-color:transparent; user-select:none;
+    display:flex; flex-direction:column;
+  }
+  .mono{ font-family:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; font-feature-settings:'tnum' 1; }
+
+  #app{ display:flex; flex-direction:column; min-height:100%; max-width:640px; margin:0 auto; width:100%; padding:0 16px; }
+
+  /* ---- top bar ---- */
+  header.bar{
+    position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+    background:var(--paper); padding:8px 0 4px; display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid transparent;
+  }
+  header.bar .word{ font-weight:800; font-size:19px; letter-spacing:-.01em; }
+  header.bar .word b{ color:var(--accent); }
+  header.bar .icon-btn{ background:none; border:1px solid var(--line); color:var(--ink); border-radius:10px; width:38px; height:38px; display:flex; align-items:center; justify-content:center; font-size:16px; cursor:pointer; }
+  header.bar .icon-btn:active{ background:var(--surface-2); }
+
+  /* ---- set switcher ---- */
+  .set-strip{ display:flex; gap:6px; overflow-x:auto; padding:2px 2px 4px; margin-top:0; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .set-strip::-webkit-scrollbar{ display:none; }
+  .set-pill{
+    flex:0 0 auto; border:1px solid var(--line); background:var(--surface); color:var(--muted);
+    padding:6px 12px; border-radius:999px; font-family:inherit; font-weight:700; font-size:12.5px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; white-space:nowrap;
+  }
+  .set-pill.active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .set-pill .count{ font-family:'JetBrains Mono',monospace; font-size:11px; opacity:.8; }
+  .set-pill.add{ background:transparent; color:var(--accent); border-style:dashed; border-color:var(--accent); }
+
+  /* ---- event header ---- */
+  .event-card{
+    background:var(--lane); color:var(--lane-ink); border-radius:14px; padding:11px 16px;
+    cursor:pointer; box-shadow:var(--shadow); border:none; text-align:left; width:100%;
+    display:flex; flex-direction:column; gap:4px; margin-top:2px;
+  }
+  .event-card .title{ font-weight:800; font-size:19px; letter-spacing:-.01em; }
+  .event-card .sub{ font-size:12.5px; opacity:.85; font-weight:600; }
+  .event-card .legs{ display:flex; flex-wrap:wrap; gap:5px; margin-top:2px; }
+  .event-card .legs span{ font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; background:rgba(0,0,0,.12); padding:2px 7px; border-radius:999px; }
+
+  /* ---- clock ---- */
+  .clock-wrap{ text-align:center; padding:10px 0 6px; border-radius:20px; transition:background-color .12s ease; }
+  .clock-wrap.flash{ background-color:var(--flash-bg,var(--lane)); }
+  .clock{ font-size:50px; font-weight:700; line-height:1; letter-spacing:-.02em; transition:color .12s ease, transform .12s ease; }
+  .clock-wrap.flash .clock{ color:var(--lane-ink); transform:scale(1.04); }
+  .clock-wrap.flash .state-pill, .clock-wrap.flash .next-hint{ opacity:0; }
+  .state-pill{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background:var(--surface-2); color:var(--muted); }
+  .state-pill.running{ background:var(--good-bg); color:var(--good); }
+  .state-pill .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+  .next-hint{ margin-top:4px; font-size:14px; font-weight:700; color:var(--accent); min-height:18px; }
+
+  /* ---- buttons ---- */
+  .grid{ display:grid; gap:7px; margin-top:5px; }
+  .grid.gap-top{ margin-top:14px; }
+  .row2{ grid-template-columns:1fr 1fr; }
+  button.tap{
+    border:none; border-radius:13px; padding:13px 10px; font-family:inherit; font-weight:800; font-size:15px;
+    color:var(--ink); background:var(--surface); box-shadow:var(--shadow); cursor:pointer; letter-spacing:-.01em;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; min-height:52px;
+    transition:transform .08s ease, background .15s ease, opacity .15s ease; border:1px solid var(--line);
+  }
+  button.tap:active{ transform:scale(.97); }
+  button.tap .small{ font-size:10.5px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  button.tap.start{ background:var(--surface); }
+  button.tap.expected{ background:var(--lane); color:var(--lane-ink); border-color:var(--lane); }
+  button.tap.expected .small{ color:var(--lane-ink); opacity:.75; }
+  button.tap.quiet{ opacity:.55; }
+  button.tap.off{ opacity:.35; pointer-events:none; }
+  button.tap.secondary{ background:var(--surface-2); font-size:13.5px; padding:10px 10px; min-height:42px; }
+  button.tap.flash{ background:var(--accent) !important; color:var(--accent-ink) !important; border-color:var(--accent) !important; transform:scale(1.03); }
+  button.tap.flash .small{ color:var(--accent-ink) !important; }
+
+  .toolrow{ display:flex; gap:8px; margin-top:7px; }
+  .toolrow button{
+    flex:1; border:1px solid var(--line); background:var(--surface); color:var(--muted); border-radius:11px;
+    padding:7px; font-family:inherit; font-weight:700; font-size:12.5px; cursor:pointer;
+  }
+  .toolrow button:active{ background:var(--surface-2); }
+  .toolrow button.danger{ color:var(--warn); }
+
+  /* ---- rep list — every set, in order, so scrolling reviews the whole session ---- */
+  .reps{ margin-top:14px; display:flex; flex-direction:column; gap:18px; padding-bottom:110px; }
+  .reps > h2{ font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 -6px; }
+  .set-group{ display:flex; flex-direction:column; gap:10px; }
+  .set-group-heading{
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    font-size:14px; font-weight:800; color:var(--ink); padding-bottom:2px; border-bottom:1px solid var(--line);
+  }
+  .set-group-heading .sub{ font-size:11.5px; font-weight:600; color:var(--muted); text-transform:none; letter-spacing:0; }
+  .set-group.active .set-group-heading{ color:var(--accent); border-bottom-color:var(--accent); }
+  .rep-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:12px 14px; box-shadow:var(--shadow); }
+  .rep-top{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .rep-num{ font-size:12px; font-weight:700; color:var(--muted); }
+  .rep-total{ font-size:22px; font-weight:800; }
+  .badge{ font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; padding:3px 8px; border-radius:999px; }
+  .badge.complete{ background:var(--good-bg); color:var(--good); }
+  .badge.review{ background:var(--warn-bg); color:var(--warn); }
+  .splits{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .splits span{ font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600; background:var(--surface-2); padding:3px 8px; border-radius:8px; color:var(--ink); }
+  .flags{ margin-top:8px; font-size:12.5px; color:var(--warn); line-height:1.5; }
+  .rep-meta{ margin-top:6px; font-size:12px; color:var(--muted); display:flex; gap:12px; flex-wrap:wrap; }
+  .rep-actions{ margin-top:10px; display:flex; gap:8px; flex-wrap:wrap; }
+  .rep-actions button{ border:1px solid var(--line); background:var(--surface-2); color:var(--ink); border-radius:8px; padding:6px 10px; font-size:12px; font-weight:700; cursor:pointer; }
+  .tap-chip{ display:inline-flex; align-items:center; gap:6px; }
+  .tap-chip button{ border:none; background:none; color:var(--warn); font-weight:800; cursor:pointer; padding:0; font-size:13px; }
+  .empty{ text-align:center; color:var(--muted); font-size:13.5px; padding:30px 10px; }
+
+  /* ---- footer ---- */
+  footer.bar{
+    position:fixed; left:0; right:0; bottom:0; z-index:20;
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
+    background:var(--paper); border-top:1px solid var(--line);
+    display:flex; justify-content:center;
+  }
+  footer.bar .inner{ max-width:640px; width:100%; display:flex; gap:10px; }
+  footer.bar button{ flex:1; border:none; border-radius:12px; padding:12px; font-family:inherit; font-weight:800; font-size:13.5px; cursor:pointer; }
+  footer.bar .primary{ background:var(--accent); color:var(--accent-ink); }
+  footer.bar .ghost{ background:var(--surface-2); color:var(--ink); }
+
+  /* ---- overlay panels ---- */
+  .overlay{ position:fixed; inset:0; background:rgba(4,15,22,.5); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
+  .overlay[hidden]{ display:none; }
+  .sheet{
+    background:var(--surface); width:100%; max-width:640px; border-radius:18px 18px 0 0; padding:18px 20px calc(20px + env(safe-area-inset-bottom,0px));
+    max-height:85vh; overflow-y:auto; box-shadow:0 -10px 40px rgba(0,0,0,.25);
+  }
+  .sheet h3{ margin:0 0 14px; font-size:18px; font-weight:800; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+  .field input, .field select{
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--line); background:var(--paper); color:var(--ink);
+    font-family:inherit; font-size:15px;
+  }
+  .chipset{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chipset button{
+    border:1px solid var(--line); background:var(--paper); color:var(--ink); padding:9px 14px; border-radius:999px;
+    font-family:inherit; font-weight:700; font-size:13.5px; cursor:pointer;
+  }
+  .chipset button.on{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .sheet .actions{ display:flex; gap:10px; margin-top:18px; }
+  .sheet .actions button{ flex:1; border:none; border-radius:12px; padding:13px; font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; }
+  .sheet .actions .primary{ background:var(--accent); color:var(--accent-ink); }
+  .sheet .actions .ghost{ background:var(--surface-2); color:var(--ink); }
+  .preview{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--muted); background:var(--surface-2); padding:8px 10px; border-radius:8px; margin-top:2px; }
+  .toast{
+    position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
+    background:var(--ink); color:var(--paper); padding:10px 16px; border-radius:999px; font-size:13px; font-weight:700;
+    z-index:50; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow);
+  }
+  .toast button{ background:none; border:none; color:var(--accent); font-weight:800; font-size:13px; cursor:pointer; }
+  .toast[hidden]{ display:none; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="bar">
+    <div class="word">Pool<b>side</b></div>
+    <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
+  </header>
+
+  <div class="set-strip" id="setStrip"></div>
+
+  <button class="event-card" id="eventCard" type="button"></button>
+
+  <div class="clock-wrap">
+    <div class="clock mono" id="clockDisplay">0.00</div>
+    <div class="state-pill" id="statePill"><span class="dot"></span><span id="stateLabel">Ready</span></div>
+    <div class="next-hint" id="nextHint"></div>
+  </div>
+
+  <div class="grid row2">
+    <button class="tap start" id="btnDive" type="button">Start Dive<span class="small">enter at the wall</span></button>
+    <button class="tap start" id="btnPush" type="button">Start Push<span class="small">in-water start</span></button>
+  </div>
+  <div class="grid row2">
+    <button class="tap" id="btnTurn" type="button">Turn</button>
+    <button class="tap" id="btnFinish" type="button">Finish</button>
+  </div>
+  <div class="grid row2 gap-top">
+    <button class="tap secondary" id="btnSR" type="button">SR &mdash; stroke rate</button>
+    <button class="tap secondary" id="btnSC" type="button">SC &mdash; stroke count</button>
+  </div>
+
+  <div class="toolrow">
+    <button id="undoBtn">&#8630; Undo last tap</button>
+    <button id="wakeBtn">Keep screen awake</button>
+  </div>
+
+  <div class="reps">
+    <h2>All reps this session</h2>
+    <div id="repList"></div>
+  </div>
+</div>
+
+<footer class="bar">
+  <div class="inner">
+    <button class="ghost" id="newSessionBtn">New session</button>
+    <button class="primary" id="exportBtn">Results</button>
+  </div>
+</footer>
+
+<!-- ============ event picker sheet ============ -->
+<div class="overlay" id="eventOverlay" hidden>
+  <div class="sheet">
+    <h3>Set details</h3>
+    <div class="field">
+      <label>Set name</label>
+      <input type="text" id="setNameInput" placeholder="Set 1">
+    </div>
+    <div class="field">
+      <label>Stroke</label>
+      <div class="chipset" id="strokeChips">
+        <button data-v="FREE">Free</button>
+        <button data-v="BACK">Back</button>
+        <button data-v="BREAST">Breast</button>
+        <button data-v="FLY">Fly</button>
+        <button data-v="IM">IM</button>
+        <button data-v="OPEN">Open / freeform</button>
+      </div>
+    </div>
+    <div class="field" id="distanceField">
+      <label>Distance (m)</label>
+      <input type="number" id="distanceInput" inputmode="numeric" step="25" min="25" placeholder="100">
+    </div>
+    <div class="field" id="poolField">
+      <label>Pool length</label>
+      <div class="chipset" id="poolChips">
+        <button data-v="25">25m</button>
+        <button data-v="50">50m</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Expected touches</label>
+      <div class="preview" id="planPreview">&mdash;</div>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="eventCancel" type="button">Cancel</button>
+      <button class="primary" id="eventSave" type="button">Save</button>
+    </div>
+    <button id="deleteSetBtn" type="button" style="margin-top:12px;width:100%;background:none;border:none;color:var(--warn);font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;padding:6px;">Delete this set</button>
+  </div>
+</div>
+
+<!-- ============ settings sheet ============ -->
+<div class="overlay" id="settingsOverlay" hidden>
+  <div class="sheet">
+    <h3>Session details</h3>
+    <div class="field">
+      <label>Athlete</label>
+      <input type="text" id="athleteInput" placeholder="Swimmer name">
+    </div>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="dateInput">
+    </div>
+    <div class="field">
+      <label>Location</label>
+      <input type="text" id="locationInput" placeholder="e.g. Riverside Pool">
+    </div>
+    <div class="actions">
+      <button class="ghost" id="settingsCancel" type="button">Close</button>
+      <button class="primary" id="settingsSave" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ confirm sheet (used instead of window.confirm, which the artifact sandbox blocks) ============ -->
+<div class="overlay" id="confirmOverlay" hidden>
+  <div class="sheet">
+    <h3 id="confirmTitle">Are you sure?</h3>
+    <p id="confirmBody" style="margin:0 0 6px;color:var(--muted);font-size:14px;line-height:1.5;"></p>
+    <div class="actions">
+      <button class="ghost" id="confirmCancel" type="button">Cancel</button>
+      <button class="primary" id="confirmOk" type="button" style="background:var(--warn);color:#2a1a00;">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ results sheet — readable recap + share + file downloads ============ -->
+<div class="overlay" id="resultsOverlay" hidden>
+  <div class="sheet">
+    <h3>Session results</h3>
+    <div class="preview" id="resultsText" style="white-space:pre-wrap;max-height:42vh;overflow-y:auto;font-size:13px;line-height:1.6;"></div>
+    <div class="actions">
+      <button class="ghost" id="copySummaryBtn" type="button">Copy summary</button>
+      <button class="ghost" id="shareSummaryBtn" type="button" hidden>Share</button>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="downloadCsvBtn" type="button">Download CSV (for a spreadsheet)</button>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="downloadJsonBtn" type="button">Download JSON (for SwimZone import)</button>
+    </div>
+    <div class="actions">
+      <button class="primary" id="resultsClose" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ============================================================
+   Core logic — event-sourced: every tap is a raw {type,t,meta}.
+   Nothing is ever rejected; the whole derived state is replayed
+   from the log, so undo / delete-a-tap are just log edits.
+   ============================================================ */
+const SwimCore = (function(){
+  const DOUBLE_TAP_MS = 5000;
+  const STROKE_SEQUENCES = { IM: ['FLY','BACK','BREAST','FREE'] };
+  let _id = 0;
+  function nextId(){ _id += 1; return 'e' + _id + '_' + Date.now().toString(36); }
+
+  function buildPlan(event){
+    if (!event || !event.distance || !event.poolLength || !event.stroke) return null;
+    const { distance, poolLength, stroke } = event;
+    const legs = [];
+    if (stroke === 'IM'){
+      const seq = STROKE_SEQUENCES.IM;
+      const legDistance = distance / seq.length;
+      seq.forEach((s,i) => legs.push({ stroke:s, endDistance: legDistance*(i+1) }));
+    } else {
+      const nLegs = Math.round(distance / poolLength);
+      for (let i=1;i<=nLegs;i++) legs.push({ stroke, endDistance: poolLength*i });
+    }
+    const turnLegs = legs.slice(0,-1);
+    const finishLeg = legs[legs.length-1];
+    return { turnLegs, finishDistance: finishLeg ? finishLeg.endDistance : distance, allLegs: legs };
+  }
+
+  function makeEvent(type, t, meta){ return { id: nextId(), type, t, meta: meta || {} }; }
+
+  // A double-tap warning only makes sense for two presses of the SAME
+  // button close together (e.g. Turn, Turn) — a Turn tap arriving 2s after
+  // the last SC tap is completely normal (you're counting strokes right up
+  // to the wall), so gaps are tracked per button, not against "any tap".
+  // SR and SC are left out of double-tap checking entirely: SR's two taps
+  // (start/stop) are *meant* to be close together — that's the measurement
+  // — and SC is meant to be tapped rapidly, once per stroke.
+  const DOUBLE_TAP_TYPES = { turn:true, finish:true };
+
+  function derive(events, plan){
+    const sorted = [...events].sort((a,b)=>a.t-b.t);
+    const reps = []; let current = null;
+
+    function openRep(startType, t){
+      current = { startTime:t, startType, splits:[], scCount:0, scEvents:[], srPending:null, srResults:[], finishTime:null, finishFlags:[], eventIds:[], lastByType:{} };
+    }
+    function closeRep(t, flags){
+      current.finishTime = t; current.finishFlags = flags.slice();
+      if (plan){
+        const missing = plan.turnLegs.length - current.splits.length;
+        current.distance = plan.finishDistance;
+        if (missing > 0){
+          current.finishFlags.push('missingSplits');
+          current.missingCount = missing;
+          current.likelyMissingAfter = guessMissingGap(current, t);
+        }
+      } else { current.distance = null; }
+      classifyRepStatus(current);
+      reps.push(current); current = null;
+    }
+
+    for (const ev of sorted){
+      if (ev.type === 'start'){
+        // two Start taps close together already surfaces on its own: the
+        // second Start closes the first as a review-flagged inferredFinish
+        // (a near-zero-length rep), so no separate double-tap check is needed here.
+        if (current) closeRep(ev.t, ['inferredFinish']);
+        openRep(ev.meta.startType, ev.t);
+        current.eventIds.push(ev.id);
+        continue;
+      }
+      if (!current) continue; // no active rep — pre-start/post-finish taps are inert
+      const rep = current;
+      rep.eventIds.push(ev.id);
+      const gapFlag = DOUBLE_TAP_TYPES[ev.type] && rep.lastByType[ev.type] != null && (ev.t - rep.lastByType[ev.type]) < DOUBLE_TAP_MS;
+      rep.lastByType[ev.type] = ev.t;
+
+      if (ev.type === 'turn'){
+        if (plan){
+          const nextIdx = rep.splits.length;
+          if (nextIdx < plan.turnLegs.length){
+            const leg = plan.turnLegs[nextIdx];
+            rep.splits.push({ id:ev.id, distance:leg.endDistance, stroke:leg.stroke, t:ev.t, flags: gapFlag?['possibleDoubleTap']:[] });
+          } else {
+            closeRep(ev.t, gapFlag ? ['possibleDoubleTap','turnPromotedToFinish'] : ['turnPromotedToFinish']);
+          }
+        } else {
+          rep.splits.push({ id:ev.id, distance:null, stroke:null, t:ev.t, flags: gapFlag?['possibleDoubleTap']:[] });
+        }
+      } else if (ev.type === 'finish'){
+        closeRep(ev.t, gapFlag ? ['possibleDoubleTap'] : []);
+      } else if (ev.type === 'sr'){
+        // tagged with which length was being swum when the reading was taken
+        // (rep.splits.length = number of turns so far = the current, still-
+        // in-progress length) so it can be reported per length, not just as
+        // one lump figure for the whole rep.
+        if (!rep.srPending){
+          rep.srPending = { startT: ev.t, flags: [], legIndex: rep.splits.length };
+        } else {
+          const elapsedMs = ev.t - rep.srPending.startT;
+          const cyclesPerMin = elapsedMs > 0 ? (3*60000)/elapsedMs : null;
+          rep.srResults.push({ startT: rep.srPending.startT, endT: ev.t, elapsedMs, strokeRate: cyclesPerMin ? Math.round(cyclesPerMin*10)/10 : null, flags: [], legIndex: rep.srPending.legIndex });
+          rep.srPending = null;
+        }
+      } else if (ev.type === 'sc'){
+        rep.scEvents.push({ id:ev.id, t:ev.t, flags: [], legIndex: rep.splits.length });
+        rep.scCount += 1;
+      }
+    }
+    const status = current ? 'running' : (reps.length ? 'finished' : 'idle');
+    return { reps, current, status, next: current ? nextExpectedFor(current, plan) : null };
+  }
+
+  function guessMissingGap(rep, finishT){
+    const marks = [rep.startTime, ...rep.splits.map(s=>s.t), finishT];
+    const gaps = []; for (let i=1;i<marks.length;i++) gaps.push(marks[i]-marks[i-1]);
+    if (gaps.length < 2) return null;
+    const median = [...gaps].sort((a,b)=>a-b)[Math.floor(gaps.length/2)];
+    let bestIdx=-1, bestRatio=1.5;
+    gaps.forEach((g,i)=>{ const ratio = g/(median||1); if (ratio>bestRatio){ bestRatio=ratio; bestIdx=i; } });
+    return bestIdx===-1 ? null : { afterMarkIndex:bestIdx, ratio:Number(bestRatio.toFixed(2)) };
+  }
+  function classifyRepStatus(rep){
+    if (rep.finishFlags.includes('possibleDoubleTap')) rep.status='review';
+    else if (rep.finishFlags.includes('missingSplits')) rep.status='review';
+    else if (rep.finishFlags.includes('inferredFinish')) rep.status='review';
+    else rep.status='complete';
+  }
+  function nextExpectedFor(rep, plan){
+    if (!plan) return { label:'Split', kind:'turn' };
+    const nextIdx = rep.splits.length;
+    if (nextIdx < plan.turnLegs.length) return { label:'Turn → '+plan.turnLegs[nextIdx].endDistance+'m', kind:'turn' };
+    return { label:'Finish → '+plan.finishDistance+'m', kind:'finish' };
+  }
+  function repLengthTimes(rep){
+    const marks=[{distance:0,t:rep.startTime}, ...rep.splits.map(s=>({distance:s.distance,t:s.t})), {distance:rep.distance,t:rep.finishTime}];
+    const lengths=[]; for (let i=1;i<marks.length;i++) lengths.push({ from:marks[i-1].distance, to:marks[i].distance, ms:marks[i].t-marks[i-1].t });
+    return lengths;
+  }
+  // stroke count and stroke rate broken out per length, not just one total
+  // for the whole rep — a length with no SC/SR tap reads as 0 (it was
+  // swum, just not counted), same as any other length.
+  function perLengthStats(rep, nLengths){
+    const sc = new Array(nLengths).fill(0);
+    const srBuckets = Array.from({length:nLengths}, () => []);
+    rep.scEvents.forEach(e => { if (e.legIndex < nLengths) sc[e.legIndex] += 1; });
+    rep.srResults.forEach(r => { if (r.legIndex < nLengths && r.strokeRate != null) srBuckets[r.legIndex].push(r.strokeRate); });
+    const sr = srBuckets.map(arr => arr.length ? arr.join('/') : 0);
+    return { sc, sr };
+  }
+  function fmtClock(ms){
+    if (ms==null) return '--:--.--';
+    const neg = ms<0; ms=Math.abs(ms);
+    const m=Math.floor(ms/60000), s=Math.floor((ms%60000)/1000), cs=Math.floor((ms%1000)/10);
+    const core = m>0 ? (m+':'+String(s).padStart(2,'0')+'.'+String(cs).padStart(2,'0')) : (s+'.'+String(cs).padStart(2,'0'));
+    return (neg?'-':'')+core;
+  }
+  // session = { athlete, date, location, sets:[{name, event, events}] } — a
+  // "set" is one block of timing (its own stroke/distance/pool, or Open);
+  // a session can hold several, timed one after another and exported together.
+  function exportSession(session){
+    const rows = [];
+    (session.sets || []).forEach((set, setIdx) => {
+      const derived = derive(set.events, buildPlan(set.event));
+      derived.reps.forEach((rep, repIdx) => {
+        const lengths = repLengthTimes(rep);
+        const stats = perLengthStats(rep, lengths.length);
+        rows.push({
+          athlete: session.athlete || '', date: session.date || '', location: session.location || '',
+          set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
+          distance: rep.distance, poolLength: set.event ? set.event.poolLength : null, startType: rep.startType,
+          totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
+          lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
+          strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
+          status: rep.status, flags: rep.finishFlags, missingCount: rep.missingCount||0,
+        });
+      });
+    });
+    return { session:{athlete:session.athlete,date:session.date,location:session.location}, reps: rows };
+  }
+  // plain-English notes for a parent/swimmer reading the spreadsheet, not a
+  // developer — the raw flag codes (possibleDoubleTap, missingSplits...)
+  // never appear in the CSV or the on-screen summary.
+  function flagNotes(rep){
+    const notes = [];
+    if (rep.flags.includes('missingSplits')) notes.push('Missing ' + (rep.missingCount||1) + ' split' + (rep.missingCount===1?'':'s') + ' — a time was estimated');
+    if (rep.flags.includes('possibleDoubleTap')) notes.push('Possible accidental double-tap — worth checking');
+    if (rep.flags.includes('inferredFinish')) notes.push('Finish time taken from the next start (Finish wasn\'t tapped)');
+    if (rep.flags.includes('turnPromotedToFinish')) notes.push('An extra Turn tap was counted as the Finish');
+    return notes;
+  }
+  function toCSV(exported){
+    // one row per rep; enough "Length N" column triplets (time/SC/SR) for
+    // the longest rep in the whole session — a length within a shorter rep
+    // that simply wasn't reached stays blank, but a length that WAS swum
+    // with no stroke count or rate taken reads as 0, not blank, since that's
+    // a real recorded absence rather than "not applicable".
+    const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
+    const header=['Athlete','Date','Location','Set','Rep','Stroke','Distance (m)','Pool length (m)','Start','Total time'];
+    for (let i=1;i<=maxLengths;i++) header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR');
+    header.push('Result','Notes');
+    const lines=[header.join(',')];
+    exported.reps.forEach(r=>{
+      const lengthCells=[];
+      for (let i=0;i<maxLengths;i++){
+        const l = r.lengths[i];
+        lengthCells.push(l ? l.formatted : '', l ? l.sc : '', l ? l.sr : '');
+      }
+      const resultText = r.status==='complete' ? 'OK' : 'Check';
+      const notesText = flagNotes(r).join('; ');
+      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,r.startType,r.totalFormatted,
+        ...lengthCells, resultText, notesText]
+        .map(c=>{ const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
+      lines.push(cells.join(','));
+    });
+    return lines.join('\n');
+  }
+  // a short plain-text recap for copying/sharing straight into WhatsApp,
+  // email, etc — no file needed at all for this.
+  function toSummaryText(exported){
+    const s = exported.session;
+    const lines = [];
+    lines.push('Poolside results' + (s.athlete ? ' — ' + s.athlete : ''));
+    const meta = [s.date, s.location].filter(Boolean).join(' · ');
+    if (meta) lines.push(meta);
+    let lastSet = null;
+    exported.reps.forEach(r=>{
+      if (r.set !== lastSet){
+        lastSet = r.set;
+        lines.push('');
+        const label = r.stroke==='open' ? r.set : (r.set + ' — ' + r.stroke.charAt(0)+r.stroke.slice(1).toLowerCase()+' '+(r.distance||''));
+        lines.push(label + ':');
+      }
+      const resultText = r.status==='complete' ? '' : '  (check — ' + flagNotes(r).join('; ').toLowerCase() + ')';
+      lines.push('  Rep ' + r.rep + ': ' + r.totalFormatted + resultText);
+    });
+    if (exported.reps.length === 0) lines.push('', 'No reps recorded yet.');
+    return lines.join('\n');
+  }
+  return { buildPlan, makeEvent, derive, repLengthTimes, fmtClock, exportSession, toCSV, toSummaryText, flagNotes, DOUBLE_TAP_MS };
+})();
+
+/* ============================================================
+   UI wiring
+   ============================================================ */
+(function(){
+  const STORE_KEY = 'poolside-swim-session-v2';
+  const OLD_STORE_KEY = 'poolside-swim-session-v1'; // single-set prototype — migrated in below
+  const FLAG_LABEL = {
+    missingSplits: (r) => 'missing ' + (r.missingCount||1) + ' split' + ((r.missingCount||1)>1?'s':'') + ' — a turn was probably missed',
+    inferredFinish: () => 'no Finish tapped — closed automatically when the next Start was pressed',
+    possibleDoubleTap: () => 'a tap landed under 5s after the last one — check for a double-tap',
+    turnPromotedToFinish: () => 'Turn was tapped at the finish and recorded as Finish',
+  };
+
+  function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  // A "set" is one block of timing — its own stroke/distance/pool (or none
+  // yet, if you don't know what it is until you've timed it). A session can
+  // hold several sets, timed one after another and exported together.
+  function makeSet(name, event){
+    return { id: 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), name, event: event || null, events: [], acked: [] };
+  }
+
+  function loadState(){
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e){}
+    try {
+      const oldRaw = localStorage.getItem(OLD_STORE_KEY);
+      if (oldRaw){
+        const old = JSON.parse(oldRaw);
+        return {
+          session: old.session || { athlete:'', date: todayISO(), location:'' },
+          sets: [ { id:'s1', name:'Set 1', event: old.event || null, events: old.events || [], acked: old.acked || [] } ],
+          activeSetIndex: 0,
+        };
+      }
+    } catch(e){}
+    return {
+      session: { athlete:'', date: todayISO(), location:'' },
+      sets: [ makeSet('Set 1', { stroke:'BREAST', distance:100, poolLength:25 }) ],
+      activeSetIndex: 0,
+    };
+  }
+  function saveState(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch(e){} }
+
+  let state = loadState();
+  function activeSet(){ return state.sets[state.activeSetIndex]; }
+  let editingEvent = { ...(activeSet().event || {}) };
+  let rafId = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  /* ---- reliable first-tap handling for a button right after typing.
+     On many mobile browsers, tapping a button while a text field (distance,
+     set name, athlete...) still has focus only closes the keyboard on that
+     first touch — the click doesn't register until a second tap. Answering
+     on touchend fires on the very first physical touch, before any keyboard-
+     close reflow gets a chance to interfere. Falls back to a plain click for
+     mouse/trackpad use, guarded so the two never both fire. ---- */
+  function addTapListener(el, fn){
+    let touched = false;
+    function onTouchEnd(e){ touched = true; e.preventDefault(); fn(e); setTimeout(() => { touched = false; }, 500); }
+    function onClick(e){ if (touched) return; fn(e); }
+    el.addEventListener('touchend', onTouchEnd, { passive:false });
+    el.addEventListener('click', onClick);
+    return () => { el.removeEventListener('touchend', onTouchEnd); el.removeEventListener('click', onClick); };
+  }
+  function addTapDelegate(container, selector, fn){
+    let touched = false;
+    function run(e){ const b = e.target.closest(selector); if (!b) return; fn(b, e); }
+    container.addEventListener('touchend', (e) => { touched = true; e.preventDefault(); run(e); setTimeout(() => { touched = false; }, 500); }, { passive:false });
+    container.addEventListener('click', (e) => { if (touched) return; run(e); });
+  }
+
+  const setStrip=$('setStrip'), eventCard = $('eventCard'),
+        clockDisplay=$('clockDisplay'), statePill=$('statePill'), stateLabel=$('stateLabel'),
+        nextHint=$('nextHint'), btnDive=$('btnDive'), btnPush=$('btnPush'), btnTurn=$('btnTurn'), btnFinish=$('btnFinish'),
+        btnSR=$('btnSR'), btnSC=$('btnSC'), undoBtn=$('undoBtn'), wakeBtn=$('wakeBtn'), repList=$('repList'),
+        toast=$('toast');
+
+  function plan(){ return SwimCore.buildPlan(activeSet().event); }
+  function derived(){ return SwimCore.derive(activeSet().events, plan()); }
+
+  function eventLabel(ev){
+    if (!ev || ev.stroke === 'OPEN' || !ev.stroke) return { title:'Open / freeform', sub:'no expected touches — every tap just logs', legs: [] };
+    const strokeName = { FREE:'Free', BACK:'Back', BREAST:'Breast', FLY:'Fly', IM:'IM' }[ev.stroke] || ev.stroke;
+    const p = SwimCore.buildPlan(ev);
+    const legs = p ? p.allLegs.map((l,i)=> (i===p.allLegs.length-1 ? 'Finish '+l.endDistance+'m' : l.endDistance+'m'+(ev.stroke==='IM' ? ' '+({FLY:'Fly',BACK:'Back',BREAST:'Breast',FREE:'Free'}[l.stroke]) : ''))) : [];
+    return { title: strokeName + ' ' + ev.distance, sub: ev.poolLength + 'm pool', legs };
+  }
+
+  function renderEventCard(){
+    const info = eventLabel(activeSet().event);
+    eventCard.innerHTML = '<div class="title">'+info.title+'</div><div class="sub">'+info.sub+'</div>' +
+      (info.legs.length ? '<div class="legs">'+info.legs.map(l=>'<span>'+l+'</span>').join('')+'</div>' : '');
+  }
+
+  function renderSetStrip(){
+    const pills = state.sets.map((s,i) => {
+      const count = SwimCore.derive(s.events, SwimCore.buildPlan(s.event)).reps.length;
+      return '<button class="set-pill'+(i===state.activeSetIndex?' active':'')+'" type="button" data-setidx="'+i+'">'+
+        escapeHtml(s.name || ('Set '+(i+1)))+'<span class="count">'+count+'</span></button>';
+    }).join('');
+    setStrip.innerHTML = pills + '<button class="set-pill add" type="button" id="addSetBtn">+ Add set</button>';
+    setStrip.querySelectorAll('[data-setidx]').forEach(b => b.addEventListener('click', () => {
+      const i = Number(b.dataset.setidx);
+      if (i !== state.activeSetIndex){ state.activeSetIndex = i; render(); }
+    }));
+    $('addSetBtn').addEventListener('click', addSet);
+  }
+
+  function addSet(){
+    // no event config by default — "time it first, work out what it was after"
+    state.sets.push(makeSet('Set ' + (state.sets.length + 1), null));
+    state.activeSetIndex = state.sets.length - 1;
+    vibrate(25);
+    render();
+  }
+
+  /* ---- applying a stroke/distance change from the sheet: if the active set
+     already has reps in it, changing what it means must NOT retroactively
+     relabel them — so instead this opens a fresh set carrying the new
+     choice and switches to it. Only an unused, empty set is edited in
+     place. This is exactly "3x100 FS then 3x100 BK": save the change
+     between reps and the FS reps you already timed stay FS. Returns true
+     if a new set was opened (so the caller can toast about it). ----*/
+  function applySetChange(nextEvent, typedName){
+    const set = activeSet();
+    const changed = JSON.stringify(set.event || null) !== JSON.stringify(nextEvent || null);
+    if (set.events.length === 0 || !changed){
+      set.name = typedName || set.name || ('Set '+(state.activeSetIndex+1));
+      set.event = nextEvent;
+      return false;
+    }
+    const newName = (typedName && typedName !== set.name) ? typedName : ('Set '+(state.sets.length+1));
+    state.sets.push(makeSet(newName, nextEvent));
+    state.activeSetIndex = state.sets.length - 1;
+    return true;
+  }
+
+  function tick(){
+    const d = derived();
+    if (d.status === 'running'){
+      clockDisplay.textContent = SwimCore.fmtClock(Date.now() - d.current.startTime);
+      rafId = requestAnimationFrame(tick);
+    }
+  }
+
+  function render(){
+    const d = derived();
+    renderSetStrip();
+    renderEventCard();
+
+    // clock + state pill
+    if (d.status === 'running'){
+      statePill.className = 'state-pill running'; stateLabel.textContent = 'Swimming';
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    } else {
+      if (rafId){ cancelAnimationFrame(rafId); rafId = null; }
+      statePill.className = 'state-pill'; stateLabel.textContent = d.status === 'idle' ? 'Ready' : 'Finished';
+      clockDisplay.textContent = d.status === 'idle' ? '0.00' : SwimCore.fmtClock(d.reps.length ? (d.reps[d.reps.length-1].finishTime - d.reps[d.reps.length-1].startTime) : 0);
+    }
+    nextHint.textContent = d.next ? d.next.label : '';
+
+    // button states
+    const running = d.status === 'running';
+    btnDive.className = 'tap start' + (running ? ' quiet' : '');
+    btnPush.className = 'tap start' + (running ? ' quiet' : '');
+    btnTurn.className = 'tap' + (!running ? ' off' : (d.next && d.next.kind==='turn' ? ' expected' : ''));
+    btnFinish.className = 'tap' + (!running ? ' off' : (d.next && d.next.kind==='finish' ? ' expected' : ''));
+    btnSR.className = 'tap secondary' + (!running ? ' off' : '');
+    btnSC.className = 'tap secondary' + (!running ? ' off' : '');
+    undoBtn.disabled = activeSet().events.length === 0;
+    undoBtn.style.opacity = activeSet().events.length === 0 ? .4 : 1;
+
+    renderAllReps();
+    saveState();
+  }
+
+  // Renders EVERY set's reps, one group per set, in the order sets were
+  // created — so the rep list is a running log of the whole session, not
+  // just whatever set happens to be active right now. Switching sets with
+  // the strip up top still only changes which set the clock/buttons act on.
+  function renderRepCard(rep, idx, setIdx, set){
+    const total = SwimCore.fmtClock(rep.finishTime - rep.startTime);
+    const lengths = SwimCore.repLengthTimes(rep);
+    const splitsHtml = lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
+    const ackKey = String(rep.startTime);
+    const acked = set.acked.includes(ackKey);
+    const badge = rep.status === 'complete' ? '<span class="badge complete">Complete</span>' : (acked ? '<span class="badge complete">Reviewed</span>' : '<span class="badge review">Review</span>');
+    const flagLines = (!acked && rep.status==='review') ? rep.finishFlags.filter(f=>FLAG_LABEL[f]).map(f => '• ' + FLAG_LABEL[f](rep)).join('<br>') : '';
+    const srBit = rep.srResults.length ? rep.srResults.map(r=>r.strokeRate+' cyc/min').join(', ') : null;
+    const meta = [
+      rep.startType ? (rep.startType==='dive'?'Dive start':'Push start') : null,
+      rep.scCount ? rep.scCount+' strokes' : null,
+      srBit,
+    ].filter(Boolean).join(' &middot; ');
+    const actions = (rep.status === 'review' && !acked) ? '<div class="rep-actions"><button data-setidx="'+setIdx+'" data-ack="'+ackKey+'">Mark reviewed</button><button data-setidx="'+setIdx+'" data-delrep="'+ackKey+'" style="color:var(--warn)">Delete rep</button></div>' : '';
+    return '<div class="rep-card">'+
+      '<div class="rep-top"><span class="rep-num">Rep '+idx+'</span>'+badge+'</div>'+
+      '<div class="rep-total mono">'+total+'</div>'+
+      (splitsHtml ? '<div class="splits">'+splitsHtml+'</div>' : '')+
+      (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
+      (flagLines ? '<div class="flags">'+flagLines+'</div>' : '')+
+      actions+
+    '</div>';
+  }
+
+  function renderAllReps(){
+    const groups = state.sets.map((set, i) => ({ set, i, d: SwimCore.derive(set.events, SwimCore.buildPlan(set.event)) }));
+    if (!groups.some(g => g.d.reps.length)){
+      repList.innerHTML = '<div class="empty">No reps recorded yet — tap Start Dive or Start Push to begin.</div>';
+      return;
+    }
+    repList.innerHTML = groups.map(({ set, i, d }) => {
+      if (!d.reps.length) return '';
+      const info = eventLabel(set.event);
+      const cards = d.reps.slice().reverse().map((rep, ri) => renderRepCard(rep, d.reps.length - ri, i, set)).join('');
+      return '<div class="set-group'+(i===state.activeSetIndex?' active':'')+'">'+
+        '<div class="set-group-heading"><span>'+escapeHtml(set.name || ('Set '+(i+1)))+'</span><span class="sub">'+info.title+(info.sub?' · '+info.sub:'')+'</span></div>'+
+        cards+
+      '</div>';
+    }).join('');
+    repList.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => {
+      state.sets[Number(b.dataset.setidx)].acked.push(b.dataset.ack); render();
+    }));
+    repList.querySelectorAll('[data-delrep]').forEach(b => b.addEventListener('click', () => {
+      const set = state.sets[Number(b.dataset.setidx)];
+      const key = Number(b.dataset.delrep);
+      const rep = SwimCore.derive(set.events, SwimCore.buildPlan(set.event)).reps.find(r => r.startTime === key);
+      if (rep) { set.events = set.events.filter(e => !rep.eventIds.includes(e.id)); showToast('Rep deleted'); render(); }
+    }));
+  }
+
+  function showToast(msg, actionLabel, actionFn){
+    toast.innerHTML = '<span>'+msg+'</span>' + (actionLabel ? '<button id="toastAction">'+actionLabel+'</button>' : '');
+    toast.hidden = false;
+    if (actionLabel) $('toastAction').addEventListener('click', () => { actionFn(); toast.hidden = true; });
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => { toast.hidden = true; }, 4000);
+  }
+
+  /* ---- positive tap feedback: vibration + a big colour flash, so a tap
+     poolside is never in doubt even if the coach isn't looking right at it ---- */
+  const clockWrap = document.querySelector('.clock-wrap');
+  function vibrate(pattern){
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch(e){}
+  }
+  function flashTap(button, color){
+    vibrate(35);
+    if (color) clockWrap.style.setProperty('--flash-bg', color);
+    clockWrap.classList.add('flash');
+    setTimeout(() => clockWrap.classList.remove('flash'), 150);
+    if (button){
+      button.classList.add('flash');
+      setTimeout(() => button.classList.remove('flash'), 220);
+    }
+  }
+
+  function addEvent(type, meta, button){
+    const t = Date.now();
+    const ev = SwimCore.makeEvent(type, t, meta);
+    activeSet().events.push(ev);
+    const after = derived();
+    // surface a toast for a probable double-tap so it can be undone at a glance
+    let flagged = false;
+    if (after.current){
+      const lastSplit = after.current.splits[after.current.splits.length-1];
+      if (lastSplit && lastSplit.id === ev.id && lastSplit.flags.includes('possibleDoubleTap')) flagged = true;
+    } else if (after.reps.length){
+      const rep = after.reps[after.reps.length-1];
+      if (rep.eventIds[rep.eventIds.length-1] === ev.id && rep.finishFlags.includes('possibleDoubleTap')) flagged = true;
+    }
+    flashTap(button, flagged ? getComputedStyle(document.documentElement).getPropertyValue('--warn') : null);
+    if (flagged) vibrate([35,60,35]); // distinct double-buzz when something needs a look
+    render();
+    if (flagged) showToast('Possible double-tap', 'Undo', () => { const set = activeSet(); set.events = set.events.filter(e=>e.id!==ev.id); render(); });
+  }
+
+  btnDive.addEventListener('click', () => addEvent('start', { startType:'dive' }, btnDive));
+  btnPush.addEventListener('click', () => addEvent('start', { startType:'push' }, btnPush));
+  btnTurn.addEventListener('click', () => { if (derived().status==='running') addEvent('turn', null, btnTurn); });
+  btnFinish.addEventListener('click', () => { if (derived().status==='running') addEvent('finish', null, btnFinish); });
+  btnSR.addEventListener('click', () => { if (derived().status==='running') addEvent('sr', null, btnSR); });
+  btnSC.addEventListener('click', () => { if (derived().status==='running') addEvent('sc', null, btnSC); });
+
+  undoBtn.addEventListener('click', () => {
+    const set = activeSet();
+    if (!set.events.length) return;
+    const last = [...set.events].sort((a,b)=>a.t-b.t).pop();
+    set.events = set.events.filter(e => e.id !== last.id);
+    vibrate([20,40,20]);
+    render();
+  });
+
+  /* ---- wake lock ---- */
+  let wakeLock = null;
+  wakeBtn.addEventListener('click', async () => {
+    try {
+      if (!wakeLock){
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeBtn.textContent = 'Screen staying awake';
+        wakeLock.addEventListener('release', () => { wakeLock = null; wakeBtn.textContent = 'Keep screen awake'; });
+      } else {
+        await wakeLock.release(); wakeLock = null; wakeBtn.textContent = 'Keep screen awake';
+      }
+    } catch (e) { showToast('Wake lock not available on this browser'); }
+  });
+
+  /* ---- event picker sheet ---- */
+  const eventOverlay=$('eventOverlay'), strokeChips=$('strokeChips'), poolChips=$('poolChips'), distanceInput=$('distanceInput'),
+        distanceField=$('distanceField'), poolField=$('poolField'), planPreview=$('planPreview'), setNameInput=$('setNameInput'), deleteSetBtn=$('deleteSetBtn');
+
+  function openEventSheet(){
+    const set = activeSet();
+    editingEvent = set.event ? { ...set.event } : { stroke:'OPEN' };
+    if (!editingEvent.stroke) editingEvent.stroke = 'OPEN';
+    setNameInput.value = set.name || ('Set '+(state.activeSetIndex+1));
+    deleteSetBtn.style.display = state.sets.length > 1 ? '' : 'none';
+    distanceInput.value = editingEvent.distance || ''; // set once, from state — never again while the sheet is open
+    syncEventChips();
+    eventOverlay.hidden = false;
+  }
+  // Re-styles the chips and toggles field visibility. Deliberately does NOT
+  // touch distanceInput.value — a stroke/pool chip tap must never overwrite
+  // a distance the person has already typed (that was the "changing the
+  // distance doesn't save" bug: any chip tap after typing wiped it back).
+  function syncEventChips(){
+    [...strokeChips.children].forEach(b => b.classList.toggle('on', b.dataset.v === editingEvent.stroke));
+    [...poolChips.children].forEach(b => b.classList.toggle('on', b.dataset.v === String(editingEvent.poolLength || 25)));
+    const isOpen = editingEvent.stroke === 'OPEN';
+    distanceField.style.display = isOpen ? 'none' : '';
+    poolField.style.display = isOpen ? 'none' : '';
+    updatePreview();
+  }
+  function updatePreview(){
+    if (editingEvent.stroke === 'OPEN'){ planPreview.textContent = 'Every Turn just logs a split; Finish ends the rep whenever you tap it.'; return; }
+    const cfg = { stroke: editingEvent.stroke, distance: Number(distanceInput.value)||editingEvent.distance, poolLength: Number(editingEvent.poolLength)||25 };
+    const p = SwimCore.buildPlan(cfg);
+    planPreview.textContent = p ? p.allLegs.map((l,i)=> (i===p.allLegs.length-1?'Finish ':'')+l.endDistance+'m'+(cfg.stroke==='IM'?' '+l.stroke:'')).join('  →  ') : 'Set a distance to preview the touches.';
+  }
+  addTapDelegate(strokeChips, 'button', (b) => { editingEvent.stroke=b.dataset.v; syncEventChips(); });
+  addTapDelegate(poolChips, 'button', (b) => { editingEvent.poolLength=Number(b.dataset.v); syncEventChips(); });
+  distanceInput.addEventListener('input', updatePreview);
+  addTapListener($('eventCancel'), () => { eventOverlay.hidden = true; });
+  addTapListener($('eventSave'), () => {
+    const distanceVal = Number(distanceInput.value) || editingEvent.distance || 100;
+    const nextEvent = editingEvent.stroke === 'OPEN' ? null
+      : { stroke: editingEvent.stroke, distance: distanceVal, poolLength: Number(editingEvent.poolLength)||25 };
+    const typedName = (setNameInput.value || '').trim();
+    const opened = applySetChange(nextEvent, typedName);
+    eventOverlay.hidden = true;
+    render();
+    if (opened) showToast('Started a new set for the change — earlier reps are untouched');
+  });
+  addTapListener(eventCard, openEventSheet);
+  addTapListener(deleteSetBtn, () => {
+    if (state.sets.length <= 1) return;
+    const name = activeSet().name || 'this set';
+    eventOverlay.hidden = true;
+    askConfirm('Delete this set?', 'This removes "'+name+'" and all its reps. This can\'t be undone.', () => {
+      const idx = state.activeSetIndex;
+      state.sets.splice(idx, 1);
+      state.activeSetIndex = Math.max(0, idx - 1);
+      render();
+    }, 'Delete set');
+  });
+
+  /* ---- settings sheet ---- */
+  const settingsOverlay=$('settingsOverlay');
+  addTapListener($('settingsBtn'), () => {
+    $('athleteInput').value = state.session.athlete || '';
+    $('dateInput').value = state.session.date || todayISO();
+    $('locationInput').value = state.session.location || '';
+    settingsOverlay.hidden = false;
+  });
+  addTapListener($('settingsCancel'), () => { settingsOverlay.hidden = true; });
+  addTapListener($('settingsSave'), () => {
+    state.session = { athlete: $('athleteInput').value.trim(), date: $('dateInput').value || todayISO(), location: $('locationInput').value.trim() };
+    settingsOverlay.hidden = true; render();
+  });
+
+  /* ---- confirm sheet (replaces window.confirm, which the artifact sandbox
+     blocks silently — that was why "New session" previously did nothing) ---- */
+  const confirmOverlay = $('confirmOverlay');
+  function askConfirm(title, body, onConfirm, okLabel){
+    $('confirmTitle').textContent = title;
+    $('confirmBody').textContent = body;
+    $('confirmOk').textContent = okLabel || 'Confirm';
+    confirmOverlay.hidden = false;
+    const ok = $('confirmOk'), cancel = $('confirmCancel');
+    let unbindOk, unbindCancel;
+    function cleanup(){
+      if (unbindOk) unbindOk(); if (unbindCancel) unbindCancel();
+      confirmOverlay.removeEventListener('click', onBackdrop); confirmOverlay.hidden = true;
+    }
+    function onOk(){ cleanup(); onConfirm(); }
+    function onCancel(){ cleanup(); }
+    function onBackdrop(e){ if (e.target === confirmOverlay) cleanup(); }
+    unbindOk = addTapListener(ok, onOk);
+    unbindCancel = addTapListener(cancel, onCancel);
+    confirmOverlay.addEventListener('click', onBackdrop);
+  }
+
+  /* ---- new session / export ---- */
+  function resetSession(){
+    state.sets = [ makeSet('Set 1', { stroke:'BREAST', distance:100, poolLength:25 }) ];
+    state.activeSetIndex = 0;
+  }
+  addTapListener($('newSessionBtn'), () => {
+    const anyTaps = state.sets.some(s => s.events.length);
+    if (!anyTaps){ resetSession(); render(); return; }
+    askConfirm('Start a new session?', 'This clears every set recorded so far, not just this one — export first if you need them.', () => {
+      resetSession(); render();
+    }, 'Start new session');
+  });
+
+  /* ---- results sheet: a readable recap first, files on request. Each
+     download is its own explicit tap on its own button — rather than firing
+     two downloads back-to-back from one tap, which some mobile browsers
+     silently drop the second of. ---- */
+  const resultsOverlay = $('resultsOverlay');
+  let currentExport = null, currentStamp = 'poolside-results';
+  function buildExport(){
+    const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets };
+    currentExport = SwimCore.exportSession(session);
+    currentStamp = (state.session.date || todayISO()) + '_' + (state.session.athlete || 'swimmer').replace(/\s+/g,'-');
+    return currentExport;
+  }
+  async function saveFile(filename, data){
+    // Claude's own artifact preview only allows file saves through this
+    // capability API — but once the page is hosted normally (Vercel, or
+    // anywhere else), window.claude doesn't exist, so a plain Blob download
+    // link is used instead. Same file, works in both places.
+    const downloads = window.claude ? await window.claude.use('downloads').catch(()=>null) : null;
+    if (downloads){ await downloads.save({ filename, data }); return true; }
+    try {
+      const blob = new Blob([data], { type: filename.endsWith('.json') ? 'application/json' : 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      return true;
+    } catch (e) {
+      showToast('Download failed in this browser');
+      return false;
+    }
+  }
+  addTapListener($('exportBtn'), () => {
+    const exported = buildExport();
+    $('resultsText').textContent = SwimCore.toSummaryText(exported);
+    $('shareSummaryBtn').hidden = !(navigator.share);
+    resultsOverlay.hidden = false;
+  });
+  addTapListener($('copySummaryBtn'), async () => {
+    const text = SwimCore.toSummaryText(currentExport || buildExport());
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast('Summary copied — paste it anywhere');
+    } catch (e) {
+      showToast('Couldn\'t copy — your browser may be blocking clipboard access');
+    }
+  });
+  addTapListener($('shareSummaryBtn'), async () => {
+    const text = SwimCore.toSummaryText(currentExport || buildExport());
+    try { await navigator.share({ title: 'Poolside results', text }); }
+    catch (e) { /* user cancelled the share sheet — nothing to do */ }
+  });
+  addTapListener($('downloadCsvBtn'), async () => {
+    const exported = currentExport || buildExport();
+    if (await saveFile(currentStamp+'.csv', SwimCore.toCSV(exported))) showToast('Saved ' + currentStamp + '.csv — opens straight into a spreadsheet');
+  });
+  addTapListener($('downloadJsonBtn'), async () => {
+    const exported = currentExport || buildExport();
+    if (await saveFile(currentStamp+'.json', JSON.stringify(exported, null, 2))) showToast('Saved ' + currentStamp + '.json');
+  });
+  addTapListener($('resultsClose'), () => { resultsOverlay.hidden = true; });
+
+  /* ---- tapping the dimmed backdrop closes the sheet, same as Cancel (the
+     confirm sheet handles its own backdrop inside askConfirm, since its
+     buttons carry per-call listeners that need matching cleanup) ---- */
+  [eventOverlay, settingsOverlay, resultsOverlay].forEach(ov => {
+    ov.addEventListener('click', (e) => { if (e.target === ov) ov.hidden = true; });
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
