@@ -95,6 +95,11 @@
   .grid{ display:grid; gap:7px; margin-top:5px; }
   .grid.gap-top{ margin-top:14px; }
   .row2{ grid-template-columns:1fr 1fr; }
+  .row3{ grid-template-columns:1fr 1fr 1fr; }
+  /* extra room between every button in the row, not just the rows overall —
+     this is what keeps a thumb resting on one button from drifting onto its
+     neighbour when you're not looking at the screen. */
+  .grid.spaced{ gap:18px 14px; }
   button.tap{
     border:none; border-radius:13px; padding:13px 10px; font-family:inherit; font-weight:800; font-size:15px;
     color:var(--ink); background:var(--surface); box-shadow:var(--shadow); cursor:pointer; letter-spacing:-.01em;
@@ -108,7 +113,7 @@
   button.tap.expected .small{ color:var(--lane-ink); opacity:.75; }
   button.tap.quiet{ opacity:.55; }
   button.tap.off{ opacity:.35; pointer-events:none; }
-  button.tap.secondary{ background:var(--surface-2); font-size:13.5px; padding:10px 10px; min-height:42px; }
+  button.tap.secondary{ background:var(--surface-2); font-size:15px; }
   button.tap.flash{ background:var(--accent) !important; color:var(--accent-ink) !important; border-color:var(--accent) !important; transform:scale(1.03); }
   button.tap.flash .small{ color:var(--accent-ink) !important; }
 
@@ -183,6 +188,12 @@
   .sheet .actions button{ flex:1; border:none; border-radius:12px; padding:13px; font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; }
   .sheet .actions .primary{ background:var(--accent); color:var(--accent-ink); }
   .sheet .actions .ghost{ background:var(--surface-2); color:var(--ink); }
+  /* a row of smaller buttons, spaced well apart rather than packed edge to
+     edge — used where several actions sit side by side (e.g. the results
+     sheet's Copy/Share/CSV/JSON/Close) so each one is easy to hit without
+     catching its neighbour by mistake. */
+  .sheet .actions.grid3{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px 14px; }
+  .sheet .actions.grid3 button{ padding:12px 6px; font-size:12.5px; border-radius:11px; }
   .preview{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--muted); background:var(--surface-2); padding:8px 10px; border-radius:8px; margin-top:2px; }
   .toast{
     position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
@@ -211,17 +222,18 @@
     <div class="next-hint" id="nextHint"></div>
   </div>
 
-  <div class="grid row2">
-    <button class="tap start" id="btnDive" type="button">Start Dive<span class="small">enter at the wall</span></button>
-    <button class="tap start" id="btnPush" type="button">Start Push<span class="small">in-water start</span></button>
-  </div>
-  <div class="grid row2">
+  <!-- 3 columns, not 2 — Start / Turn-Finish / SR-SC sit in their own
+       column each, well apart, so a thumb resting near SR or SC (watching
+       stroke rate/count without looking down) can't drift sideways into
+       Turn or Finish by mistake. The gap does the work here, not tap
+       precision — a genuinely late or early tap is fine either way. -->
+  <div class="grid row3 spaced">
     <button class="tap" id="btnTurn" type="button">Turn</button>
+    <button class="tap start" id="btnDive" type="button">Start Dive<span class="small">enter at the wall</span></button>
+    <button class="tap secondary" id="btnSR" type="button">SR<span class="small">stroke rate</span></button>
     <button class="tap" id="btnFinish" type="button">Finish</button>
-  </div>
-  <div class="grid row2 gap-top">
-    <button class="tap secondary" id="btnSR" type="button">SR &mdash; stroke rate</button>
-    <button class="tap secondary" id="btnSC" type="button">SC &mdash; stroke count</button>
+    <button class="tap start" id="btnPush" type="button">Start Push<span class="small">in-water start</span></button>
+    <button class="tap secondary" id="btnSC" type="button">SC<span class="small">stroke count</span></button>
   </div>
 
   <div class="toolrow">
@@ -324,19 +336,14 @@
   <div class="sheet">
     <h3>Session results</h3>
     <div class="preview" id="resultsText" style="white-space:pre-wrap;max-height:42vh;overflow-y:auto;font-size:13px;line-height:1.6;"></div>
-    <div class="actions">
-      <button class="ghost" id="copySummaryBtn" type="button">Copy summary</button>
+    <div class="actions grid3">
+      <button class="ghost" id="copySummaryBtn" type="button">Copy</button>
       <button class="ghost" id="shareSummaryBtn" type="button" hidden>Share</button>
-    </div>
-    <div class="actions">
-      <button class="ghost" id="downloadCsvBtn" type="button">Download CSV (for a spreadsheet)</button>
-    </div>
-    <div class="actions">
-      <button class="ghost" id="downloadJsonBtn" type="button">Download JSON (for SwimZone import)</button>
-    </div>
-    <div class="actions">
+      <button class="ghost" id="downloadCsvBtn" type="button">CSV</button>
+      <button class="ghost" id="downloadJsonBtn" type="button">JSON</button>
       <button class="primary" id="resultsClose" type="button">Close</button>
     </div>
+    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Copy pastes the recap above. CSV opens in a spreadsheet, JSON is for SwimZone import.</p>
   </div>
 </div>
 
@@ -530,11 +537,18 @@ const SwimCore = (function(){
   // a session can hold several, timed one after another and exported together.
   function exportSession(session){
     const rows = [];
+    // rest before each set: 0 for the very first set that has any reps, or
+    // the gap between this set's first start and the previous set's last
+    // finish — carried on rep 1 of the set only, since it describes the
+    // whole set's lead-in, not a per-rep figure.
+    let prevSetFinish = null;
     (session.sets || []).forEach((set, setIdx) => {
       const derived = derive(set.events, buildPlan(set.event));
       derived.reps.forEach((rep, repIdx) => {
         const lengths = repLengthTimes(rep);
         const stats = perLengthStats(rep, lengths);
+        let restBeforeSetMs = null;
+        if (repIdx === 0) restBeforeSetMs = prevSetFinish == null ? 0 : Math.max(0, rep.startTime - prevSetFinish);
         rows.push({
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
           set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
@@ -543,8 +557,10 @@ const SwimCore = (function(){
           lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
           status: rep.status, flags: rep.finishFlags, missingCount: rep.missingCount||0,
+          restBeforeSetMs, restBeforeSetFormatted: restBeforeSetMs == null ? '' : fmtClock(restBeforeSetMs),
         });
       });
+      if (derived.reps.length) prevSetFinish = derived.reps[derived.reps.length-1].finishTime;
     });
     return { session:{athlete:session.athlete,date:session.date,location:session.location}, reps: rows };
   }
@@ -566,7 +582,7 @@ const SwimCore = (function(){
     // with no stroke count or rate taken reads as 0, not blank, since that's
     // a real recorded absence rather than "not applicable".
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
-    const header=['Athlete','Date','Location','Set','Rep','Stroke','Distance (m)','Pool length (m)','Start','Total time'];
+    const header=['Athlete','Date','Location','Set','Rest before set','Rep','Stroke','Distance (m)','Pool length (m)','Start','Total time'];
     for (let i=1;i<=maxLengths;i++) header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR');
     header.push('Result','Notes');
     const lines=[header.join(',')];
@@ -578,7 +594,7 @@ const SwimCore = (function(){
       }
       const resultText = r.status==='complete' ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
-      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,r.startType,r.totalFormatted,
+      const cells=[r.athlete,r.date,r.location,r.set,r.restBeforeSetFormatted,r.rep,r.stroke,r.distance,r.poolLength,r.startType,r.totalFormatted,
         ...lengthCells, resultText, notesText]
         .map(c=>{ const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
       lines.push(cells.join(','));
@@ -784,8 +800,12 @@ const SwimCore = (function(){
     btnFinish.className = 'tap' + (!running ? ' off' : (d.next && d.next.kind==='finish' ? ' expected' : ''));
     btnSR.className = 'tap secondary' + (!running ? ' off' : '');
     btnSC.className = 'tap secondary' + (!running ? ' off' : '');
-    undoBtn.disabled = activeSet().events.length === 0;
-    undoBtn.style.opacity = activeSet().events.length === 0 ? .4 : 1;
+    // Undo only ever touches the newest set — once a new set has been
+    // started, an older set is view-only (you can still switch back to look
+    // at it, just not rewrite its history from here).
+    const canUndo = activeSet().events.length > 0 && state.activeSetIndex === state.sets.length - 1;
+    undoBtn.disabled = !canUndo;
+    undoBtn.style.opacity = canUndo ? 1 : .4;
 
     renderAllReps();
     saveState();
@@ -826,12 +846,21 @@ const SwimCore = (function(){
       repList.innerHTML = '<div class="empty">No reps recorded yet — tap Start Dive or Start Push to begin.</div>';
       return;
     }
+    // rest before each set — 0 for the first set with any reps, otherwise
+    // the gap between this set's first start and the previous set's last
+    // finish, same rule as the CSV's "Rest before set" column.
+    let prevSetFinish = null;
     repList.innerHTML = groups.map(({ set, i, d }) => {
       if (!d.reps.length) return '';
       const info = eventLabel(set.event);
+      const firstRep = d.reps[0];
+      const isFirstSetWithReps = prevSetFinish == null;
+      const restMs = isFirstSetWithReps ? 0 : Math.max(0, firstRep.startTime - prevSetFinish);
+      prevSetFinish = d.reps[d.reps.length-1].finishTime;
+      const restLabel = isFirstSetWithReps ? '' : ' · Rest before: '+SwimCore.fmtClock(restMs);
       const cards = d.reps.slice().reverse().map((rep, ri) => renderRepCard(rep, d.reps.length - ri, i, set)).join('');
       return '<div class="set-group'+(i===state.activeSetIndex?' active':'')+'">'+
-        '<div class="set-group-heading"><span>'+escapeHtml(set.name || ('Set '+(i+1)))+'</span><span class="sub">'+info.title+(info.sub?' · '+info.sub:'')+'</span></div>'+
+        '<div class="set-group-heading"><span>'+escapeHtml(set.name || ('Set '+(i+1)))+'</span><span class="sub">'+info.title+(info.sub?' · '+info.sub:'')+restLabel+'</span></div>'+
         cards+
       '</div>';
     }).join('');
@@ -899,6 +928,7 @@ const SwimCore = (function(){
   btnSC.addEventListener('click', () => { if (derived().status==='running') addEvent('sc', null, btnSC); });
 
   undoBtn.addEventListener('click', () => {
+    if (state.activeSetIndex !== state.sets.length - 1) return; // older set — view only, no rewriting its history
     const set = activeSet();
     if (!set.events.length) return;
     const last = [...set.events].sort((a,b)=>a.t-b.t).pop();
@@ -1038,7 +1068,12 @@ const SwimCore = (function(){
   function buildExport(){
     const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets };
     currentExport = SwimCore.exportSession(session);
-    currentStamp = (state.session.date || todayISO()) + '_' + (state.session.athlete || 'swimmer').replace(/\s+/g,'-');
+    // a time-of-save suffix (not just the date) so saving the same athlete
+    // twice in a day — a new session after the last one was already saved —
+    // never reuses the previous filename and overwrites it.
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2,'0'), mm = String(now.getMinutes()).padStart(2,'0'), ss = String(now.getSeconds()).padStart(2,'0');
+    currentStamp = (state.session.date || todayISO()) + '_' + (state.session.athlete || 'swimmer').replace(/\s+/g,'-') + '_' + hh+mm+ss;
     return currentExport;
   }
   async function saveFile(filename, data){
