@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="theme-color" content="#0b8fa8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Poolside">
+<meta name="apple-mobile-web-app-title" content="Poolside Splits">
 <title>Poolside Splits</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -532,35 +532,40 @@ const SwimCore = (function(){
     const core = m>0 ? (m+':'+String(s).padStart(2,'0')+'.'+String(cs).padStart(2,'0')) : (s+'.'+String(cs).padStart(2,'0'));
     return (neg?'-':'')+core;
   }
+  function fmtWallClock(t){
+    const d = new Date(t);
+    const h = String(d.getHours()).padStart(2,'0'), m = String(d.getMinutes()).padStart(2,'0'), s = String(d.getSeconds()).padStart(2,'0');
+    return h+':'+m+':'+s;
+  }
   // session = { athlete, date, location, sets:[{name, event, events}] } — a
   // "set" is one block of timing (its own stroke/distance/pool, or Open);
   // a session can hold several, timed one after another and exported together.
   function exportSession(session){
     const rows = [];
-    // rest before each set: 0 for the very first set that has any reps, or
-    // the gap between this set's first start and the previous set's last
-    // finish — carried on rep 1 of the set only, since it describes the
-    // whole set's lead-in, not a per-rep figure.
-    let prevSetFinish = null;
+    // rest before EVERY rep — not just the first of a set — measured against
+    // whichever rep genuinely finished right before it, even if that was in
+    // a different set (finishing Set 1 and starting Set 2 a minute later is
+    // still a minute's rest). 0 only for the very first rep of the session.
+    let prevFinish = null;
     (session.sets || []).forEach((set, setIdx) => {
       const derived = derive(set.events, buildPlan(set.event));
       derived.reps.forEach((rep, repIdx) => {
         const lengths = repLengthTimes(rep);
         const stats = perLengthStats(rep, lengths);
-        let restBeforeSetMs = null;
-        if (repIdx === 0) restBeforeSetMs = prevSetFinish == null ? 0 : Math.max(0, rep.startTime - prevSetFinish);
+        const restBeforeMs = prevFinish == null ? 0 : Math.max(0, rep.startTime - prevFinish);
+        prevFinish = rep.finishTime;
         rows.push({
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
           set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
           distance: rep.distance, poolLength: set.event ? set.event.poolLength : null, startType: rep.startType,
+          startClock: fmtWallClock(rep.startTime),
           totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
           lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
           status: rep.status, flags: rep.finishFlags, missingCount: rep.missingCount||0,
-          restBeforeSetMs, restBeforeSetFormatted: restBeforeSetMs == null ? '' : fmtClock(restBeforeSetMs),
+          restBeforeMs, restBeforeFormatted: fmtClock(restBeforeMs),
         });
       });
-      if (derived.reps.length) prevSetFinish = derived.reps[derived.reps.length-1].finishTime;
     });
     return { session:{athlete:session.athlete,date:session.date,location:session.location}, reps: rows };
   }
@@ -582,7 +587,7 @@ const SwimCore = (function(){
     // with no stroke count or rate taken reads as 0, not blank, since that's
     // a real recorded absence rather than "not applicable".
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
-    const header=['Athlete','Date','Location','Set','Rest before set','Rep','Stroke','Distance (m)','Pool length (m)','Start','Total time'];
+    const header=['Athlete','Date','Location','Set','Rep','Stroke','Distance (m)','Pool length (m)','Rest before','Start type','Start time','Total time'];
     for (let i=1;i<=maxLengths;i++) header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR');
     header.push('Result','Notes');
     const lines=[header.join(',')];
@@ -594,7 +599,7 @@ const SwimCore = (function(){
       }
       const resultText = r.status==='complete' ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
-      const cells=[r.athlete,r.date,r.location,r.set,r.restBeforeSetFormatted,r.rep,r.stroke,r.distance,r.poolLength,r.startType,r.totalFormatted,
+      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,r.restBeforeFormatted,r.startType,r.startClock,r.totalFormatted,
         ...lengthCells, resultText, notesText]
         .map(c=>{ const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
       lines.push(cells.join(','));
@@ -815,7 +820,7 @@ const SwimCore = (function(){
   // created — so the rep list is a running log of the whole session, not
   // just whatever set happens to be active right now. Switching sets with
   // the strip up top still only changes which set the clock/buttons act on.
-  function renderRepCard(rep, idx, setIdx, set){
+  function renderRepCard(rep, idx, setIdx, set, restBeforeMs){
     const total = SwimCore.fmtClock(rep.finishTime - rep.startTime);
     const lengths = SwimCore.repLengthTimes(rep);
     const splitsHtml = lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
@@ -829,11 +834,16 @@ const SwimCore = (function(){
       rep.scCount ? rep.scCount+' strokes' : null,
       srBit,
     ].filter(Boolean).join(' &middot; ');
+    // when this rep started, and how long since the previous rep finished —
+    // restBeforeMs is null for a rep with nothing before it to compare to
+    const restBit = restBeforeMs == null ? null : (restBeforeMs > 0 ? 'Rest '+SwimCore.fmtClock(restBeforeMs) : 'No rest');
+    const timeMeta = [ 'Started '+SwimCore.fmtWallClock(rep.startTime), restBit ].filter(Boolean).join(' &middot; ');
     const actions = (rep.status === 'review' && !acked) ? '<div class="rep-actions"><button data-setidx="'+setIdx+'" data-ack="'+ackKey+'">Mark reviewed</button><button data-setidx="'+setIdx+'" data-delrep="'+ackKey+'" style="color:var(--warn)">Delete rep</button></div>' : '';
     return '<div class="rep-card">'+
       '<div class="rep-top"><span class="rep-num">Rep '+idx+'</span>'+badge+'</div>'+
       '<div class="rep-total mono">'+total+'</div>'+
       (splitsHtml ? '<div class="splits">'+splitsHtml+'</div>' : '')+
+      '<div class="rep-meta">'+timeMeta+'</div>'+
       (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
       (flagLines ? '<div class="flags">'+flagLines+'</div>' : '')+
       actions+
@@ -842,25 +852,32 @@ const SwimCore = (function(){
 
   function renderAllReps(){
     const groups = state.sets.map((set, i) => ({ set, i, d: SwimCore.derive(set.events, SwimCore.buildPlan(set.event)) }));
-    if (!groups.some(g => g.d.reps.length)){
+    if (!groups.some(g => g.d.reps.length) && !groups.some(g => g.d.current)){
       repList.innerHTML = '<div class="empty">No reps recorded yet — tap Start Dive or Start Push to begin.</div>';
       return;
     }
-    // rest before each set — 0 for the first set with any reps, otherwise
-    // the gap between this set's first start and the previous set's last
-    // finish, same rule as the CSV's "Rest before set" column.
-    let prevSetFinish = null;
+    // rest before each rep, in true chronological order across the whole
+    // session (not just within one set) — same rule as the CSV's
+    // "Rest before" column: null (shown as nothing) for the very first rep,
+    // otherwise the gap between this rep's start and the previous rep's finish.
+    let prevFinish = null;
+    const restByStart = {};
+    groups.forEach(({ d }) => {
+      d.reps.forEach(rep => {
+        restByStart[rep.startTime] = prevFinish == null ? null : Math.max(0, rep.startTime - prevFinish);
+        prevFinish = rep.finishTime;
+      });
+    });
+    // every set gets a heading even with zero reps so far — a freshly
+    // created set (e.g. after changing stroke/distance) must stay visible
+    // rather than vanish until its first rep is complete.
     repList.innerHTML = groups.map(({ set, i, d }) => {
-      if (!d.reps.length) return '';
       const info = eventLabel(set.event);
-      const firstRep = d.reps[0];
-      const isFirstSetWithReps = prevSetFinish == null;
-      const restMs = isFirstSetWithReps ? 0 : Math.max(0, firstRep.startTime - prevSetFinish);
-      prevSetFinish = d.reps[d.reps.length-1].finishTime;
-      const restLabel = isFirstSetWithReps ? '' : ' · Rest before: '+SwimCore.fmtClock(restMs);
-      const cards = d.reps.slice().reverse().map((rep, ri) => renderRepCard(rep, d.reps.length - ri, i, set)).join('');
+      const cards = d.reps.length
+        ? d.reps.slice().reverse().map((rep, ri) => renderRepCard(rep, d.reps.length - ri, i, set, restByStart[rep.startTime])).join('')
+        : '<div class="empty" style="padding:10px 2px;font-size:12.5px;">'+(d.current ? 'Timing in progress…' : 'No reps yet — tap Start Dive or Start Push.')+'</div>';
       return '<div class="set-group'+(i===state.activeSetIndex?' active':'')+'">'+
-        '<div class="set-group-heading"><span>'+escapeHtml(set.name || ('Set '+(i+1)))+'</span><span class="sub">'+info.title+(info.sub?' · '+info.sub:'')+restLabel+'</span></div>'+
+        '<div class="set-group-heading"><span>'+escapeHtml(set.name || ('Set '+(i+1)))+'</span><span class="sub">'+info.title+(info.sub?' · '+info.sub:'')+'</span></div>'+
         cards+
       '</div>';
     }).join('');
@@ -1136,5 +1153,6 @@ const SwimCore = (function(){
   render();
 })();
 </script>
+
 </body>
 </html>
