@@ -387,7 +387,7 @@ const SwimCore = (function(){
     const reps = []; let current = null;
 
     function openRep(startType, t){
-      current = { startTime:t, startType, splits:[], scCount:0, scEvents:[], srPending:null, srResults:[], finishTime:null, finishFlags:[], eventIds:[], lastByType:{} };
+      current = { startTime:t, startType, splits:[], scCount:0, scEvents:[], srTaps:[], srResults:[], finishTime:null, finishFlags:[], eventIds:[], lastByType:{} };
     }
     function closeRep(t, flags){
       current.finishTime = t; current.finishFlags = flags.slice();
@@ -435,23 +435,34 @@ const SwimCore = (function(){
       } else if (ev.type === 'finish'){
         closeRep(ev.t, gapFlag ? ['possibleDoubleTap'] : []);
       } else if (ev.type === 'sr'){
-        // tagged with which length was being swum when the reading was taken
-        // (rep.splits.length = number of turns so far = the current, still-
-        // in-progress length) so it can be reported per length, not just as
-        // one lump figure for the whole rep.
-        if (!rep.srPending){
-          rep.srPending = { startT: ev.t, flags: [], legIndex: rep.splits.length };
-        } else {
-          const elapsedMs = ev.t - rep.srPending.startT;
-          const cyclesPerMin = elapsedMs > 0 ? (3*60000)/elapsedMs : null;
-          rep.srResults.push({ startT: rep.srPending.startT, endT: ev.t, elapsedMs, strokeRate: cyclesPerMin ? Math.round(cyclesPerMin*10)/10 : null, flags: [], legIndex: rep.srPending.legIndex });
-          rep.srPending = null;
-        }
+        // every SR tap is a running lap marker, not a start/stop toggle: tap
+        // 1-2 gives one reading, and if it keeps being tapped without being
+        // undone, each further tap adds another consecutive reading and the
+        // rate shown becomes the average of however many have been taken —
+        // same as a normal 3-cycle stopwatch. Tagged with which length was
+        // being swum when the tap landed, for the per-length breakdown.
+        rep.srTaps.push({ t: ev.t, legIndex: rep.splits.length });
       } else if (ev.type === 'sc'){
         rep.scEvents.push({ id:ev.id, t:ev.t, flags: [], legIndex: rep.splits.length });
         rep.scCount += 1;
       }
     }
+    // turn each rep's raw SR taps into consecutive-interval readings — tap
+    // N to tap N+1 is one reading, so 3 taps chained together give 2
+    // readings (averaged per length in perLengthStats), matching the
+    // physical stopwatch's running-average behaviour.
+    function computeSrResults(rep){
+      const taps = rep.srTaps || [];
+      const results = [];
+      for (let i=1;i<taps.length;i++){
+        const elapsedMs = taps[i].t - taps[i-1].t;
+        const cyclesPerMin = elapsedMs > 0 ? (3*60000)/elapsedMs : null;
+        results.push({ startT:taps[i-1].t, endT:taps[i].t, elapsedMs, strokeRate: cyclesPerMin ? Math.round(cyclesPerMin*10)/10 : null, flags: [], legIndex: taps[i-1].legIndex });
+      }
+      rep.srResults = results;
+    }
+    reps.forEach(computeSrResults);
+    if (current) computeSrResults(current);
     const status = current ? 'running' : (reps.length ? 'finished' : 'idle');
     return { reps, current, status, next: current ? nextExpectedFor(current, plan) : null };
   }
@@ -485,12 +496,26 @@ const SwimCore = (function(){
   // stroke count and stroke rate broken out per length, not just one total
   // for the whole rep — a length with no SC/SR tap reads as 0 (it was
   // swum, just not counted), same as any other length.
-  function perLengthStats(rep, nLengths){
+  function perLengthStats(rep, lengths){
+    const nLengths = lengths.length;
     const sc = new Array(nLengths).fill(0);
     const srBuckets = Array.from({length:nLengths}, () => []);
     rep.scEvents.forEach(e => { if (e.legIndex < nLengths) sc[e.legIndex] += 1; });
     rep.srResults.forEach(r => { if (r.legIndex < nLengths && r.strokeRate != null) srBuckets[r.legIndex].push(r.strokeRate); });
-    const sr = srBuckets.map(arr => arr.length ? arr.join('/') : 0);
+    const sr = srBuckets.map((readings, i) => {
+      if (readings.length){
+        // several SR readings landed in this length (kept tapping without
+        // undoing) — report their average, same as the readings themselves.
+        const avg = readings.reduce((a,b)=>a+b,0) / readings.length;
+        return Math.round(avg*10)/10;
+      }
+      // no explicit SR reading for this length, but if every stroke was
+      // counted (SC), the rate can be worked out directly: strokes taken
+      // over however long the length took, e.g. 10 strokes in 15s = 40/min.
+      const lengthSeconds = lengths[i].ms / 1000;
+      if (sc[i] > 0 && lengthSeconds > 0) return Math.round((sc[i]/lengthSeconds)*60*10)/10;
+      return 0;
+    });
     return { sc, sr };
   }
   function fmtClock(ms){
@@ -509,7 +534,7 @@ const SwimCore = (function(){
       const derived = derive(set.events, buildPlan(set.event));
       derived.reps.forEach((rep, repIdx) => {
         const lengths = repLengthTimes(rep);
-        const stats = perLengthStats(rep, lengths.length);
+        const stats = perLengthStats(rep, lengths);
         rows.push({
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
           set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
