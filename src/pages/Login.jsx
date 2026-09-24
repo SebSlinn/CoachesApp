@@ -1,13 +1,23 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { signIn } from '../services/auth'
+import { signIn, requestPasswordReset } from '../services/auth'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [notice, setNotice] = useState(null)
   const navigate = useNavigate()
+
+  const handleForgot = async () => {
+    setError(null)
+    setNotice(null)
+    if (!email) { setError('Type your email above first, then click Forgot password.'); return }
+    const { error } = await requestPasswordReset(email)
+    if (error) setError(error.message)
+    else setNotice(`If ${email} has a SwimZone account, a link to set a new password is on its way.`)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -57,6 +67,11 @@ export default function Login() {
           {loading ? 'Signing in...' : 'Sign In'}
         </button>
       </form>
+      <button type="button" onClick={handleForgot}
+        style={{ marginTop: 12, background: 'none', border: 'none', color: '#8cf', cursor: 'pointer', padding: 0 }}>
+        Forgot password?
+      </button>
+      {notice && <p style={{ color: '#6c6' }}>{notice}</p>}
     </div>
   )
 }

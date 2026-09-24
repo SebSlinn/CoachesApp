@@ -30,4 +30,14 @@ export class SupabaseAuthRepository extends IAuthRepository {
     if (!supabase) return { data: { subscription: { unsubscribe: () => {} } } };
     return supabase.auth.onAuthStateChange(callback);
   }
+
+  async updatePassword(newPassword) {
+    if (!supabase) return unavailable();
+    return supabase.auth.updateUser({ password: newPassword });
+  }
+
+  async sendPasswordReset(email, redirectTo) {
+    if (!supabase) return unavailable();
+    return supabase.auth.resetPasswordForEmail(email, { redirectTo });
+  }
 }

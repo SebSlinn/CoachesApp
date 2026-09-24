@@ -21,4 +21,12 @@ export class IAuthRepository {
   onAuthStateChange(_callback) {
     throw new Error('IAuthRepository.onAuthStateChange not implemented');
   }
+  /** Set a new password for the signed-in user (after an invite or reset link). */
+  async updatePassword(_newPassword) {
+    throw new Error('IAuthRepository.updatePassword not implemented');
+  }
+  /** Email a reset link that lands on pRedirectTo. */
+  async sendPasswordReset(_email, _redirectTo) {
+    throw new Error('IAuthRepository.sendPasswordReset not implemented');
+  }
 }

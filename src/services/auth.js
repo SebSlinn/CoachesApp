@@ -20,3 +20,19 @@ export const getSession = async () => {
 export const onAuthChange = (callback) => {
   return getAuthRepository().onAuthStateChange(callback)
 }
+
+// Added 2026-09-24 — invitations and password resets.
+export const setPassword = async (newPassword) => {
+  if (!newPassword || newPassword.length < 8) {
+    return { data: null, error: { message: 'Password must be at least 8 characters.' } }
+  }
+  return getAuthRepository().updatePassword(newPassword)
+}
+
+// The reset link lands on this app's /set-password page.
+export const requestPasswordReset = async (email) => {
+  return getAuthRepository().sendPasswordReset(
+    (email || '').trim().toLowerCase(),
+    `${window.location.origin}/set-password`
+  )
+}

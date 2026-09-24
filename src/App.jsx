@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard'
 import Classifier from './pages/Classifier'
 import AthleteSetup from './pages/AthleteSetup'
 import SetBuilder from './pages/SetBuilder'
+import Organisations from './pages/admin/Organisations'
+import SetPassword from './pages/SetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 
 export default function App() {
@@ -11,6 +13,7 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/set-password" element={<SetPassword />} />
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Dashboard />
@@ -29,6 +32,11 @@ export default function App() {
         <Route path="/set-builder" element={
           <ProtectedRoute>
             <SetBuilder />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/orgs" element={
+          <ProtectedRoute>
+            <Organisations />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/login" replace />} />
