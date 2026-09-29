@@ -78,8 +78,12 @@ export const importResults = async (pAthleteId, pRows) => {
     if (mProblem) return invalid(`${mProblem} (row ${i + 1})`)
   }
   const mRows = pRows.map((r) => {
-    const mNatural = (r.provenance && r.provenance.importRef) ||
-      `imp|${pAthleteId}|${r.stroke}|${r.distM}|${r.swumOn}|${(r.provenance && r.provenance.meetName) || ''}`
+    // Dedup on the swim's NATURAL identity — athlete + stroke + distance + date +
+    // time — so the SAME swim dedups whether it arrived from the best-times page
+    // (which carries a meet licence) or a single-event page (which doesn't). A
+    // heat and final on the same day differ by time, so both are kept. The meet
+    // licence is still stored in import_ref for traceability, just not used here.
+    const mNatural = `swim|${pAthleteId}|${r.stroke}|${r.distM}|${r.swumOn}|${r.timeSec}`
     return { effort: 'maximal', kind: r.kind || 'meet', source: 'import', ...r, id: r.id || stableUuid(mNatural) }
   })
   return repo().addManyIdempotent(pAthleteId, mRows)
