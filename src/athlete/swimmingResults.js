@@ -78,6 +78,29 @@ function parseSwimmerHeader(pLine) {
 
 const poolForCourse = (c) => (c === 'LC' ? '50LC' : '25SC');
 
+// SwimmingResults copies as TAB-delimited, but some copy paths collapse tabs to
+// spaces. Split a data row by tab when present, else by a shape-anchored regex.
+const RE_TIME = '\\d{1,2}:\\d{2}\\.\\d{2}|\\d{1,2}\\.\\d{2}';
+const RE_DATE = '\\d{1,2}[/.\\-]\\d{1,2}[/.\\-]\\d{2,4}';
+
+const RE_BEST = new RegExp(
+  `^(\\d+\\s+(?:Freestyle|Backstroke|Breaststroke|Butterfly|Individual Medley))\\s+(${RE_TIME})\\s+(${RE_TIME})\\s+(\\d+)\\s+(${RE_DATE})\\s+(.+?)\\s+([A-Za-z]{2}\\d{5,7})\\s+(\\d+)\\s*$`);
+function bestRowCells(line) {
+  if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
+  const m = line.trim().match(RE_BEST);
+  if (!m) return null;
+  return [m[1], m[2], m[3], m[4], m[5], m[6], '', m[7], m[8]];
+}
+
+const RE_EVENT = new RegExp(
+  `^(${RE_TIME})\\s+(\\d+)\\s+([A-Za-z]{1,3})\\s+(${RE_DATE})\\s+(.+?)\\s+(\\d+)\\s*$`);
+function eventRowCells(line) {
+  if (line.includes('\t')) return line.split('\t').map((c) => c.trim());
+  const m = line.trim().match(RE_EVENT);
+  if (!m) return null;
+  return [m[1], m[2], m[3], m[4], m[5], '', '', m[6]];
+}
+
 // ── Individual Best Times page ─────────────────────────────────────────────
 // Columns: Stroke | Time | Converted | WA Pts | Date | Meet | Venue | Licence | Level
 export function parseBestTimes(pText) {
@@ -90,8 +113,8 @@ export function parseBestTimes(pText) {
     if (/^Long Course$/i.test(t)) { course = 'LC'; continue; }
     if (/^Short Course$/i.test(t)) { course = 'SC'; continue; }
     if (!out.name) { const h = parseSwimmerHeader(t); if (h) { out.name = h.name; out.seNumber = h.seNumber; out.club = h.club; continue; } }
-    if (!line.includes('\t')) continue;
-    const cells = line.split('\t').map((c) => c.trim());
+    const cells = bestRowCells(line);
+    if (!cells) continue;
     const ev = parseEventName(cells[0]);
     if (!ev || !course) continue;
     const timeSec = parseTimeSec(cells[1]);
@@ -118,8 +141,9 @@ export function parseEventHistory(pText) {
     const line = raw.replace(/\r$/, '');
     const t = line.trim();
     if (!out.name) { const h = parseSwimmerHeader(t); if (h) { out.name = h.name; out.seNumber = h.seNumber; out.club = h.club; out.event = h.event; out.course = h.course; continue; } }
-    if (!line.includes('\t') || !out.event) continue;
-    const cells = line.split('\t').map((c) => c.trim());
+        if (!out.event) continue;
+    const cells = eventRowCells(line);
+    if (!cells) continue;
     const timeSec = parseTimeSec(cells[0]);
     const date = ukDateToIso(cells[3]);
     if (!(timeSec > 0) || !date) continue;                 // skip header/other rows
@@ -186,4 +210,24 @@ export function parseSwimmingResults(pText) {
   const parsed = parseBestTimes(pText);
   return { name: parsed.name, seNumber: parsed.seNumber, club: parsed.club,
            records: parsed.records, times: recordsToSetupTimes(parsed.records) };
+}
+
+// Auto-detecting entry point: recognises the Individual Best Times page (PBs for
+// all strokes) vs a single event's All-Times page (every swim for one event) and
+// parses appropriately. Returns { pageType, name, seNumber, club, event?, course?,
+// records, times }.
+export function parsePaste(pText) {
+  let header = null;
+  for (const raw of String(pText || '').split(/\r?\n/)) {
+    const h = parseSwimmerHeader(raw.trim());
+    if (h) { header = h; break; }
+  }
+  if (header && header.event) {
+    const eh = parseEventHistory(pText);
+    return { pageType: 'event-history', name: eh.name, seNumber: eh.seNumber, club: eh.club,
+             event: eh.event, course: eh.course, records: eh.records, times: recordsToSetupTimes(eh.records) };
+  }
+  const bt = parseBestTimes(pText);
+  return { pageType: 'best-times', name: bt.name, seNumber: bt.seNumber, club: bt.club,
+           records: bt.records, times: recordsToSetupTimes(bt.records) };
 }

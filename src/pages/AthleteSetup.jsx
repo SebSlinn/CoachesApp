@@ -16,7 +16,7 @@ import {
   saveAthlete,
 } from '../services/athleteService.js';
 import { getAthleteBests, ingestPoolsideExport, persistAthleteTimes, importOfficialRecords } from '../services/results.js';
-import { parseBestTimes } from '../athlete/swimmingResults.js';
+import { parsePaste } from '../athlete/swimmingResults.js';
 
 // Records store the stroke as a code (FS/BK/BR/Fly/IM); the setup grid keys
 // times as `${dist}_${code}` with a full stroke name — same codes, so mapping
@@ -108,18 +108,35 @@ export default function AthleteSetup() {
   // ── Handlers ─────────────────────────────────────────────────────────────
 
   function handleParse() {
-    const mResult = parseSwimmingResultsText(rawPaste);
-    setAthleteTimes(mResult.times);
-    setParseLog(mResult.log);
-    setDerivedProfile(deriveAthleteType(mResult.times));
-    if (mResult.name)     setAthleteName(mResult.name);
-    if (mResult.seNumber) setSeNumber(mResult.seNumber);
-    if (mResult.club)     setClubName(mResult.club);
-    // Second pass: capture the official detail (date, meet, venue, licence, both
-    // courses) the grid doesn't hold, so Save Times To Records can write real
-    // meets. Harmless if the paste isn't a best-times page (records = []).
-    try { setOfficialRecords(parseBestTimes(rawPaste).records || []); }
-    catch { setOfficialRecords([]); }
+    // Your existing best-times parser fills the grid. It only understands the
+    // Individual Best Times page, so guard it and fall back to the auto-detecting
+    // parser for a single-event All-Times page.
+    let mResult = { times: {}, log: [], name: '', seNumber: '', club: '' };
+    try { mResult = parseSwimmingResultsText(rawPaste) || mResult; } catch { /* not a best-times page */ }
+
+    // Auto-detect + capture official records (date/meet/venue/licence) for saving.
+    let mParsed = { records: [], times: {}, name: '', seNumber: '', club: '', pageType: 'unknown' };
+    try { mParsed = parsePaste(rawPaste) || mParsed; } catch { /* leave empty */ }
+
+    // Grid: prefer your best-times parse; if it found nothing (a single-event
+    // page), show what the detector derived for that event instead.
+    const mTimes = Object.keys(mResult.times || {}).length ? mResult.times : mParsed.times;
+    setAthleteTimes(mTimes);
+    setParseLog(mResult.log || []);
+    setDerivedProfile(deriveAthleteType(mTimes));
+
+    const mName = mResult.name || mParsed.name;
+    const mSe = mResult.seNumber || mParsed.seNumber;
+    const mClub = mResult.club || mParsed.club;
+    if (mName) setAthleteName(mName);
+    if (mSe) setSeNumber(mSe);
+    if (mClub) setClubName(mClub);
+
+    setOfficialRecords(mParsed.records || []);
+    setDbMsg(mParsed.records && mParsed.records.length
+      ? 'Parsed ' + mParsed.records.length + ' official swim' + (mParsed.records.length === 1 ? '' : 's') +
+        ' (' + (mParsed.pageType === 'event-history' ? 'single event' : 'best times, all strokes') + ') — ready to Save Times To Records.'
+      : '');
   }
 
   async function handleSave() {
