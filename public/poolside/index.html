@@ -208,7 +208,7 @@
 
 <div id="app">
   <header class="bar">
-    <div class="word">Pool<b>side</b></div>
+    <div class="word">Pool<b>side</b><span id="athleteTag" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-left:10px;letter-spacing:0;"></span></div>
     <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
   </header>
 
@@ -340,10 +340,10 @@
       <button class="ghost" id="copySummaryBtn" type="button">Copy</button>
       <button class="ghost" id="shareSummaryBtn" type="button" hidden>Share</button>
       <button class="ghost" id="downloadCsvBtn" type="button">CSV</button>
-      <button class="ghost" id="downloadJsonBtn" type="button">JSON</button>
+      <button class="ghost" id="downloadJsonBtn" type="button">SwimZone</button>
       <button class="primary" id="resultsClose" type="button">Close</button>
     </div>
-    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Copy pastes the recap above. CSV opens in a spreadsheet, JSON is for SwimZone import.</p>
+    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Copy pastes the recap above. CSV opens in a spreadsheet. SwimZone saves a file to import into an athlete's records.</p>
   </div>
 </div>
 
@@ -567,7 +567,7 @@ const SwimCore = (function(){
         });
       });
     });
-    return { session:{athlete:session.athlete,date:session.date,location:session.location}, reps: rows };
+    return { session:{athlete:session.athlete,date:session.date,location:session.location,seNumber:session.seNumber||'',szAthleteId:session.szAthleteId||''}, reps: rows };
   }
   // plain-English notes for a parent/swimmer reading the spreadsheet, not a
   // developer — the raw flag codes (possibleDoubleTap, missingSplits...)
@@ -628,7 +628,64 @@ const SwimCore = (function(){
     if (exported.reps.length === 0) lines.push('', 'No reps recorded yet.');
     return lines.join('\n');
   }
-  return { buildPlan, makeEvent, derive, repLengthTimes, fmtClock, exportSession, toCSV, toSummaryText, flagNotes, DOUBLE_TAP_MS };
+  // ---- SwimZone integration ------------------------------------------------
+  // Convert a finished session into swimzone.result/1 records — the shape the
+  // SwimZone Athlete Records store ingests (services/results.js importResults /
+  // addResults / the Poolside outbox). One record per rep: these are TIMED
+  // swims, not a prescribed set, so they map to single results (kind training,
+  // source stopwatch, effort submaximal), NOT swimzone.set/1.
+  //
+  // Vocab differs between the two apps and must be mapped, not passed through:
+  const STROKE_TO_SZ = { FREE:'FS', BACK:'BK', BREAST:'BR', FLY:'Fly', IM:'IM' };
+  const POOL_TO_SZ = { 25:'25SC', 50:'50LC' };
+  // Client-generated UUID (dedup key for idempotent import/sync). Falls back
+  // where crypto.randomUUID is missing (older webviews) — same as the SwimZone
+  // LocalResultsRepository.newClientUuid.
+  function szId(){
+    try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch(e){}
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
+    });
+  }
+  function toSwimZone(exported){
+    const records = []; let skipped = 0;
+    (exported.reps || []).forEach(r => {
+      const stroke = STROKE_TO_SZ[r.stroke];
+      const distM = Number(r.distance);
+      const poolType = POOL_TO_SZ[Number(r.poolLength)] || null;
+      // OPEN/freeform reps, or anything without a clean stroke+distance+time,
+      // can't be a valid single result — leave them out (counted, not dropped
+      // silently) rather than posting a malformed swim.
+      if (!stroke || !(distM > 0) || !(r.totalMs > 0)) { skipped++; return; }
+      records.push({
+        fmt: 'swimzone.result/1',
+        id: szId(),                         // client_uuid — makes import idempotent
+        athleteId: null,                    // attributed on the SwimZone side
+        kind: 'training',
+        effort: 'submaximal',               // a timed training swim, not a maximal single
+        swumOn: exported.session.date || '',
+        stroke, distM, poolType,
+        timeSec: Math.round(r.totalMs / 10) / 100,   // ms → s, 2dp
+        splits: (r.lengths || []).map(l => ({ from:l.from, to:l.to, ms:l.ms, sc:l.sc, sr:l.sr })),
+        source: 'stopwatch',
+        note: r.set || '',                  // which Poolside set this rep came from
+      });
+    });
+    return {
+      fmt: 'swimzone.import/1',
+      // Identity round-trips from Athlete Setup: id (the SwimZone athlete_user_id)
+      // is the key SwimZone matches on; name + SE number are the human cross-check.
+      athlete: {
+        id: exported.session.szAthleteId || null,
+        seNumber: exported.session.seNumber || '',
+        name: exported.session.athlete || '',
+      },
+      session: { date: exported.session.date || '', location: exported.session.location || '' },
+      records, skipped,
+    };
+  }
+
+  return { buildPlan, makeEvent, derive, repLengthTimes, fmtClock, fmtWallClock, exportSession, toCSV, toSummaryText, toSwimZone, flagNotes, DOUBLE_TAP_MS };
 })();
 
 /* ============================================================
@@ -672,13 +729,38 @@ const SwimCore = (function(){
     } catch(e){}
     return {
       session: { athlete:'', date: todayISO(), location:'' },
-      sets: [ makeSet('Set 1', { stroke:'BREAST', distance:100, poolLength:25 }) ],
+      sets: [ makeSet('Set 1', { stroke:'FREE', distance:100, poolLength:25 }) ], // 100 Front Crawl (Free) — the default a session starts with
       activeSetIndex: 0,
     };
   }
   function saveState(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch(e){} }
 
   let state = loadState();
+
+  // Athlete handoff from SwimZone Athlete Setup: ?aid=<athlete_user_id>&name=&se=
+  // The id is the identity every export is stamped with, so results can be saved
+  // straight back to the right athlete. Opening Poolside for a DIFFERENT athlete
+  // while a session with taps is already in progress starts a fresh session, so
+  // one athlete's reps never get relabelled as another's.
+  (function applyAthleteHandoff(){
+    try {
+      const params = new URLSearchParams(location.search);
+      const aid = params.get('aid'), name = params.get('name'), se = params.get('se');
+      if (!aid && !name) return;
+      const incoming = { szAthleteId: aid || '', seNumber: se || '', athlete: name || '' };
+      const anyTaps = state.sets.some(s => s.events.length);
+      if (anyTaps && state.session.szAthleteId && state.session.szAthleteId !== incoming.szAthleteId){
+        state = { session: { ...incoming, date: todayISO(), location: state.session.location || '' },
+                  sets: [ makeSet('Set 1', { stroke:'FREE', distance:100, poolLength:25 }) ], activeSetIndex: 0 };
+      } else {
+        state.session = { ...state.session, ...incoming, date: state.session.date || todayISO() };
+      }
+      saveState();
+      // clean the query out of the URL so a refresh doesn't re-apply it
+      try { history.replaceState({}, '', location.pathname); } catch(e){}
+    } catch(e){}
+  })();
+
   function activeSet(){ return state.sets[state.activeSetIndex]; }
   let editingEvent = { ...(activeSet().event || {}) };
   let rafId = null;
@@ -785,6 +867,14 @@ const SwimCore = (function(){
     const d = derived();
     renderSetStrip();
     renderEventCard();
+
+    // who we're timing (from the Athlete Setup handoff, or the settings sheet)
+    const athleteTag = $('athleteTag');
+    if (athleteTag){
+      const nm = state.session.athlete || '';
+      athleteTag.textContent = nm;
+      athleteTag.style.display = nm ? '' : 'none';
+    }
 
     // clock + state pill
     if (d.status === 'running'){
@@ -917,7 +1007,65 @@ const SwimCore = (function(){
     }
   }
 
+  // Closing any sheet (Results, Settings, Set details, the confirm dialog)
+  // is exactly the moment a mobile browser's delayed "ghost click" — the
+  // synthetic click a touch can still fire after its real target has
+  // already been hidden — is most likely to land on whatever button is now
+  // underneath it, e.g. Start Dive sitting right where Close just was. A tap
+  // logged within this short window of a sheet closing is almost certainly
+  // that leftover click, not a deliberate press, so it's dropped.
+  const GHOST_TAP_GUARD_MS = 400;
+  let lastOverlayCloseAt = 0;
+
+  // A sheet on screen has no idea the phone's own Back button/gesture
+  // exists — without this, pressing Back doesn't close OUR sheet at all,
+  // it falls straight through to the browser, which navigates the page
+  // itself. On a phone that's what actually produced "the watch has
+  // restarted": Back left the page (or reloaded it) instead of closing
+  // Results, and coming back dropped the app into a stale frame. The fix is
+  // to give the browser something of ours to "go back" from: opening a
+  // sheet pushes one throwaway history entry, and Back then just pops that
+  // entry — caught below as a popstate event — instead of leaving the app.
+  let currentOverlayEl = null;
+  let currentOverlayOnBack = null; // optional custom close path (the confirm sheet needs to unbind its per-call listeners, not just hide)
+  let overlayHistoryPushed = false;
+  function openOverlay(el, onBack){
+    el.hidden = false;
+    currentOverlayEl = el;
+    currentOverlayOnBack = onBack || null;
+    // pushState can throw inside a sandboxed preview frame (this artifact's
+    // own Claude-hosted preview, for one) — the sheet still opens fine
+    // either way, it just won't be Back-button-closable in that frame.
+    try { history.pushState({ poolsideOverlay:true }, ''); overlayHistoryPushed = true; }
+    catch(e){ overlayHistoryPushed = false; }
+  }
+  // fromPopstate=true means the phone's Back button already consumed the
+  // history entry we pushed on open — calling history.back() again here
+  // would pop a SECOND entry and navigate the app away for real, so that
+  // call is skipped in that one case only.
+  function hideOverlay(el, fromPopstate){
+    el.hidden = true;
+    lastOverlayCloseAt = Date.now();
+    if (currentOverlayEl === el){ currentOverlayEl = null; currentOverlayOnBack = null; }
+    if (overlayHistoryPushed){
+      overlayHistoryPushed = false;
+      if (!fromPopstate){ try { history.back(); } catch(e){} }
+    }
+  }
+  // Fires both from our own history.back() above and from the phone's real
+  // Back button/gesture — either way, if a sheet is still showing, this is
+  // what actually closes it in response, instead of the browser navigating
+  // the page itself (which is what previously looked like the watch
+  // "restarting": Back left/reloaded the page rather than closing Results).
+  window.addEventListener('popstate', () => {
+    if (currentOverlayEl && !currentOverlayEl.hidden){
+      const onBack = currentOverlayOnBack, el = currentOverlayEl;
+      if (onBack) onBack(true); else hideOverlay(el, true);
+    }
+  });
+
   function addEvent(type, meta, button){
+    if (Date.now() - lastOverlayCloseAt < GHOST_TAP_GUARD_MS) return;
     const t = Date.now();
     const ev = SwimCore.makeEvent(type, t, meta);
     activeSet().events.push(ev);
@@ -937,12 +1085,12 @@ const SwimCore = (function(){
     if (flagged) showToast('Possible double-tap', 'Undo', () => { const set = activeSet(); set.events = set.events.filter(e=>e.id!==ev.id); render(); });
   }
 
-  btnDive.addEventListener('click', () => addEvent('start', { startType:'dive' }, btnDive));
-  btnPush.addEventListener('click', () => addEvent('start', { startType:'push' }, btnPush));
-  btnTurn.addEventListener('click', () => { if (derived().status==='running') addEvent('turn', null, btnTurn); });
-  btnFinish.addEventListener('click', () => { if (derived().status==='running') addEvent('finish', null, btnFinish); });
-  btnSR.addEventListener('click', () => { if (derived().status==='running') addEvent('sr', null, btnSR); });
-  btnSC.addEventListener('click', () => { if (derived().status==='running') addEvent('sc', null, btnSC); });
+  addTapListener(btnDive, () => addEvent('start', { startType:'dive' }, btnDive));
+  addTapListener(btnPush, () => addEvent('start', { startType:'push' }, btnPush));
+  addTapListener(btnTurn, () => { if (derived().status==='running') addEvent('turn', null, btnTurn); });
+  addTapListener(btnFinish, () => { if (derived().status==='running') addEvent('finish', null, btnFinish); });
+  addTapListener(btnSR, () => { if (derived().status==='running') addEvent('sr', null, btnSR); });
+  addTapListener(btnSC, () => { if (derived().status==='running') addEvent('sc', null, btnSC); });
 
   undoBtn.addEventListener('click', () => {
     if (state.activeSetIndex !== state.sets.length - 1) return; // older set — view only, no rewriting its history
@@ -980,7 +1128,7 @@ const SwimCore = (function(){
     deleteSetBtn.style.display = state.sets.length > 1 ? '' : 'none';
     distanceInput.value = editingEvent.distance || ''; // set once, from state — never again while the sheet is open
     syncEventChips();
-    eventOverlay.hidden = false;
+    openOverlay(eventOverlay);
   }
   // Re-styles the chips and toggles field visibility. Deliberately does NOT
   // touch distanceInput.value — a stroke/pool chip tap must never overwrite
@@ -1003,14 +1151,14 @@ const SwimCore = (function(){
   addTapDelegate(strokeChips, 'button', (b) => { editingEvent.stroke=b.dataset.v; syncEventChips(); });
   addTapDelegate(poolChips, 'button', (b) => { editingEvent.poolLength=Number(b.dataset.v); syncEventChips(); });
   distanceInput.addEventListener('input', updatePreview);
-  addTapListener($('eventCancel'), () => { eventOverlay.hidden = true; });
+  addTapListener($('eventCancel'), () => { hideOverlay(eventOverlay); });
   addTapListener($('eventSave'), () => {
     const distanceVal = Number(distanceInput.value) || editingEvent.distance || 100;
     const nextEvent = editingEvent.stroke === 'OPEN' ? null
       : { stroke: editingEvent.stroke, distance: distanceVal, poolLength: Number(editingEvent.poolLength)||25 };
     const typedName = (setNameInput.value || '').trim();
     const opened = applySetChange(nextEvent, typedName);
-    eventOverlay.hidden = true;
+    hideOverlay(eventOverlay);
     render();
     if (opened) showToast('Started a new set for the change — earlier reps are untouched');
   });
@@ -1018,7 +1166,14 @@ const SwimCore = (function(){
   addTapListener(deleteSetBtn, () => {
     if (state.sets.length <= 1) return;
     const name = activeSet().name || 'this set';
+    // swapping straight to the confirm sheet, not really "closing" — hide it
+    // directly rather than going through hideOverlay, which would call the
+    // browser's (async) history.back() a moment before askConfirm below
+    // synchronously pushes a fresh entry of its own; doing both back-to-back
+    // is exactly the kind of history-API race this whole mechanism exists to
+    // avoid causing in the first place.
     eventOverlay.hidden = true;
+    if (currentOverlayEl === eventOverlay){ currentOverlayEl = null; currentOverlayOnBack = null; }
     askConfirm('Delete this set?', 'This removes "'+name+'" and all its reps. This can\'t be undone.', () => {
       const idx = state.activeSetIndex;
       state.sets.splice(idx, 1);
@@ -1033,12 +1188,14 @@ const SwimCore = (function(){
     $('athleteInput').value = state.session.athlete || '';
     $('dateInput').value = state.session.date || todayISO();
     $('locationInput').value = state.session.location || '';
-    settingsOverlay.hidden = false;
+    openOverlay(settingsOverlay);
   });
-  addTapListener($('settingsCancel'), () => { settingsOverlay.hidden = true; });
+  addTapListener($('settingsCancel'), () => { hideOverlay(settingsOverlay); });
   addTapListener($('settingsSave'), () => {
-    state.session = { athlete: $('athleteInput').value.trim(), date: $('dateInput').value || todayISO(), location: $('locationInput').value.trim() };
-    settingsOverlay.hidden = true; render();
+    // preserve the SwimZone identity (szAthleteId / seNumber) that arrived via
+    // the Athlete Setup link — editing the name here must not drop it.
+    state.session = { ...state.session, athlete: $('athleteInput').value.trim(), date: $('dateInput').value || todayISO(), location: $('locationInput').value.trim() };
+    hideOverlay(settingsOverlay); render();
   });
 
   /* ---- confirm sheet (replaces window.confirm, which the artifact sandbox
@@ -1048,13 +1205,13 @@ const SwimCore = (function(){
     $('confirmTitle').textContent = title;
     $('confirmBody').textContent = body;
     $('confirmOk').textContent = okLabel || 'Confirm';
-    confirmOverlay.hidden = false;
     const ok = $('confirmOk'), cancel = $('confirmCancel');
     let unbindOk, unbindCancel;
-    function cleanup(){
+    function cleanup(fromPopstate){
       if (unbindOk) unbindOk(); if (unbindCancel) unbindCancel();
-      confirmOverlay.removeEventListener('click', onBackdrop); confirmOverlay.hidden = true;
+      confirmOverlay.removeEventListener('click', onBackdrop); hideOverlay(confirmOverlay, fromPopstate);
     }
+    openOverlay(confirmOverlay, cleanup); // cleanup also runs when the phone's Back button closes this sheet, so its listeners still get unbound
     function onOk(){ cleanup(); onConfirm(); }
     function onCancel(){ cleanup(); }
     function onBackdrop(e){ if (e.target === confirmOverlay) cleanup(); }
@@ -1065,7 +1222,7 @@ const SwimCore = (function(){
 
   /* ---- new session / export ---- */
   function resetSession(){
-    state.sets = [ makeSet('Set 1', { stroke:'BREAST', distance:100, poolLength:25 }) ];
+    state.sets = [ makeSet('Set 1', { stroke:'FREE', distance:100, poolLength:25 }) ]; // 100 Front Crawl (Free)
     state.activeSetIndex = 0;
   }
   addTapListener($('newSessionBtn'), () => {
@@ -1117,7 +1274,7 @@ const SwimCore = (function(){
     const exported = buildExport();
     $('resultsText').textContent = SwimCore.toSummaryText(exported);
     $('shareSummaryBtn').hidden = !(navigator.share);
-    resultsOverlay.hidden = false;
+    openOverlay(resultsOverlay);
   });
   addTapListener($('copySummaryBtn'), async () => {
     const text = SwimCore.toSummaryText(currentExport || buildExport());
@@ -1139,15 +1296,21 @@ const SwimCore = (function(){
   });
   addTapListener($('downloadJsonBtn'), async () => {
     const exported = currentExport || buildExport();
-    if (await saveFile(currentStamp+'.json', JSON.stringify(exported, null, 2))) showToast('Saved ' + currentStamp + '.json');
+    const sz = SwimCore.toSwimZone(exported);
+    if (await saveFile(currentStamp+'.swimzone.json', JSON.stringify(sz, null, 2))){
+      const msg = sz.skipped
+        ? 'Saved ' + sz.records.length + ' swims for SwimZone (' + sz.skipped + ' open/unmeasured rep' + (sz.skipped===1?'':'s') + ' left out)'
+        : 'Saved ' + sz.records.length + ' swims — import into SwimZone';
+      showToast(msg);
+    }
   });
-  addTapListener($('resultsClose'), () => { resultsOverlay.hidden = true; });
+  addTapListener($('resultsClose'), () => { hideOverlay(resultsOverlay); });
 
   /* ---- tapping the dimmed backdrop closes the sheet, same as Cancel (the
      confirm sheet handles its own backdrop inside askConfirm, since its
      buttons carry per-call listeners that need matching cleanup) ---- */
   [eventOverlay, settingsOverlay, resultsOverlay].forEach(ov => {
-    ov.addEventListener('click', (e) => { if (e.target === ov) ov.hidden = true; });
+    ov.addEventListener('click', (e) => { if (e.target === ov) hideOverlay(ov); });
   });
 
   render();

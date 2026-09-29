@@ -20,3 +20,6 @@ export {
   sbBlockTotalTime,
   sbLineRest,
 } from './utils.js';
+
+// add to src/session/index.js
+export * from './setFormat.js';

@@ -1,10 +1,31 @@
+import { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { signOut } from '../services/auth'
 import { useNavigate } from 'react-router-dom'
+import { getLogsSharedWithMe } from '../services/logSharing'
 
 export default function Dashboard() {
   const { user, profile, isAdmin, isCoach, isManager, isAthlete, memberships } = useAuth()
   const navigate = useNavigate()
+
+  // Athletes I can load: myself, plus everyone whose log is shared with me —
+  // which is how a parent's children appear (as guardianships), whether or not
+  // they're in any organisation.
+  const [sharedAthletes, setSharedAthletes] = useState([])
+  useEffect(() => {
+    if (!user) return
+    let mCancelled = false
+    getLogsSharedWithMe(user.id).then(({ data }) => {
+      if (mCancelled) return
+      const mActive = (data || []).filter((p) => p.status === 'active' && p.can_read !== false)
+      setSharedAthletes(mActive)
+    })
+    return () => { mCancelled = true }
+  }, [user])
+
+  // Hand the athlete off to Athlete Setup, which pre-fills from their records.
+  const loadAthlete = (pAthleteId, pName) =>
+    navigate('/athlete-setup', { state: { loadAthlete: { athleteId: pAthleteId, name: pName } } })
 
   const handleSignOut = async () => {
     await signOut()
@@ -40,6 +61,30 @@ export default function Dashboard() {
         {isAdmin && <DashCard title="Organisations" desc="Manage clubs and bodies" onClick={() => navigate('/admin/orgs')} />}
       </div>
 
+      {/* My Athletes — load one into the coaching tools with a click */}
+      <div style={{ marginTop: 32 }}>
+        <h3>My Athletes</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <AthleteRow
+            name={(profile?.full_name || user?.email || 'Me') + ' (me)'}
+            onLoad={() => loadAthlete(user?.id, profile?.full_name || user?.email || 'Me')}
+          />
+          {sharedAthletes.map((p) => (
+            <AthleteRow
+              key={p.id}
+              name={p.owner?.full_name || p.owner?.email || 'Athlete'}
+              tag={p.is_guardian ? 'guardian' : 'shared'}
+              onLoad={() => loadAthlete(p.owner_user_id, p.owner?.full_name || p.owner?.email || 'Athlete')}
+            />
+          ))}
+        </div>
+        {sharedAthletes.length === 0 && (
+          <p style={{ color: '#999', fontSize: 13, marginTop: 8 }}>
+            No athletes shared with you yet. Children you're guardian for, and any log shared with you, appear here.
+          </p>
+        )}
+      </div>
+
       {/* Memberships */}
       {memberships.length > 0 && (
         <div style={{ marginTop: 32 }}>
@@ -52,6 +97,17 @@ export default function Dashboard() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+function AthleteRow({ name, tag, onLoad }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', border: '1px solid #eee', borderRadius: 8 }}>
+      <strong>{name}</strong>
+      {tag && <span style={{ background: '#eef', color: '#006', padding: '1px 9px', borderRadius: 10, fontSize: 12 }}>{tag}</span>}
+      <span style={{ flex: 1 }} />
+      <button onClick={onLoad}>Load</button>
     </div>
   )
 }

@@ -7,6 +7,7 @@ import SetBuilder from './pages/SetBuilder'
 import Organisations from './pages/admin/Organisations'
 import SetPassword from './pages/SetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
+import AthleteRecords from './pages/AthleteRecords'
 
 export default function App() {
   return (
@@ -39,6 +40,11 @@ export default function App() {
             <Organisations />
           </ProtectedRoute>
         } />
+        <Route path="/athlete-records" element={
+          <ProtectedRoute>
+            <AthleteRecords />
+            </ProtectedRoute>
+          } />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

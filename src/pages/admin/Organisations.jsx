@@ -303,9 +303,15 @@ function AthleteForm({ orgId, orgName }) {
 }
 
 function MembersPanel({ orgId }) {
+  const navigate = useNavigate()
   const [members, setMembers] = useState(null)
   const [txtEmail, setTxtEmail] = useState('')
   const [error, setError] = useState(null)
+
+  const loadAthlete = (pMember) => {
+    const mName = pMember.users?.full_name || pMember.users?.email || 'Athlete'
+    navigate('/athlete-setup', { state: { loadAthlete: { athleteId: pMember.user_id, name: mName } } })
+  }
 
   const load = useCallback(async () => {
     const { data, error: mError } = await getGroupMembers(orgId)
@@ -344,6 +350,7 @@ function MembersPanel({ orgId }) {
           <span style={S.badge('#333', '#ccc')}>{m.role}</span>
           {m.status === 'pending' && <span style={S.badge('#330', '#dd8')}>pending</span>}
           <span style={{ flex: 1 }} />
+          {m.role === 'athlete' && m.status === 'active' && <button style={S.btn} onClick={() => loadAthlete(m)}>Load</button>}
           <button style={S.btn} onClick={() => remove(m)}>Remove</button>
         </div>
       ))}
