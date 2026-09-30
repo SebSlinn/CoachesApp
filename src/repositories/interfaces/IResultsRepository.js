@@ -8,6 +8,7 @@
 //     stroke: 'FS'|'BK'|'BR'|'Fly'|'IM'|'Kick', distM: number,
 //     poolType: '25SC'|'50LC'|'25Y', timeSec: number, splits: array|null,
 //     location, note, source: 'manual'|'stopwatch'|'import',
+//     metrics: { sc?, sr?, hr?, rpe?, lactate? } (set reps; {} otherwise),
 //     createdBy, updatedBy, createdAt, updatedAt }
 // Mapping to storage columns is the implementation's job.
 //
@@ -38,4 +39,8 @@ export class IResultsRepository {
   async listSetEfforts(_athleteId, _filter) { throw new Error('IResultsRepository.listSetEfforts not implemented'); }
   /** Efforts + their reps for one recognised test (side-by-side comparison). */
   async listSetEffortsByProtocol(_protocolId, _athleteId) { throw new Error('IResultsRepository.listSetEffortsByProtocol not implemented'); }
+
+  // --- Test Set Library -----------------------------------------------------
+  /** Rewrite one run's derived summary (analyser output). → { updated } */
+  async updateSetEffortSummary(_effortId, _summary) { throw new Error('IResultsRepository.updateSetEffortSummary not implemented'); }
 }

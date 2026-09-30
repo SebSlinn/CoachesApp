@@ -145,30 +145,69 @@ editable until first use (see Open items).
 
 ---
 
-## Code (to build next)
+## Code
 
-- `src/session/protocolFormat.js` — zero-import, copied to Poolside like
-  `setFormat.js`: `validateProtocol`, `resolveParams(set, params, chosen)`,
-  `lineMeasures(protocol, line)`, `prescribe(protocol, chosen, athlete)` →
-  per-rep list `{ repNo, lineIdx, stroke, distM, target, interval, measures,
-  constraints }`, and the analysers `ANALYSERS[id](reps, protocol) → summary`.
-- `src/services/protocols.js` — `listProtocols()`, `getProtocol(id)`,
-  `createProtocol(orgId, def)`, `newVersion(id, changes)`.
-- Repository: `SupabaseProtocolsRepository` (+ interface, factory entry).
-- `addSetResult` extended: rep `metrics` → `performance_results.metrics`;
-  runs the analyser → `set_efforts.summary`.
-- Library UI: pick a test, choose params, preview resolved for the loaded athlete.
+**`src/session/protocolFormat.js`** — pure, shared with Poolside (copied to
+`public/poolside/` with `setFormat.js` by `scripts/copy-setformat.mjs`, which now
+runs automatically before `npm run dev` / `npm run build`).
+
+```js
+validateProtocol(p)                         → error string | null
+resolveParams(set, paramDefs, chosen)       → { set, params }   (invalid/missing → default)
+expandReps(set, protocol?)                  → [{ repNo, blockIdx, lineIdx, stroke, distM, measures, constraints, … }]
+prescribe(protocol, { chosen, athlete })    → swimzone.prescription/1 for one swimmer
+prescribeGroup(protocol, { chosen, athletes }) → same set/params, per-athlete reps with
+                                              target{display,resolved,fromSec,toSec}, targetTime, restSec, pbAtSwim
+cleanMetrics(m)  lineMeasures(p, line)  checkConstraints(constraints, metrics)
+analyse(analyserId, reps, { set })          → { analyser, v, …numbers }  (never throws)
+ANALYSERS: series · step · css · double-distance · blocks · swolf · maxhr
+```
+
+**`src/services/protocols.js`**
+
+```js
+listProtocols({ allVersions?, key? })       latest version per test; scope 'global' | 'club'
+getProtocol(id)
+createProtocol(orgId|null, def)             v1; validated; null org = global (root only)
+updateProtocol(id, changes)                 unlocked → anything; locked → name/description only
+newVersion(id, changes)                     same key/owner, next version
+deleteProtocol(id)                          unused only
+prescribeForAthletes(protocolId, [{id,name}], { chosen, windowMonths })   fetches bests
+prescribeForLoadedAthlete(protocol, athlete, chosen)                      no fetch
+```
+
+**`src/services/results.js`** (extended)
+
+- `addSetResult(athleteId, setResult)` — `setResult` may now carry
+  `protocolId`, `params`, `sessionId`, and per-rep `metrics` / `splits` /
+  `targetTime`. It cleans metrics, freezes targets in `conditions.targets` and
+  params in `conditions.params`, runs the protocol's analyser into `summary`,
+  derives a deterministic `client_uuid` from `sessionId`, and is idempotent
+  (re-save → `{ alreadyPresent: true }`). Pass the **prescription's** `set` (params
+  applied) as the snapshot. Returns `{ effortId, reps, alreadyPresent, summary }`.
+- `reanalyseSetResults(protocolId, athleteId)` — recompute stored summaries after
+  an analyser changes.
+
+**Repository**: `IProtocolsRepository` / `SupabaseProtocolsRepository`
+(`getProtocolsRepository()` in the factory). `SupabaseResultsRepository` maps
+`metrics` and `summary`, and gains `updateSetEffortSummary`.
+
+**Tests** — `npm test` runs all four:
+`src/session/protocolFormat.test.mjs` (against the real seeds, via PGlite),
+`tests/services/run.mjs` (services over in-memory repos),
+`supabase/tests/athlete_records.test.mjs`, `supabase/tests/test_protocols.test.mjs`.
 
 ## Status
 
 | Piece | State |
 |---|---|
 | Spec (this doc) | ✅ |
-| Migration + seeds + test | ✅ written, 41/41 in PGlite — **not yet applied to Supabase** |
-| `protocolFormat.js` + analysers | ❌ |
-| Protocols service/repo | ❌ |
-| `addSetResult` metrics + summary | ❌ |
-| Library UI | ❌ |
+| Drop old import_dedup index | ✅ applied (live DB clean) |
+| Migration + seeds + test | ✅ applied to Supabase (verified 2026-09-30 with `supabase/checks/db_status.sql`); 41/41 in PGlite |
+| `protocolFormat.js` + analysers | ✅ 59 tests |
+| Protocols service/repo | ✅ |
+| `addSetResult` metrics + summary + reanalyse | ✅ 20 service tests |
+| Library UI — `/test-sets` (`src/pages/TestSets.jsx`) | ✅ pick test, params, swimmers → rep-by-rep targets; previous runs. Linked from Dashboard + Athlete Setup |
 | Poolside set mode (Piece 2) | ❌ |
 
 ## Open items

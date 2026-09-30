@@ -8,6 +8,7 @@ import Organisations from './pages/admin/Organisations'
 import SetPassword from './pages/SetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 import AthleteRecords from './pages/AthleteRecords'
+import TestSets from './pages/TestSets'
 
 export default function App() {
   return (
@@ -45,6 +46,11 @@ export default function App() {
             <AthleteRecords />
             </ProtectedRoute>
           } />
+        <Route path="/test-sets" element={
+          <ProtectedRoute>
+            <TestSets />
+          </ProtectedRoute>
+        } />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

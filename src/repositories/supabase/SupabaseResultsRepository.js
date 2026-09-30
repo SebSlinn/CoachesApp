@@ -11,6 +11,11 @@
 //   • single-swim provenance + effort + sync fields (append-only history)
 //   • sets-as-swum: set_efforts parent + one performance_results row per rep
 //   • listHistory / importMany / addSetResult / listSetEfforts / …ByProtocol
+//
+// Test Set Library additions (2026-09-30):
+//   • rep `metrics` { sc, sr, hr, rpe, lactate } ↔ performance_results.metrics
+//   • run `summary` (analyser output) ↔ set_efforts.summary; updateSetEffortSummary
+//   • addSetResult is idempotent on the effort's client_uuid (re-save = no-op)
 // Set reps live in performance_results with effort_id set; the single-swim
 // queries (list, listHistory) exclude them with `.is('effort_id', null)`.
 import { supabase } from '../../supabaseClient';
@@ -18,9 +23,9 @@ import { IResultsRepository } from '../interfaces/IResultsRepository';
 
 const UNAVAILABLE = { data: null, error: { message: 'Supabase is not configured' } };
 
-const COLUMNS = 'id, athlete_user_id, client_uuid, swum_on, kind, effort, stroke, dist_m, pool_type, time_sec, splits, location, notes, source, effort_id, rep_no, pb_at_swim_sec, sanctioned, awarding_body, country, meet_name, import_ref, created_by, updated_by, created_at, updated_at';
+const COLUMNS = 'id, athlete_user_id, client_uuid, swum_on, kind, effort, stroke, dist_m, pool_type, time_sec, splits, location, notes, source, effort_id, rep_no, pb_at_swim_sec, sanctioned, awarding_body, country, meet_name, import_ref, metrics, created_by, updated_by, created_at, updated_at';
 
-const EFFORT_COLUMNS = 'id, athlete_user_id, client_uuid, swum_on, protocol_id, set_json, conditions, source, created_by, created_at';
+const EFFORT_COLUMNS = 'id, athlete_user_id, client_uuid, swum_on, protocol_id, set_json, conditions, summary, source, created_by, created_at';
 
 // app field  → column   (scalars mapped 1:1)
 const FIELD_TO_COLUMN = {
@@ -39,6 +44,7 @@ const FIELD_TO_COLUMN = {
   effortId: 'effort_id',
   repNo: 'rep_no',
   pbAtSwim: 'pb_at_swim_sec',
+  metrics: 'metrics',
 };
 
 function toRow(result) {
@@ -60,6 +66,7 @@ function toRow(result) {
     if (p.meetName !== undefined) row.meet_name = p.meetName;
     if (p.importRef !== undefined) row.import_ref = p.importRef;
   }
+  if (row.metrics === null) delete row.metrics;   // column is NOT NULL default '{}'
   if (row.dist_m != null) row.dist_m = Number(row.dist_m);
   if (row.time_sec != null) row.time_sec = Number(row.time_sec);
   if (row.pb_at_swim_sec != null) row.pb_at_swim_sec = Number(row.pb_at_swim_sec);
@@ -86,6 +93,7 @@ function fromRow(row) {
     effortId: row.effort_id,
     repNo: row.rep_no,
     pbAtSwim: row.pb_at_swim_sec != null ? Number(row.pb_at_swim_sec) : null,
+    metrics: row.metrics || {},
     provenance: (row.meet_name != null || row.import_ref != null || row.sanctioned != null)
       ? { sanctioned: row.sanctioned, awardingBody: row.awarding_body, country: row.country,
           meetName: row.meet_name, importRef: row.import_ref }
@@ -107,6 +115,7 @@ function effortFromRow(row) {
     protocolId: row.protocol_id,
     set: row.set_json,
     conditions: row.conditions,
+    summary: row.summary,
     source: row.source,
     reps: row.reps ? row.reps.map(fromRow) : undefined,
     createdBy: row.created_by,
@@ -206,6 +215,8 @@ export class SupabaseResultsRepository extends IResultsRepository {
   // A set as swum → one set_efforts parent + one performance_results row per
   // rep. Not one DB transaction from the client, so on a rep failure we delete
   // the parent (its FK cascade removes any reps already written).
+  // Idempotent: saving the same run again (same client_uuid) is a no-op that
+  // returns { alreadyPresent: true } — e.g. re-importing a Poolside file.
   async addSetResult(athleteId, sr) {
     if (!supabase) return UNAVAILABLE;
     const parent = {
@@ -215,6 +226,7 @@ export class SupabaseResultsRepository extends IResultsRepository {
       protocol_id: sr.protocolId ?? null,
       set_json: sr.set,
       conditions: sr.conditions ?? {},
+      summary: sr.summary ?? null,
       source: sr.source || 'stopwatch',
     };
     const { data: eff, error: e1 } = await supabase
@@ -222,7 +234,13 @@ export class SupabaseResultsRepository extends IResultsRepository {
       .insert(parent)
       .select('id')
       .single();
-    if (e1) return { data: null, error: e1 };
+    if (e1) {
+      // 23505 = unique violation; on client_uuid it means this run is already saved.
+      if (e1.code === '23505' && parent.client_uuid && /client_uuid/.test(`${e1.message} ${e1.details || ''}`)) {
+        return { data: { effortId: null, reps: 0, alreadyPresent: true }, error: null };
+      }
+      return { data: null, error: e1 };
+    }
 
     const reps = (sr.reps || []).map((rep) => ({
       athlete_user_id: athleteId,
@@ -236,6 +254,8 @@ export class SupabaseResultsRepository extends IResultsRepository {
       pool_type: rep.poolType ?? sr.conditions?.poolType,
       time_sec: rep.timeSec != null ? Number(rep.timeSec) : null,
       pb_at_swim_sec: rep.pbAtSwim != null ? Number(rep.pbAtSwim) : null,
+      metrics: rep.metrics ?? {},
+      splits: rep.splits ?? null,
       source: parent.source,
       notes: rep.note ?? null,
     }));
@@ -247,7 +267,19 @@ export class SupabaseResultsRepository extends IResultsRepository {
         return { data: null, error: e2 };
       }
     }
-    return { data: { effortId: eff.id, reps: reps.length }, error: null };
+    return { data: { effortId: eff.id, reps: reps.length, alreadyPresent: false }, error: null };
+  }
+
+  // Rewrite one run's derived summary (after an analyser improves). Reps untouched.
+  async updateSetEffortSummary(effortId, summary) {
+    if (!supabase) return UNAVAILABLE;
+    const { data, error } = await supabase
+      .from('set_efforts')
+      .update({ summary })
+      .eq('id', effortId)
+      .select('id');
+    if (error) return { data: null, error };
+    return { data: { updated: (data || []).length }, error: null };
   }
 
   async listSetEfforts(athleteId, { protocolId, from, to } = {}) {

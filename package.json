@@ -4,9 +4,12 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-setformat.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-setformat.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node src/session/protocolFormat.test.mjs && node tests/services/run.mjs && node supabase/tests/athlete_records.test.mjs && node supabase/tests/test_protocols.test.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

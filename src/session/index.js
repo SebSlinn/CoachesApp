@@ -23,3 +23,6 @@ export {
 
 // add to src/session/index.js
 export * from './setFormat.js';
+
+// Test Set Library — protocols, prescriptions, analysers
+export * from './protocolFormat.js';

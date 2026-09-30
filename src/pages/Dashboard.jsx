@@ -55,6 +55,7 @@ export default function Dashboard() {
         <DashCard title="Training Classifier" desc="Build and analyse training sets" onClick={() => navigate('/classifier')} />
         <DashCard title="Athlete Setup" desc="Manage athlete profiles and times" onClick={() => navigate('/athlete-setup')} />
         <DashCard title="Set Builder" desc="Create and edit training sessions" onClick={() => navigate('/set-builder')} />
+        <DashCard title="Test Sets" desc="The test library — targets for your swimmers" onClick={() => navigate('/test-sets')} />
         {isCoach && <DashCard title="My Groups" desc="Manage your squads" onClick={() => navigate('/groups')} />}
         {isCoach && <DashCard title="My Athletes" desc="View athlete profiles" onClick={() => navigate('/athletes')} />}
         {isManager && <DashCard title="Manage Invitations" desc="Issue and track invites" onClick={() => navigate('/admin/invites')} />}

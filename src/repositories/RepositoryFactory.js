@@ -10,6 +10,7 @@ import { LocalSessionRepository } from './local/LocalSessionRepository';
 import { SupabaseGroupRepository } from './supabase/SupabaseGroupRepository';
 import { SupabaseLogSharingRepository } from './supabase/SupabaseLogSharingRepository';
 import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository';
+import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
 
 let authRepository = null;
 let membershipRepository = null;
@@ -18,6 +19,7 @@ let sessionRepository = null;
 let groupRepository = null;
 let logSharingRepository = null;
 let resultsRepository = null;
+let protocolsRepository = null;
 
 export function getAuthRepository() {
   if (!authRepository) authRepository = new SupabaseAuthRepository();
@@ -54,4 +56,11 @@ export function getLogSharingRepository() {
 export function getResultsRepository() {
   if (!resultsRepository) resultsRepository = new SupabaseResultsRepository();
   return resultsRepository;
+}
+
+// ---- Test Set Library (added 2026-09-30) — server-only: visibility follows
+// the grant tree, which lives in the database.
+export function getProtocolsRepository() {
+  if (!protocolsRepository) protocolsRepository = new SupabaseProtocolsRepository();
+  return protocolsRepository;
 }

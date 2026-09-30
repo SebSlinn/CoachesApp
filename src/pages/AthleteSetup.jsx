@@ -434,11 +434,14 @@ export default function AthleteSetup() {
                 SAVE TIMES TO RECORDS{officialRecords.length ? ' (' + officialRecords.length + ' official)' : ''}
               </button>
             )}
-            {athleteId && (
+            {athleteId && (<>
               <button onClick={viewRecords} style={{ padding: '6px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 5, color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'monospace', fontSize: 9, fontWeight: 700 }}>
                 VIEW RECORDS / LOG
               </button>
-            )}
+              <button onClick={() => navigate('/test-sets', { state: { athleteId, name: athleteName } })} style={{ padding: '6px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 5, color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontFamily: 'monospace', fontSize: 9, fontWeight: 700 }}>
+                TEST SETS
+              </button>
+            </>)}
           </div>
           <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 6 }}>
             Save Athlete keeps the coaching profile here. {athleteId ? 'Save Times To Records writes the times to ' + (athleteName || 'the athlete') + '’s log — dated (parsed) times as official, typed times as time trials.' : 'Load an athlete to save their times to records.'}
