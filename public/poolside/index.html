@@ -202,6 +202,28 @@
   }
   .toast button{ background:none; border:none; color:var(--accent); font-weight:800; font-size:13px; cursor:pointer; }
   .toast[hidden]{ display:none; }
+
+  /* ---- test set mode (a SwimZone test handed over from Test Sets) ---- */
+  .test-panel{ margin-top:8px; background:var(--surface); border:1px solid var(--accent); border-radius:14px; padding:10px 14px; box-shadow:var(--shadow); }
+  .test-panel[hidden]{ display:none; }
+  .test-panel .t-head{ display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .test-panel .t-head b{ color:var(--accent); text-transform:none; letter-spacing:0; font-size:13px; }
+  .test-panel .t-row{ display:flex; justify-content:space-between; align-items:flex-end; gap:10px; margin-top:6px; }
+  .test-panel .t-rep{ font-size:15px; font-weight:800; }
+  .test-panel .t-rep .sub{ display:block; font-size:12px; font-weight:600; color:var(--muted); }
+  .test-panel .t-target{ text-align:right; }
+  .test-panel .t-target .lbl{ font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .test-panel .t-target .val{ font-size:24px; font-weight:800; color:var(--accent); }
+  .test-panel .t-go{ margin-top:8px; padding:7px 10px; border-radius:10px; background:var(--surface-2); font-weight:800; font-size:15px; text-align:center; }
+  .test-panel .t-go.now{ background:var(--lane); color:var(--lane-ink); }
+  .test-panel .t-go.late{ background:var(--warn-bg); color:var(--warn); }
+  .test-panel .t-go.done{ background:var(--good-bg); color:var(--good); }
+  .test-panel .t-dots{ display:flex; gap:4px; flex-wrap:wrap; margin-top:8px; }
+  .test-panel .t-dots span{ width:9px; height:9px; border-radius:50%; background:var(--line); }
+  .test-panel .t-dots span.done{ background:var(--good); }
+  .test-panel .t-dots span.next{ background:var(--lane); }
+  .rep-test{ font-size:12px; font-weight:700; color:var(--accent); margin-top:4px; }
+  .rep-test .readings{ color:var(--ink); font-weight:600; }
 </style>
 </head>
 <body>
@@ -215,6 +237,8 @@
   <div class="set-strip" id="setStrip"></div>
 
   <button class="event-card" id="eventCard" type="button"></button>
+
+  <div class="test-panel" id="testPanel" hidden></div>
 
   <div class="clock-wrap">
     <div class="clock mono" id="clockDisplay">0.00</div>
@@ -344,6 +368,18 @@
       <button class="primary" id="resultsClose" type="button">Close</button>
     </div>
     <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Copy pastes the recap above. CSV opens in a spreadsheet. SwimZone saves a file to import into an athlete's records.</p>
+  </div>
+</div>
+
+<!-- ============ test mode: readings after a rep (HR, lactate, RPE…) ============ -->
+<div class="overlay" id="measuresOverlay" hidden>
+  <div class="sheet">
+    <h3 id="measuresTitle">Readings</h3>
+    <div id="measuresFields"></div>
+    <div class="actions">
+      <button class="ghost" id="measuresSkip" type="button">Skip</button>
+      <button class="primary" id="measuresSave" type="button">Save</button>
+    </div>
   </div>
 </div>
 
@@ -737,6 +773,11 @@ const SwimCore = (function(){
 
   let state = loadState();
 
+  // A SwimZone test hand-off arrives as #run=<encoded> (from Test Sets →
+  // "Time in Poolside"). Read it now, before anything rewrites the URL; it is
+  // decoded (async) and applied once the page is wired up — see the end.
+  const RUN_HASH = (location.hash.match(/[#&]run=([^&]+)/) || [])[1] || null;
+
   // Athlete handoff from SwimZone Athlete Setup: ?aid=<athlete_user_id>&name=&se=
   // The id is the identity every export is stamped with, so results can be saved
   // straight back to the right athlete. Opening Poolside for a DIFFERENT athlete
@@ -760,6 +801,212 @@ const SwimCore = (function(){
       try { history.replaceState({}, '', location.pathname); } catch(e){}
     } catch(e){}
   })();
+
+  /* ============================================================
+     TEST SET MODE — a SwimZone test (swimzone.testrun/1) handed over
+     from the Test Sets page. The test's lines become ordinary Poolside
+     sets (one per line, e.g. "10×100 Free · set 1"), so every tap, undo,
+     review and split works exactly as normal. This layer only adds:
+     which prescribed rep is next, its target, the send-off countdown,
+     readings after each rep (HR, lactate, RPE…), and the SwimZone test
+     export (swimzone.setresult/1).
+     ============================================================ */
+  const SZ_TO_PS = { FS:'FREE', BK:'BACK', BR:'BREAST', Fly:'FLY', IM:'IM', Kick:'FREE' };
+  const PS_STROKE_NAME = { FS:'Free', BK:'Back', BR:'Breast', Fly:'Fly', IM:'IM', Kick:'Kick' };
+  const POOL_LEN = { '25SC':25, '50LC':50, '25Y':25 };
+  const READING_FIELDS = {
+    hr:      { label:'Heart rate', unit:'bpm', step:'1', ph:'e.g. 168' },
+    lactate: { label:'Lactate', unit:'mmol/L', step:'0.1', ph:'e.g. 3.4' },
+    rpe:     { label:'RPE', unit:'6–20', step:'1', ph:'e.g. 15' },
+    sc:      { label:'Stroke count', unit:'whole rep', step:'1', ph:'strokes' },
+    sr:      { label:'Stroke rate', unit:'cycles/min', step:'0.1', ph:'e.g. 42' },
+  };
+
+  function b64urlBytes(str){
+    const b = atob(str.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((str.length + 3) % 4));
+    const out = new Uint8Array(b.length); for (let i=0;i<b.length;i++) out[i] = b.charCodeAt(i); return out;
+  }
+  // Same format as decodeHandoff() in src/session/protocolFormat.js.
+  async function decodeRun(str){
+    const kind = str.slice(0,2); let bytes = b64urlBytes(str.slice(2));
+    if (kind === 'z.'){
+      const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      bytes = new Uint8Array(buf);
+    } else if (kind !== 'j.') throw new Error('not a SwimZone test link');
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  // One Poolside set per consecutive run of reps from the same test line.
+  function setsFromRun(run){
+    const poolLength = POOL_LEN[run.set && run.set.poolType] || 25;
+    const groups = [];
+    run.reps.forEach(r => {
+      const key = r.blockIdx+':'+r.lineIdx+':'+r.blockRepeat;
+      const g = groups[groups.length-1];
+      if (g && g.key === key) g.reps.push(r); else groups.push({ key, reps:[r] });
+    });
+    return groups.map(g => {
+      const r0 = g.reps[0];
+      const name = (g.reps.length > 1 ? g.reps.length+'×' : '') + r0.distM + ' ' + (PS_STROKE_NAME[r0.stroke]||r0.stroke) + (r0.note ? ' · '+r0.note : '');
+      const set = makeSet(name, { stroke: SZ_TO_PS[r0.stroke] || 'FREE', distance: Number(r0.distM), poolLength });
+      set.testRepNos = g.reps.map(r => r.repNo);
+      return set;
+    });
+  }
+
+  function applyRun(run){
+    if (!run || run.fmt !== 'swimzone.testrun/1' || !Array.isArray(run.reps) || !run.reps.length){ showToast('That test link could not be read'); return; }
+    if (state.test && state.test.run.sessionId === run.sessionId){ render(); return; }   // a refresh of the same link
+    const anyTaps = state.sets.some(s => s.events.length);
+    if (anyTaps){ try { localStorage.setItem(STORE_KEY + '-before-test', JSON.stringify(state)); } catch(e){} }
+    state = {
+      session: { athlete: (run.athlete && run.athlete.name) || '', szAthleteId: (run.athlete && run.athlete.id) || '', seNumber:'',
+                 date: todayISO(), location: run.location || (state.session && state.session.location) || '' },
+      sets: setsFromRun(run), activeSetIndex: 0,
+      test: { run, readings: {} },
+    };
+    render();
+    showToast('Loaded ' + run.protocol.name + (run.athlete && run.athlete.name ? ' for ' + run.athlete.name : '') + (anyTaps ? ' — previous session kept aside' : ''));
+  }
+
+  // Timed reps matched to prescribed reps, in swim order.
+  function testProgress(){
+    const t = state.test; if (!t) return null;
+    const done = []; let extra = 0; let running = null;
+    state.sets.forEach((set, setIdx) => {
+      if (!set.testRepNos) return;
+      const d = SwimCore.derive(set.events, SwimCore.buildPlan(set.event));
+      d.reps.forEach((rep, i) => { if (i < set.testRepNos.length) done.push({ repNo:set.testRepNos[i], rep, setIdx }); else extra++; });
+      if (d.current && d.reps.length < set.testRepNos.length) running = { repNo:set.testRepNos[d.reps.length], rep:d.current, setIdx };
+    });
+    const doneNos = new Set(done.map(x => x.repNo));
+    const next = t.run.reps.find(r => !doneNos.has(r.repNo) && (!running || r.repNo !== running.repNo)) || null;
+    const last = done.length ? done.reduce((a,b) => (b.rep.finishTime > a.rep.finishTime ? b : a)) : null;
+    return { done, doneNos, extra, running, next, last, total: t.run.reps.length };
+  }
+  const repPlan = (repNo) => state.test && state.test.run.reps.find(r => r.repNo === repNo);
+  function parseClock(v){ if (v==null || v==='') return NaN; const s=String(v); if (s.includes(':')){ const [m,x]=s.split(':'); return Number(m)*60+Number(x); } return Number(s); }
+  function goLabel(iv){ if (!iv) return ''; if (iv.type==='fixed') return iv.onTime ? 'on '+iv.onTime : ''; const r=Number(iv.restSec)||0; return r ? r+' s rest' : 'straight on'; }
+
+  function readingsNeeded(repNo, rep){
+    const pr = repPlan(repNo); if (!pr) return [];
+    const m = pr.measures || [];
+    const out = [];
+    ['hr','lactate','rpe'].forEach(k => { if (m.includes(k)) out.push(k); });
+    if (m.includes('sc') && !(rep && rep.scCount)) out.push('sc');
+    if (m.includes('sr') && !(rep && rep.srResults && rep.srResults.length)) out.push('sr');
+    return out;
+  }
+
+  let testTimer = null;
+  function renderTestPanel(){
+    const panel = $('testPanel');
+    const t = state.test;
+    if (!t){ panel.hidden = true; if (testTimer){ clearInterval(testTimer); testTimer = null; } return; }
+    panel.hidden = false;
+    if (!testTimer) testTimer = setInterval(renderTestPanel, 250);
+    const pg = testProgress(); const run = t.run;
+    const cur = pg.running ? repPlan(pg.running.repNo) : pg.next;
+    let go = '', goCls = '';
+    if (!pg.running && !pg.next){ go = 'All ' + pg.total + ' reps timed — tap Results to save for SwimZone'; goCls = 'done'; }
+    else if (pg.running){ go = 'Swimming rep ' + pg.running.repNo; }
+    else if (!pg.last){ go = 'Ready — rep 1, ' + goLabel(cur.interval); }
+    else {
+      const lp = repPlan(pg.last.repNo) || {};
+      const iv = lp.interval || {};
+      let goAt = null;
+      if (iv.type === 'fixed' && Number.isFinite(parseClock(iv.onTime))) goAt = pg.last.rep.startTime + parseClock(iv.onTime)*1000;
+      else if (iv.type === 'rest') goAt = pg.last.rep.finishTime + (Number(iv.restSec)||0)*1000;
+      if (goAt == null){ go = 'Next: rep ' + cur.repNo; }
+      else {
+        const left = goAt - Date.now();
+        if (left > 500){ go = 'Go in ' + SwimCore.fmtClock(Math.ceil(left/1000)*1000).replace(/\.00$/,''); }
+        else if (left > -3000){ go = 'GO — rep ' + cur.repNo; goCls = 'now'; }
+        else { go = 'Rep ' + cur.repNo + ' — ' + SwimCore.fmtClock(-left).replace(/\.\d\d$/,'') + ' past the send-off'; goCls = 'late'; }
+      }
+    }
+    const dots = run.reps.map(r => '<span class="'+(pg.doneNos.has(r.repNo)?'done':(cur && r.repNo===cur.repNo?'next':''))+'"></span>').join('');
+    panel.innerHTML =
+      '<div class="t-head"><span>Test</span><b>'+escapeHtml(run.protocol.name)+(run.protocol.version>1?' v'+run.protocol.version:'')+'</b></div>'+
+      (cur ? '<div class="t-row"><div class="t-rep">Rep '+cur.repNo+' of '+pg.total+
+        '<span class="sub">'+cur.distM+' '+(PS_STROKE_NAME[cur.stroke]||cur.stroke)+(cur.intensity?' · '+escapeHtml(cur.intensity):'')+' · '+goLabel(cur.interval)+(cur.note?' · '+escapeHtml(cur.note):'')+'</span></div>'+
+        '<div class="t-target"><div class="lbl">Target</div><div class="val mono">'+escapeHtml(cur.targetLabel||'—')+'</div></div></div>' : '')+
+      '<div class="t-go '+goCls+'">'+go+'</div>'+
+      '<div class="t-dots">'+dots+'</div>'+
+      (pg.extra ? '<div class="rep-meta">'+pg.extra+' extra rep'+(pg.extra===1?'':'s')+' beyond the test — left out of the SwimZone file</div>' : '');
+    // keep the clock/buttons on the set that holds the next prescribed rep
+    if (!pg.running && cur){
+      const idx = state.sets.findIndex(st => st.testRepNos && st.testRepNos.includes(cur.repNo));
+      if (idx >= 0 && idx !== state.activeSetIndex && !derived().current){ state.activeSetIndex = idx; render(); }
+    }
+  }
+
+  // After a prescribed rep finishes: ask for the readings it records.
+  let measuresRepNo = null;
+  function openReadings(repNo, rep, fields){
+    const pr = repPlan(repNo); if (!pr) return;
+    const have = state.test.readings[repNo] || {};
+    const list = fields || Object.keys(have).concat(readingsNeeded(repNo, rep)).filter((k,i,a) => a.indexOf(k) === i);
+    if (!list.length) return;
+    measuresRepNo = repNo;
+    $('measuresTitle').textContent = 'Rep ' + repNo + ' — ' + (rep ? SwimCore.fmtClock(rep.finishTime - rep.startTime) : '') + (pr.targetLabel ? ' (target ' + pr.targetLabel + ')' : '');
+    $('measuresFields').innerHTML = list.map(k => {
+      const f = READING_FIELDS[k]; if (!f) return '';
+      return '<div class="field"><label>'+f.label+' <span style="text-transform:none;font-weight:600">· '+f.unit+'</span></label>'+
+             '<input type="number" inputmode="decimal" step="'+f.step+'" data-reading="'+k+'" placeholder="'+f.ph+'" value="'+(have[k]!=null?have[k]:'')+'"></div>';
+    }).join('');
+    openOverlay($('measuresOverlay'));
+    setTimeout(() => { const first = $('measuresFields').querySelector('input'); if (first) try { first.focus(); } catch(e){} }, 60);
+  }
+  function saveReadings(){
+    if (measuresRepNo == null) return;
+    const vals = {};
+    $('measuresFields').querySelectorAll('[data-reading]').forEach(inp => {
+      const v = inp.value.trim(); if (v === '') return; const n = Number(v); if (Number.isFinite(n)) vals[inp.dataset.reading] = n;
+    });
+    state.test.readings[measuresRepNo] = vals;
+    measuresRepNo = null; hideOverlay($('measuresOverlay')); render();
+  }
+
+  // swimzone.setresult/1 — what SwimZone's "Import Poolside results" saves.
+  function toSetResult(){
+    const t = state.test, run = t.run, pg = testProgress();
+    const reps = pg.done.slice().sort((a,b) => a.repNo - b.repNo).map(({ repNo, rep }) => {
+      const pr = repPlan(repNo);
+      let cum = 0;
+      const splits = SwimCore.repLengthTimes(rep).filter(l => l.to != null).map(l => { cum += l.ms; return { dist:l.to, sec: Math.round(cum/10)/100 }; });
+      const m = Object.assign({}, t.readings[repNo] || {});
+      if (m.sc == null && rep.scCount) m.sc = rep.scCount;
+      if (m.sr == null && rep.srResults.length){
+        const v = rep.srResults.map(r => r.strokeRate).filter(x => x != null);
+        if (v.length) m.sr = Math.round(v.reduce((a,b) => a+b, 0) / v.length * 10) / 10;
+      }
+      return { repNo, distM: pr.distM, stroke: pr.stroke, timeSec: Math.round((rep.finishTime - rep.startTime)/10)/100,
+               startedAt: new Date(rep.startTime).toISOString(), targetTime: pr.targetTime || null, pbAtSwim: pr.pbAtSwim ?? null,
+               splits, metrics: m, note: rep.status === 'complete' ? '' : 'check timing: ' + rep.finishFlags.join(', ') };
+    });
+    return {
+      fmt: 'swimzone.setresult/1', sessionId: run.sessionId,
+      athleteId: (run.athlete && run.athlete.id) || state.session.szAthleteId || null,
+      athleteName: state.session.athlete || (run.athlete && run.athlete.name) || '',
+      swumOn: state.session.date || todayISO(),
+      protocolId: run.protocol.id, protocolKey: run.protocol.key, protocolVersion: run.protocol.version, protocolName: run.protocol.name,
+      set: run.set, params: run.params,
+      conditions: { poolType: run.set && run.set.poolType, location: state.session.location || '' },
+      reps, missing: run.reps.filter(r => !pg.doneNos.has(r.repNo)).map(r => r.repNo), extraReps: pg.extra,
+    };
+  }
+  function testSummaryText(sr){
+    const lines = [sr.protocolName + (sr.athleteName ? ' — ' + sr.athleteName : ''), [sr.swumOn, sr.conditions.location].filter(Boolean).join(' · '), ''];
+    sr.reps.forEach(r => {
+      const bits = [];
+      if (r.targetTime) bits.push('target ' + r.targetTime);
+      ['hr','lactate','rpe','sc','sr'].forEach(k => { if (r.metrics[k] != null) bits.push(({hr:'HR',lactate:'La',rpe:'RPE',sc:'SC',sr:'SR'})[k] + ' ' + r.metrics[k]); });
+      lines.push('Rep ' + r.repNo + ': ' + SwimCore.fmtClock(r.timeSec*1000) + (bits.length ? '  (' + bits.join(', ') + ')' : '') + (r.note ? '  — ' + r.note : ''));
+    });
+    if (sr.missing.length) lines.push('', 'Not timed: rep' + (sr.missing.length>1?'s ':' ') + sr.missing.join(', '));
+    return lines.join('\n');
+  }
 
   function activeSet(){ return state.sets[state.activeSetIndex]; }
   let editingEvent = { ...(activeSet().event || {}) };
@@ -903,6 +1150,7 @@ const SwimCore = (function(){
     undoBtn.style.opacity = canUndo ? 1 : .4;
 
     renderAllReps();
+    renderTestPanel();
     saveState();
   }
 
@@ -911,6 +1159,20 @@ const SwimCore = (function(){
   // just whatever set happens to be active right now. Switching sets with
   // the strip up top still only changes which set the clock/buttons act on.
   function renderRepCard(rep, idx, setIdx, set, restBeforeMs){
+    const testNo = set.testRepNos ? set.testRepNos[idx-1] : undefined;
+    let testBit = '';
+    if (set.testRepNos && state.test){
+      if (testNo == null) testBit = '<div class="rep-test" style="color:var(--warn)">Extra rep — not part of the test</div>';
+      else {
+        const pr = repPlan(testNo) || {};
+        const rd = state.test.readings[testNo] || {};
+        const rdTxt = Object.keys(rd).map(k => ({hr:'HR',lactate:'Lactate',rpe:'RPE',sc:'SC',sr:'SR'})[k] + ' ' + rd[k]).join(' · ');
+        const canRead = rdTxt || readingsNeeded(testNo, rep).length;
+        testBit = '<div class="rep-test">Test rep '+testNo+(pr.targetLabel?' · target '+escapeHtml(pr.targetLabel):'')+
+          (rdTxt ? ' · <span class="readings">'+rdTxt+'</span>' : '')+'</div>'+
+          (canRead ? '<div class="rep-actions"><button data-readings="'+testNo+'" data-setidx="'+setIdx+'" data-start="'+rep.startTime+'">'+(rdTxt?'Edit readings':'Add readings')+'</button></div>' : '');
+      }
+    }
     const total = SwimCore.fmtClock(rep.finishTime - rep.startTime);
     const lengths = SwimCore.repLengthTimes(rep);
     const splitsHtml = lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
@@ -932,6 +1194,7 @@ const SwimCore = (function(){
     return '<div class="rep-card">'+
       '<div class="rep-top"><span class="rep-num">Rep '+idx+'</span>'+badge+'</div>'+
       '<div class="rep-total mono">'+total+'</div>'+
+      testBit+
       (splitsHtml ? '<div class="splits">'+splitsHtml+'</div>' : '')+
       '<div class="rep-meta">'+timeMeta+'</div>'+
       (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
@@ -971,6 +1234,14 @@ const SwimCore = (function(){
         cards+
       '</div>';
     }).join('');
+    repList.querySelectorAll('[data-readings]').forEach(b => b.addEventListener('click', () => {
+      const set = state.sets[Number(b.dataset.setidx)];
+      const rep = SwimCore.derive(set.events, SwimCore.buildPlan(set.event)).reps.find(r => r.startTime === Number(b.dataset.start));
+      const no = Number(b.dataset.readings);
+      const have = Object.keys((state.test && state.test.readings[no]) || {});
+      const fields = have.concat(readingsNeeded(no, rep)).filter((k,i,a) => a.indexOf(k) === i);
+      openReadings(no, rep, fields.length ? fields : ['hr','lactate','rpe']);
+    }));
     repList.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => {
       state.sets[Number(b.dataset.setidx)].acked.push(b.dataset.ack); render();
     }));
@@ -1066,6 +1337,7 @@ const SwimCore = (function(){
 
   function addEvent(type, meta, button){
     if (Date.now() - lastOverlayCloseAt < GHOST_TAP_GUARD_MS) return;
+    const doneBefore = state.test ? testProgress().done.length : 0;
     const t = Date.now();
     const ev = SwimCore.makeEvent(type, t, meta);
     activeSet().events.push(ev);
@@ -1083,6 +1355,13 @@ const SwimCore = (function(){
     if (flagged) vibrate([35,60,35]); // distinct double-buzz when something needs a look
     render();
     if (flagged) showToast('Possible double-tap', 'Undo', () => { const set = activeSet(); set.events = set.events.filter(e=>e.id!==ev.id); render(); });
+    if (state.test && !flagged){
+      const pg = testProgress();
+      if (pg.done.length > doneBefore){
+        const justDone = pg.done.reduce((a,b) => (b.rep.finishTime > a.rep.finishTime ? b : a));
+        if (readingsNeeded(justDone.repNo, justDone.rep).length) setTimeout(() => openReadings(justDone.repNo, justDone.rep), 350);
+      }
+    }
   }
 
   addTapListener(btnDive, () => addEvent('start', { startType:'dive' }, btnDive));
@@ -1222,6 +1501,7 @@ const SwimCore = (function(){
 
   /* ---- new session / export ---- */
   function resetSession(){
+    state.test = null;
     state.sets = [ makeSet('Set 1', { stroke:'FREE', distance:100, poolLength:25 }) ]; // 100 Front Crawl (Free)
     state.activeSetIndex = 0;
   }
@@ -1272,7 +1552,8 @@ const SwimCore = (function(){
   }
   addTapListener($('exportBtn'), () => {
     const exported = buildExport();
-    $('resultsText').textContent = SwimCore.toSummaryText(exported);
+    $('resultsText').textContent = state.test ? testSummaryText(toSetResult()) : SwimCore.toSummaryText(exported);
+    $('downloadJsonBtn').textContent = state.test ? 'SwimZone test' : 'SwimZone';
     $('shareSummaryBtn').hidden = !(navigator.share);
     openOverlay(resultsOverlay);
   });
@@ -1295,6 +1576,14 @@ const SwimCore = (function(){
     if (await saveFile(currentStamp+'.csv', SwimCore.toCSV(exported))) showToast('Saved ' + currentStamp + '.csv — opens straight into a spreadsheet');
   });
   addTapListener($('downloadJsonBtn'), async () => {
+    if (state.test){
+      const sr = toSetResult();
+      if (!sr.reps.length){ showToast('No test reps timed yet'); return; }
+      const name = currentStamp + '_' + (sr.protocolKey || 'test') + '.swimzone-test.json';
+      if (await saveFile(name, JSON.stringify(sr, null, 2)))
+        showToast('Saved ' + sr.reps.length + ' of ' + (sr.reps.length + sr.missing.length) + ' reps — import in SwimZone Test Sets');
+      return;
+    }
     const exported = currentExport || buildExport();
     const sz = SwimCore.toSwimZone(exported);
     if (await saveFile(currentStamp+'.swimzone.json', JSON.stringify(sz, null, 2))){
@@ -1309,11 +1598,20 @@ const SwimCore = (function(){
   /* ---- tapping the dimmed backdrop closes the sheet, same as Cancel (the
      confirm sheet handles its own backdrop inside askConfirm, since its
      buttons carry per-call listeners that need matching cleanup) ---- */
-  [eventOverlay, settingsOverlay, resultsOverlay].forEach(ov => {
+  addTapListener($('measuresSave'), saveReadings);
+  addTapListener($('measuresSkip'), () => { measuresRepNo = null; hideOverlay($('measuresOverlay')); });
+  $('measuresFields').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveReadings(); });
+
+  [eventOverlay, settingsOverlay, resultsOverlay, $('measuresOverlay')].forEach(ov => {
     ov.addEventListener('click', (e) => { if (e.target === ov) hideOverlay(ov); });
   });
 
   render();
+
+  if (RUN_HASH){
+    try { history.replaceState({}, '', location.pathname + location.search); } catch(e){}
+    decodeRun(RUN_HASH).then(applyRun).catch(() => showToast('That test link could not be read — open it again from SwimZone'));
+  }
 })();
 </script>
 

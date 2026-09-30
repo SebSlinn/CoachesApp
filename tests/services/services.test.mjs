@@ -55,5 +55,22 @@ store.efforts[0].summary = null;
 const ra = await R.reanalyseSetResults(c1.data.id, 'sam');
 ok('reanalyse rewrites the summary from stored reps', ra.data?.updated === 1 && store.efforts[0].summary?.peakHr === 185, store.efforts[0].summary);
 
+console.log('\ningest a Poolside test file');
+const file = { fmt: 'swimzone.setresult/1', sessionId: 'pool-sess-9', athleteId: 'sam', athleteName: 'Sam',
+  swumOn: '2026-09-30', protocolId: c1.data.id, protocolName: 'Mini step', set: pr.set, params: pr.params,
+  conditions: { poolType: '25SC' }, missing: [],
+  reps: [{ repNo: 1, distM: 200, stroke: 'FS', timeSec: 152, targetTime: '2:30', metrics: { hr: 148, lactate: 1.9 } },
+         { repNo: 2, distM: 200, stroke: 'FS', timeSec: 132, targetTime: '2:10', metrics: { hr: 184, lactate: 5.5 } }] };
+const i1 = await R.ingestPoolsideSetResult(file, {});
+ok('saved to the athlete in the file', i1.data && i1.data.athleteId === 'sam' && i1.data.reps === 2 && !i1.data.alreadyPresent, i1);
+ok('summary computed on import', i1.data.summary && i1.data.summary.analyser === 'step' && i1.data.summary.peakHr === 184, i1.data.summary);
+const i2 = await R.ingestPoolsideSetResult(file, {});
+ok('importing the same file again is a no-op', i2.data && i2.data.alreadyPresent === true, i2);
+ok('file for another swimmer refused when one is loaded',
+   (await R.ingestPoolsideSetResult({ ...file, sessionId: 'x2' }, { expectAthleteId: 'jo' })).error?.message.includes('not the loaded athlete'));
+ok('file with no athlete uses the fallback',
+   (await R.ingestPoolsideSetResult({ ...file, sessionId: 'x3', athleteId: null }, { fallbackAthleteId: 'jo' })).data?.athleteId === 'jo');
+ok('not a test file → clear error', (await R.ingestPoolsideSetResult({ fmt: 'swimzone.import/1' })).error?.message.includes('not a Poolside test file'));
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

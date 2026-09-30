@@ -15,7 +15,7 @@ import {
   loadAthlete,
   saveAthlete,
 } from '../services/athleteService.js';
-import { getAthleteBests, ingestPoolsideExport, persistAthleteTimes, importOfficialRecords } from '../services/results.js';
+import { getAthleteBests, ingestPoolsideExport, ingestPoolsideSetResult, persistAthleteTimes, importOfficialRecords } from '../services/results.js';
 import { parsePaste } from '../athlete/swimmingResults.js';
 
 // Records store the stroke as a code (FS/BK/BR/Fly/IM); the setup grid keys
@@ -239,6 +239,16 @@ export default function AthleteSetup() {
     if (!mRaw) { setPoolsideMsg('Paste a Poolside export first.'); return; }
     let mEnv;
     try { mEnv = JSON.parse(mRaw); } catch { setPoolsideMsg('That isn\'t valid JSON.'); return; }
+    // A test timed in Poolside set mode (from Test Sets) — saved as a test run.
+    if (mEnv.fmt === 'swimzone.setresult/1') {
+      const { data, error } = await ingestPoolsideSetResult(mEnv, { expectAthleteId: athleteId, fallbackAthleteId: athleteId });
+      if (error) { setPoolsideMsg(error.message || 'Save failed.'); return; }
+      setPoolsideMsg(data.alreadyPresent
+        ? 'That test is already saved.'
+        : 'Saved ' + (mEnv.protocolName || 'the test') + ' — ' + data.reps + ' rep' + (data.reps === 1 ? '' : 's') + ' for ' + (data.athleteName || athleteName || 'the athlete') + '.');
+      mEl.value = '';
+      return;
+    }
     if (mEnv.fmt !== 'swimzone.import/1') { setPoolsideMsg('That isn\'t a Poolside SwimZone export.'); return; }
 
     const mFileId = mEnv.athlete?.id || null;

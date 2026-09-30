@@ -11,6 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import {
   validateProtocol, resolveParams, expandReps, prescribe, prescribeGroup,
   cleanMetrics, lineMeasures, checkConstraints, analyse, ANALYSERS,
+  buildHandoff, encodeHandoff, decodeHandoff,
 } from './protocolFormat.js';
 
 let pass = 0, fail = 0;
@@ -152,6 +153,21 @@ async function run() {
   ok('series: mean 293, spread 6, drift +2 s/rep', se.meanSec === 293 && se.spreadSec === 6 && se.driftSecPerRep === 2, se);
   ok('unknown analyser falls back to series', analyse('nope', []).analyser === 'series');
   ok('analyse stamps analyser + version', s1.analyser === 'step' && s1.v === 1);
+
+  console.log('\nPoolside hand-off');
+  const grp2 = prescribeGroup(turn, { chosen: { sendOff: '1:25' }, athletes: [athlete, { id: 'a2', name: 'Jo', pbByEvent: {} }] });
+  const h = buildHandoff(grp2, 'a2', { sessionId: 'sess-1' });
+  ok('hand-off is for the chosen swimmer', h.athlete.id === 'a2' && h.athlete.name === 'Jo');
+  ok('hand-off carries 21 reps with measures and resolved send-off',
+     h.reps.length === 21 && h.reps[10].measures.length === 0 && h.reps[0].interval.onTime === '1:25');
+  ok('hand-off carries protocol identity', h.protocol.key === 'turn-20x100' && h.protocol.id === turn.id && h.sessionId === 'sess-1');
+  const enc = await encodeHandoff(h);
+  ok('encoded compactly (deflate) for a URL', enc.startsWith('z.') && enc.length < 2500 && /^[A-Za-z0-9._-]+$/.test(enc), enc.length);
+  ok('decodes back to the same object', JSON.stringify(await decodeHandoff(enc)) === JSON.stringify(h));
+  const stepH = buildHandoff(prescribe(step, { athlete }), 'a1');
+  ok('step hand-off has targets as labels', stepH.reps[0].targetLabel === '2:40' && stepH.reps[0].targetTime === '2:40');
+  let threw = false; try { await decodeHandoff('x.abc'); } catch (e) { threw = true; }
+  ok('rejects a non-SwimZone string', threw);
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail ? 1 : 0);

@@ -255,6 +255,35 @@ export const ingestPoolsideExport = async (pAthleteId, pEnvelope) => {
   return repo().addManyIdempotent(pAthleteId, mRows.map(withEffort))
 }
 
+// Ingest a Poolside TEST file (swimzone.setresult/1, from Poolside set mode)
+// into the athlete it was timed for. Idempotent: the file carries the Poolside
+// sessionId, so importing the same file twice saves once.
+// pFallbackAthleteId is used only when the file carries no athlete id; a file
+// for a DIFFERENT athlete than pExpectAthleteId is refused (wrong swimmer loaded).
+// Returns { effortId, reps, alreadyPresent, summary, athleteId, athleteName, missing }.
+export const ingestPoolsideSetResult = async (pEnvelope, pOpts = {}) => {
+  if (!pEnvelope || pEnvelope.fmt !== 'swimzone.setresult/1') return invalid('INVALID: not a Poolside test file')
+  const mFileId = pEnvelope.athleteId || null
+  if (pOpts.expectAthleteId && mFileId && mFileId !== pOpts.expectAthleteId) {
+    return invalid(`This file is for ${pEnvelope.athleteName || 'another swimmer'}, not the loaded athlete. Load them first, then import.`)
+  }
+  const mAthleteId = mFileId || pOpts.fallbackAthleteId || null
+  if (!mAthleteId) return invalid('No athlete to save to — open Poolside from a swimmer so the file carries their id.')
+  if (!Array.isArray(pEnvelope.reps) || pEnvelope.reps.length === 0) return invalid('This file has no timed reps.')
+  const r = await addSetResult(mAthleteId, {
+    protocolId: pEnvelope.protocolId || null,
+    swumOn: pEnvelope.swumOn,
+    sessionId: pEnvelope.sessionId,
+    set: pEnvelope.set,
+    params: pEnvelope.params,
+    conditions: pEnvelope.conditions || {},
+    reps: pEnvelope.reps,
+    source: 'stopwatch',
+  })
+  if (r.error) return r
+  return { data: { ...r.data, athleteId: mAthleteId, athleteName: pEnvelope.athleteName || '', missing: pEnvelope.missing || [] }, error: null }
+}
+
 // A set as swum: a swimzone.set/1 snapshot + an achieved time per rep. Persists
 // as one set_efforts parent + one child row per rep.
 //

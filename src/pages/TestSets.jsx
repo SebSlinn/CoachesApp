@@ -3,19 +3,24 @@
 // pick the swimmer(s), and see the test rep by rep with each swimmer's own
 // targets from their bests. Also lists the previous runs of that test.
 //
-// Reached from the Dashboard, or from Athlete Setup with { athleteId, name } in
-// router state (that athlete is pre-selected). Data via services/protocols.js
+// ONE SWIMMER AT A TIME (agreed 2026-09-30): opened from Athlete Setup with
+// { athleteId, name } in router state — the loaded athlete is the swimmer.
+// Poolside times one person, and a lane of 20 would make the target table
+// unreadable, so there is no multi-swimmer picker here. Opened without an
+// athlete, the page is a read-only preview of the library (rules, not times).
+// (The engine — prescribeGroup / buildHandoff — still supports several
+// swimmers, for a later "coach ticks off, parents time" lane mode.) Data via services/protocols.js
 // and services/results.js; the DB decides which tests and athletes are visible.
-// "Send to Poolside" is the next step (Piece 2) — the prescription shown here is
-// exactly what will be handed over.
+// "Time in Poolside" opens Poolside in set mode for one swimmer, carrying
+// exactly the prescription shown here (compressed into the link, so it works
+// offline). Poolside's "SwimZone test" file comes back through "Import Poolside
+// results" and is saved with its summary.
 
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../hooks/useAuth';
 import { listProtocols, prescribeForAthletes } from '../services/protocols';
-import { getSetResultsByProtocol } from '../services/results';
-import { getLogsSharedWithMe } from '../services/logSharing';
-import { prescribeGroup } from '../session/protocolFormat';
+import { getSetResultsByProtocol, ingestPoolsideSetResult } from '../services/results';
+import { prescribeGroup, buildHandoff, encodeHandoff } from '../session/protocolFormat';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
 const MEASURE_LABEL = { time: 'time', splits: 'splits', sc: 'strokes', sr: 'rate', hr: 'HR', rpe: 'RPE', lactate: 'lactate' };
@@ -94,19 +99,21 @@ function groupRows(pr) {
 export default function TestSets() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, profile } = useAuth();
   const handoff = location.state?.athleteId ? { id: location.state.athleteId, name: location.state.name || 'Athlete' } : null;
 
   const [protocols, setProtocols] = useState([]);
   const [loadError, setLoadError] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [chosen, setChosen] = useState({});
-  const [athletes, setAthletes] = useState([]);           // who I can pick
-  const [picked, setPicked] = useState(handoff ? [handoff.id] : []);
+  // The swimmer is the athlete loaded in Athlete Setup — fixed for this page.
+  const athletes = useMemo(() => (handoff ? [handoff] : []), [handoff?.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const picked = useMemo(() => (handoff ? [handoff.id] : []), [handoff?.id]);  // eslint-disable-line react-hooks/exhaustive-deps
   const [windowMonths, setWindowMonths] = useState(null);
   const [prescription, setPrescription] = useState(null);
   const [prError, setPrError] = useState(null);
   const [runs, setRuns] = useState([]);
+  const [runsTick, setRunsTick] = useState(0);
+  const [importMsg, setImportMsg] = useState(null);     // { ok, text }
 
   // Library
   useEffect(() => {
@@ -116,19 +123,6 @@ export default function TestSets() {
       if (data && data.length) setSelectedId((cur) => cur || data[0].id);
     });
   }, []);
-
-  // Swimmers I can pick: me, anyone shared with me, and the hand-off athlete.
-  useEffect(() => {
-    if (!user) return;
-    const mMe = { id: user.id, name: (profile?.full_name || user.email || 'Me') + ' (me)' };
-    getLogsSharedWithMe(user.id).then(({ data }) => {
-      const mShared = (data || []).filter((p) => p.status === 'active' && p.can_read !== false)
-        .map((p) => ({ id: p.owner_user_id, name: p.owner?.full_name || p.owner?.email || 'Athlete' }));
-      const mAll = [mMe, ...mShared];
-      if (handoff && !mAll.some((a) => a.id === handoff.id)) mAll.push(handoff);
-      setAthletes(mAll);
-    });
-  }, [user, profile]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const protocol = useMemo(() => protocols.find((p) => p.id === selectedId) || null, [protocols, selectedId]);
 
@@ -161,9 +155,45 @@ export default function TestSets() {
     setRuns([]);
     if (!protocol || !picked.length) return;
     getSetResultsByProtocol(protocol.id, picked[0]).then(({ data }) => setRuns((data || []).slice().reverse()));
-  }, [protocol, picked]);
+  }, [protocol, picked, runsTick]);
 
-  const togglePick = (id) => setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  // Open Poolside in set mode for one swimmer. The window is opened first,
+  // synchronously, so the browser treats it as a direct result of the click
+  // (encoding is async and would otherwise trip popup blockers).
+  async function timeInPoolside(pAthleteId) {
+    const mWin = window.open('', '_blank');
+    try {
+      const mHandoff = buildHandoff(prescription, pAthleteId);
+      const mUrl = '/poolside/#run=' + (await encodeHandoff(mHandoff));
+      if (mWin) mWin.location.href = mUrl; else window.location.assign(mUrl);
+    } catch (e) {
+      if (mWin) mWin.close();
+      setImportMsg({ ok: false, text: 'Could not open Poolside: ' + (e.message || e) });
+    }
+  }
+
+  // Poolside "SwimZone test" file → saved run (idempotent: re-importing is a no-op).
+  async function importPoolsideFile(pFile) {
+    setImportMsg(null);
+    if (!pFile) return;
+    let mEnv;
+    try { mEnv = JSON.parse(await pFile.text()); } catch { setImportMsg({ ok: false, text: 'That file isn\'t valid JSON.' }); return; }
+    if (mEnv.fmt === 'swimzone.import/1') {
+      setImportMsg({ ok: false, text: 'That is a plain Poolside session (single swims) — import it in Athlete Setup. Test files come from a test opened with "Time in Poolside".' });
+      return;
+    }
+    const { data, error } = await ingestPoolsideSetResult(mEnv, { expectAthleteId: handoff?.id, fallbackAthleteId: handoff?.id });
+    if (error) { setImportMsg({ ok: false, text: error.message || 'Save failed' }); return; }
+    const mWho = data.athleteName || 'the swimmer';
+    setImportMsg({ ok: true, text: data.alreadyPresent
+      ? `Already saved — this ${mEnv.protocolName || 'test'} for ${mWho} is on record.`
+      : `Saved ${data.reps} rep${data.reps === 1 ? '' : 's'} of ${mEnv.protocolName || 'the test'} for ${mWho}` +
+        (data.missing && data.missing.length ? ` (rep${data.missing.length > 1 ? 's' : ''} ${data.missing.join(', ')} not timed)` : '') +
+        (data.summary ? ` — ${headline(data.summary)}` : '') + '.' });
+    if (mEnv.protocolId && protocols.some((p) => p.id === mEnv.protocolId)) setSelectedId(mEnv.protocolId);
+    setRunsTick((n) => n + 1);
+  }
+
   const grouped = prescription ? groupRows(prescription) : null;
   const unresolved = grouped && grouped.athletes.some((a) => a.athleteId && a.reps.some((r) => r.target && !r.target.resolved && /^PB/.test(r.target.display)));
 
@@ -171,9 +201,9 @@ export default function TestSets() {
     <div style={C.page}>
       <div style={C.wrap}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <button style={C.btn} onClick={() => navigate(handoff ? -1 : '/dashboard')}>← {handoff ? 'Back' : 'Dashboard'}</button>
+          <button style={C.btn} onClick={() => (handoff ? navigate(-1) : navigate('/athlete-setup'))}>← {handoff ? 'Back to Athlete Setup' : 'Athlete Setup'}</button>
           <h2 style={{ margin: 0, fontSize: 18 }}>Test Sets</h2>
-          <span style={C.muted} className="ts-sub">the shared library — pick a test, see it for your swimmers</span>
+          <span style={C.muted} className="ts-sub">pick a test, see it for the loaded swimmer, time it in Poolside</span>
         </div>
 
         {loadError && <div style={{ ...C.card, color: '#ff8a8a' }}>{loadError}</div>}
@@ -243,21 +273,14 @@ export default function TestSets() {
                   </label>
                 </div>
 
-                <span style={{ ...C.label, marginTop: 14 }}>Swimmers</span>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {athletes.map((a) => {
-                    const on = picked.includes(a.id);
-                    return (
-                      <button key={a.id} onClick={() => togglePick(a.id)}
-                        style={{ ...C.btn, background: on ? 'rgba(48,176,199,0.35)' : 'transparent',
-                                 borderColor: on ? 'rgba(48,176,199,0.8)' : 'rgba(255,255,255,0.2)' }}>
-                        {on ? '✓ ' : ''}{a.name}
-                      </button>
-                    );
-                  })}
-                  {athletes.length === 0 && <span style={C.muted}>Loading swimmers…</span>}
-                </div>
-                {!picked.length && <div style={{ ...C.muted, marginTop: 8 }}>Pick one or more swimmers to see their own target times.</div>}
+                <span style={{ ...C.label, marginTop: 14 }}>Swimmer</span>
+                {handoff
+                  ? <div style={{ fontSize: 14 }}>{handoff.name}</div>
+                  : <div style={{ ...C.muted }}>
+                      No athlete loaded — targets show the rules. Load a swimmer in{' '}
+                      <a href="/athlete-setup" onClick={(e) => { e.preventDefault(); navigate('/athlete-setup'); }} style={{ color: '#7fd8e8' }}>Athlete Setup</a>
+                      {' '}and open Test Sets from there to see their times and time them in Poolside.
+                    </div>}
               </div>
             )}
 
@@ -309,10 +332,33 @@ export default function TestSets() {
                     Some targets show the rule (e.g. PB+30) because that swimmer has no best for the event in this window.
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14 }}>
-                  <button style={{ ...C.btn, opacity: 0.45, cursor: 'not-allowed' }} disabled title="Next step: Poolside set mode">Send to Poolside</button>
-                  <span style={C.muted}>coming next — Poolside will time exactly this set</span>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+                  {prescription && prescription.athletes.length > 0
+                    ? prescription.athletes.map((a) => (
+                      <button key={a.athleteId} style={{ ...C.btn, background: 'rgba(48,176,199,0.3)', borderColor: 'rgba(48,176,199,0.8)' }}
+                        onClick={() => timeInPoolside(a.athleteId)}>
+                        ⏱ Time {a.name.replace(' (me)', '')} in Poolside
+                      </button>))
+                    : <span style={C.muted}>Load a swimmer in Athlete Setup to time this test in Poolside.</span>}
                 </div>
+                <div style={{ ...C.muted, fontSize: 11, marginTop: 6 }}>
+                  Opens Poolside with this exact set. When done, tap Results → SwimZone test, then import that file below.
+                </div>
+              </div>
+            )}
+
+            {protocol && handoff && (
+              <div style={C.card}>
+                <span style={C.label}>Import Poolside results</span>
+                <label style={{ ...C.btn, display: 'inline-block' }}>
+                  Choose file…
+                  <input type="file" accept=".json,application/json" style={{ display: 'none' }}
+                    onChange={(e) => { importPoolsideFile(e.target.files && e.target.files[0]); e.target.value = ''; }} />
+                </label>
+                <span style={{ ...C.muted, marginLeft: 10 }}>the <b>.swimzone-test.json</b> file Poolside saves</span>
+                {importMsg && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: importMsg.ok ? '#9be29b' : '#ff8a8a' }}>{importMsg.text}</div>
+                )}
               </div>
             )}
 

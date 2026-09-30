@@ -197,6 +197,40 @@ prescribeForLoadedAthlete(protocol, athlete, chosen)                      no fet
 `tests/services/run.mjs` (services over in-memory repos),
 `supabase/tests/athlete_records.test.mjs`, `supabase/tests/test_protocols.test.mjs`.
 
+## Poolside round trip (Piece 2)
+
+**One swimmer at a time** (agreed 2026-09-30). Poolside times one person, and a
+lane of 20 would make the target table unreadable. Test Sets is opened from
+**Athlete Setup → TEST SETS** with the loaded athlete; without one it is a
+read-only preview. A later "lane" mode (coach ticks off who has done each rep,
+parents time their own swimmer on their phones) can reuse `prescribeGroup` /
+`buildHandoff`, which already handle several swimmers.
+
+1. **Test Sets → "Time <name> in Poolside"**: `buildHandoff(prescription,
+   athleteId)` → `swimzone.testrun/1` (protocol id/key/version, athlete, params,
+   the params-applied set, and per rep: target, interval, measures, pbAtSwim,
+   plus a random `sessionId`) → `encodeHandoff` (deflate-raw + base64url, ~1–2 KB)
+   → opens `/poolside/#run=z.…`. Works offline; nothing is fetched.
+2. **Poolside set mode** (`public/poolside/index.html`, no build step): the
+   test's lines become ordinary Poolside sets ("10×100 Free · set 1"), so all the
+   existing taps, splits, SC/SR, undo and review work unchanged. On top: a test
+   panel (rep N of M, target, "Go in 1:29" send-off countdown for fixed
+   intervals / rest countdown for rest intervals, progress dots), a readings
+   sheet after each rep for what the line measures (HR, lactate, RPE; stroke
+   count/rate only if not tapped), and "Extra rep" marking for reps beyond the
+   test. A session with taps already in it is kept aside
+   (`poolside-swim-session-v2-before-test`) when a test is loaded.
+3. **Results → "SwimZone test"** saves `<date>_<name>_<time>_<key>.swimzone-test.json`
+   = `swimzone.setresult/1` + `sessionId`, `athleteName`, protocol key/version/name,
+   `missing` (reps not timed) and `extraReps`. Each rep: time, startedAt, target,
+   pbAtSwim, cumulative splits `[{dist, sec}]`, metrics `{hr, lactate, rpe, sc, sr}`,
+   and a note when the timing needs checking.
+4. **Import** — Test Sets "Import Poolside results" (or Athlete Setup's paste box):
+   `ingestPoolsideSetResult(file, { expectAthleteId })` → `addSetResult` → summary
+   computed, run appears under "Previous runs". A file for a different swimmer
+   than the loaded one is refused; importing the same file twice saves once
+   (client_uuid derived from the sessionId).
+
 ## Status
 
 | Piece | State |
@@ -208,7 +242,7 @@ prescribeForLoadedAthlete(protocol, athlete, chosen)                      no fet
 | Protocols service/repo | ✅ |
 | `addSetResult` metrics + summary + reanalyse | ✅ 20 service tests |
 | Library UI — `/test-sets` (`src/pages/TestSets.jsx`) | ✅ pick test, params, swimmers → rep-by-rep targets; previous runs. Linked from Dashboard + Athlete Setup |
-| Poolside set mode (Piece 2) | ❌ |
+| Poolside set mode (Piece 2) | ✅ hand-off link → set mode → readings → `.swimzone-test.json` → import. Browser-tested end to end |
 
 ## Open items
 

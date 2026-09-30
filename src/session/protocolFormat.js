@@ -447,3 +447,76 @@ export function analyse(analyserId, reps, ctx = {}) {
     return { analyser: id, v: ANALYSERS[id].v, error: String(e && e.message || e) };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Poolside hand-off — a prescription for ONE swimmer, carried in the Poolside
+// link's #hash so it works offline with no server round-trip.
+//
+//   buildHandoff(prescription, athleteId) → the slim object Poolside needs
+//   encodeHandoff(obj) → "z.<base64url of deflate-raw JSON>"  (or "j.<base64url JSON>"
+//                         where CompressionStream is missing)
+//   decodeHandoff(str) → obj            (Poolside carries its own copy of this)
+// ---------------------------------------------------------------------------
+
+export const HANDOFF_FMT = 'swimzone.testrun/1';
+
+/** Slim a prescription to what Poolside times against, for one swimmer. */
+export function buildHandoff(prescription, athleteId, { sessionId, location } = {}) {
+  const who = (prescription.athletes || []).find((a) => a.athleteId === athleteId) || (prescription.athletes || [])[0] || null;
+  const reps = (who ? who.reps : prescription.reps || []).map((r) => ({
+    repNo: r.repNo, blockIdx: r.blockIdx, blockRepeat: r.blockRepeat, lineIdx: r.lineIdx,
+    stroke: r.stroke, distM: r.distM, intensity: r.intensity || null, note: r.note || '',
+    interval: r.interval || null, targetTime: r.targetTime || null,
+    targetLabel: r.targetTime || (r.target && r.target.display) || '',
+    restSec: Number.isFinite(r.restSec) ? r.restSec : null, pbAtSwim: r.pbAtSwim ?? null,
+    measures: r.measures || ['time'], constraints: r.constraints || null,
+  }));
+  return {
+    fmt: HANDOFF_FMT,
+    sessionId: sessionId || newSessionId(),
+    protocol: { id: prescription.protocolId, key: prescription.key, version: prescription.version,
+                name: prescription.name, analyser: prescription.analyser },
+    athlete: who ? { id: who.athleteId, name: who.name } : null,
+    params: prescription.params || {},
+    set: prescription.set,
+    location: location || '',
+    reps,
+  };
+}
+
+function newSessionId() {
+  try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch (e) { /* fall through */ }
+  return 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+}
+
+function b64urlFromBytes(bytes) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function bytesFromB64url(str) {
+  const b = atob(str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4));
+  const out = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+  return out;
+}
+async function pipeBytes(bytes, stream) {
+  const buf = await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+export async function encodeHandoff(obj) {
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream !== 'undefined') {
+    try { return 'z.' + b64urlFromBytes(await pipeBytes(raw, new CompressionStream('deflate-raw'))); } catch (e) { /* fall back */ }
+  }
+  return 'j.' + b64urlFromBytes(raw);
+}
+
+export async function decodeHandoff(str) {
+  const [kind, body] = [String(str).slice(0, 2), String(str).slice(2)];
+  let bytes = bytesFromB64url(body);
+  if (kind === 'z.') bytes = await pipeBytes(bytes, new DecompressionStream('deflate-raw'));
+  else if (kind !== 'j.') throw new Error('not a SwimZone hand-off');
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
