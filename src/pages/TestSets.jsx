@@ -65,7 +65,8 @@ function hrLine(reps) {
   if (h.coverage != null) bits.push(`${Math.round(h.coverage * 100)}% covered`);
   return { text: '♥ ' + bits.join(' · '), low: h.coverage != null && h.coverage < HR_MIN_COVERAGE };
 }
-const fmtRep = (s) => (s >= 60 ? fmtClock(s) : Number(s).toFixed(1));
+// Swum times always show hundredths: 12.50, 1:05.20.
+const fmtRep = (s) => { const n = Number(s); const m = Math.floor(n / 60); const r = (n - m * 60).toFixed(2); return m ? `${m}:${r.padStart(5, '0')}` : r; };
 // Per-length rows from a rep's cumulative splits [{dist, sec, sc?, sr?, hrAvg?…}],
 // shown only when a length carries more than its time.
 function lengthRows(splits) {
@@ -408,7 +409,7 @@ export default function TestSets() {
                         {isOpen && (
                           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6, fontSize: 11 }}>
                             <thead><tr style={{ color: 'rgba(255,255,255,0.45)' }}>
-                              {['Rep', 'Time', 'HR', 'Min', 'Avg', 'Max', '+30 s', 'Cover', 'Other'].map((h) => (
+                              {['Rep', 'Time', 'HR-Start', 'Min', 'Avg', 'Max', 'HR-End', '+30 s', 'Cover', 'Other'].map((h) => (
                                 <th key={h} style={{ textAlign: h === 'Rep' || h === 'Other' ? 'left' : 'right', fontWeight: 500, padding: '2px 4px' }}>{h}</th>))}
                             </tr></thead>
                             <tbody>
@@ -416,25 +417,28 @@ export default function TestSets() {
                                 const m = x.metrics || {};
                                 const low = m.hrCoverage != null && m.hrCoverage < HR_MIN_COVERAGE;
                                 const td = { textAlign: 'right', padding: '2px 4px' };
-                                const other = ['lactate', 'rpe', 'sc', 'sr'].filter((k) => m[k] != null)
-                                  .map((k) => `${{ lactate: 'La', rpe: 'RPE', sc: 'SC', sr: 'SR' }[k]} ${m[k]}`).join(' · ');
+                                // HR typed by the coach (when it differs from the sensor's HR-End) goes with the other readings
+                                const typedHr = m.hr != null && m.hr !== m.hrEnd ? `HR ${m.hr}` : null;
+                                const other = [typedHr].concat(['lactate', 'rpe', 'sc', 'sr'].filter((k) => m[k] != null)
+                                  .map((k) => `${{ lactate: 'La', rpe: 'RPE', sc: 'SC', sr: 'SR' }[k]} ${k === 'sr' ? Math.round(m[k]) : m[k]}`)).filter(Boolean).join(' · ');
                                 const lens = lengthRows(x.splits);
                                 return (
                                   <Fragment key={x.id || x.repNo}>
                                   <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                     <td style={{ padding: '2px 4px' }}>{x.repNo}</td>
                                     <td style={td}>{x.timeSec != null ? fmtRep(x.timeSec) : '—'}</td>
-                                    <td style={td}>{m.hr ?? '—'}</td>
+                                    <td style={td}>{m.hrStart ?? ''}</td>
                                     <td style={td}>{m.hrMin ?? ''}</td>
                                     <td style={td}>{m.hrAvg ?? ''}</td>
                                     <td style={td}>{m.hrPeak ?? ''}</td>
+                                    <td style={td}>{m.hrEnd ?? ''}</td>
                                     <td style={td}>{m.hrRec30 ?? ''}</td>
                                     <td style={{ ...td, color: low ? '#f2b654' : undefined }}>{m.hrCoverage != null ? `${Math.round(m.hrCoverage * 100)}%` : ''}</td>
                                     <td style={{ padding: '2px 4px', color: 'rgba(255,255,255,0.6)' }}>{other}</td>
                                   </tr>
                                   {lens && (
                                     <tr><td />
-                                      <td colSpan={8} style={{ padding: '0 4px 4px', color: 'rgba(255,255,255,0.55)', fontSize: 10.5 }}>
+                                      <td colSpan={9} style={{ padding: '0 4px 4px', color: 'rgba(255,255,255,0.55)', fontSize: 10.5 }}>
                                         {lens.map((l) => (
                                           <span key={l.dist} style={{ display: 'inline-block', marginRight: 10, whiteSpace: 'nowrap' }}>
                                             {l.dist}m {fmtRep(l.lap)}{l.sc ? ` · SC ${l.sc}` : ''}{l.sr ? ` · SR ${Math.round(l.sr)}` : ''}

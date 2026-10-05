@@ -374,6 +374,7 @@
       <label>Location</label>
       <input type="text" id="locationInput" placeholder="e.g. Riverside Pool">
     </div>
+    <div class="hr-note" style="margin-top:0">Keyboard: <b>D</b> start dive · <b>P</b> start push · <b>T</b> turn · <b>F</b> finish · <b>Space</b> next expected tap · <b>S</b> stroke rate · <b>C</b> stroke count · <b>Z</b>/<b>Backspace</b> undo · <b>H</b> heart rate · <b>R</b> results · <b>Esc</b> close</div>
     <div class="actions">
       <button class="ghost" id="settingsCancel" type="button">Close</button>
       <button class="primary" id="settingsSave" type="button">Save</button>
@@ -683,33 +684,37 @@ const SwimCore = (function(){
     return notes;
   }
   function toCSV(exported){
-    // one row per rep; enough "Length N" column triplets (time/SC/SR) for
-    // the longest rep in the whole session — a length within a shorter rep
-    // that simply wasn't reached stays blank, but a length that WAS swum
-    // with no stroke count or rate taken reads as 0, not blank, since that's
-    // a real recorded absence rather than "not applicable".
+    // One row per rep; enough per-length columns for the longest rep in the
+    // session. A length that wasn't reached stays blank; a length swum with no
+    // stroke count / rate taken reads 0 (a real recorded absence).
+    // Headers are display labels only — the JSON files and the database use
+    // their own field names (timeSec, hrFirst… / time_sec…), so these can stay short.
+    // Times are written as ="12.50" so spreadsheets keep the hundredths
+    // (a bare 12.50 is read as the number 12.5).
+    const T = (t) => t ? { raw: '="' + t + '"' } : '';
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
-    const header=['Athlete','Date','Location','Set','Rep','Stroke','Distance (m)','Pool length (m)','Rest before','Start type','Start time','Total time'];
+    const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time'];
     const lenHr = exported.reps.some(r => r.lengths.some(l => l.hr));
-    for (let i=1;i<=maxLengths;i++){ header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR'); if (lenHr) header.push('Length '+i+' HR first','Length '+i+' HR last'); }
+    for (let i=1;i<=maxLengths;i++){ header.push('L'+i,'L'+i+' SC','L'+i+' SR'); if (lenHr) header.push('L'+i+' HR first','L'+i+' HR last'); }
     const anyHr = exported.reps.some(r => r.hr);
-    if (anyHr) header.push('HR min','HR avg','HR max','HR +30s','HR coverage %');
+    const HR_COLS = [['HR-Start','hrStart'],['HR min','hrMin'],['HR avg','hrAvg'],['HR max','hrPeak'],['HR-End','hrEnd'],['HR +30s','hrRec30']];
+    if (anyHr) header.push(...HR_COLS.map(c => c[0]), 'HR cover %');
     header.push('Result','Notes');
     const lines=[header.join(',')];
     exported.reps.forEach(r=>{
       const lengthCells=[];
       for (let i=0;i<maxLengths;i++){
         const l = r.lengths[i];
-        lengthCells.push(l ? l.formatted : '', l ? l.sc : '', l ? l.sr : '');
+        lengthCells.push(l ? T(l.formatted) : '', l ? l.sc : '', l ? l.sr : '');
         if (lenHr) ['hrFirst','hrLast'].forEach(k => lengthCells.push(l && l.hr && l.hr[k] != null ? l.hr[k] : ''));
       }
       const resultText = r.status==='complete' ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
-      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,r.restBeforeFormatted,r.startType,r.startClock,r.totalFormatted,
+      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,T(r.restBeforeFormatted),r.startType,r.startClock,T(r.totalFormatted),
         ...lengthCells,
-        ...(anyHr ? (r.hr ? [r.hr.hrMin, r.hr.hrAvg, r.hr.hrPeak, r.hr.hrRec30, r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : ''] : ['','','','','']) : []),
+        ...(anyHr ? HR_COLS.map(c => r.hr && r.hr[c[1]] != null ? r.hr[c[1]] : '').concat([r.hr && r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : '']) : []),
         resultText, notesText]
-        .map(c=>{ const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
+        .map(c=>{ if (c && c.raw) return c.raw; const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
       lines.push(cells.join(','));
     });
     return lines.join('\n');
@@ -1111,7 +1116,7 @@ const SwimCore = (function(){
       const bits = [];
       if (r.targetTime) bits.push('target ' + r.targetTime);
       ['hr','lactate','rpe','sc','sr'].forEach(k => { if (r.metrics[k] != null) bits.push(({hr:'HR',lactate:'La',rpe:'RPE',sc:'SC',sr:'SR'})[k] + ' ' + r.metrics[k]); });
-      if (r.metrics.hrAvg != null) bits.push('♥ min ' + r.metrics.hrMin + ' avg ' + r.metrics.hrAvg + ' max ' + r.metrics.hrPeak + (r.metrics.hrRec30 != null ? ', +30s ' + r.metrics.hrRec30 : ''));
+      if (r.metrics.hrAvg != null) bits.push('♥ HR-Start ' + (r.metrics.hrStart ?? '–') + ', min ' + r.metrics.hrMin + ' avg ' + r.metrics.hrAvg + ' max ' + r.metrics.hrPeak + ', HR-End ' + (r.metrics.hrEnd ?? '–') + (r.metrics.hrRec30 != null ? ', +30s ' + r.metrics.hrRec30 : ''));
       lines.push('Rep ' + r.repNo + ': ' + SwimCore.fmtClock(r.timeSec*1000) + (bits.length ? '  (' + bits.join(', ') + ')' : '') + (r.note ? '  — ' + r.note : ''));
     });
     if (sr.missing.length) lines.push('', 'Not timed: rep' + (sr.missing.length>1?'s ':' ') + sr.missing.join(', '));
@@ -1337,10 +1342,10 @@ const SwimCore = (function(){
     }));
     return best;
   }
-  const HR_SHORT = { hrMin:'min', hrAvg:'avg', hrPeak:'max', hrRec30:'+30s' };
+  const HR_SHORT = { hrStart:'HR-Start', hrMin:'min', hrAvg:'avg', hrPeak:'max', hrEnd:'HR-End', hrRec30:'+30s' };
   function hrLineHtml(m){
     if (!m) return '';
-    const bits = ['hrMin','hrAvg','hrPeak','hrRec30'].filter(k => m[k] != null).map(k => HR_SHORT[k] + ' ' + m[k]);
+    const bits = ['hrStart','hrMin','hrAvg','hrPeak','hrEnd','hrRec30'].filter(k => m[k] != null).map(k => HR_SHORT[k] + ' ' + m[k]);
     const low = m.hrCoverage < (HR.lib ? HR.lib.HR_MIN_COVERAGE : 0.4);
     return '<div class="rep-hr"><span class="heart">&#9829;</span>' + bits.map(b => '<span>' + b + '</span>').join('') +
       '<span class="' + (low ? 'low' : '') + '">' + Math.round(m.hrCoverage*100) + '% covered' + (low ? ' — patchy' : '') + '</span></div>';
@@ -1709,6 +1714,33 @@ const SwimCore = (function(){
   addTapListener(btnSR, () => { if (derived().status==='running') addEvent('sr', null, btnSR); });
   addTapListener(btnSC, () => { if (derived().status==='running') addEvent('sc', null, btnSC); });
 
+  /* ---- keyboard shortcuts (laptop / tablet with a keyboard). Ignored while
+     typing in a field; Esc closes the open sheet. Same paths as the buttons. ---- */
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = (e.target && e.target.tagName) || '';
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
+    if (e.key === 'Escape'){ if (currentOverlayEl){ hideOverlay(currentOverlayEl); e.preventDefault(); } return; }
+    if (currentOverlayEl || e.repeat) return;
+    const running = derived().status === 'running';
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const act = {
+      d: () => addEvent('start', { startType:'dive' }, btnDive),
+      p: () => addEvent('start', { startType:'push' }, btnPush),
+      t: () => running && addEvent('turn', null, btnTurn),
+      f: () => running && addEvent('finish', null, btnFinish),
+      s: () => running && addEvent('sr', null, btnSR),
+      c: () => running && addEvent('sc', null, btnSC),
+      ' ': () => { const d = derived();
+        if (!running) addEvent('start', { startType:'push' }, btnPush);
+        else addEvent(d.next && d.next.kind === 'finish' ? 'finish' : 'turn', null, d.next && d.next.kind === 'finish' ? btnFinish : btnTurn); },
+      z: () => undoBtn.click(), Backspace: () => undoBtn.click(),
+      h: () => HR.openSheet(),
+      r: () => $('exportBtn').click(),
+    }[k];
+    if (act){ e.preventDefault(); act(); }
+  });
+
   undoBtn.addEventListener('click', () => {
     if (state.activeSetIndex !== state.sets.length - 1) return; // older set — view only, no rewriting its history
     const set = activeSet();
@@ -1926,7 +1958,7 @@ const SwimCore = (function(){
           lengths: lens.map((l, i) => ({ label: l.to != null ? l.to + 'm' : '•', split: SwimCore.fmtClock(l.ms), sc: st.sc[i] || null, sr: st.sr[i] || null,
             first: lhr && lhr[i] ? lhr[i].hrFirst : null, last: lhr && lhr[i] ? lhr[i].hrLast : null, low: lhr && lhr[i] ? lhr[i].hrCoverage < minCov : false })),
           hasHr: !!lhr,
-          hr: m && m.hrAvg != null ? { min: m.hrMin, avg: m.hrAvg, max: m.hrPeak, rec30: m.hrRec30, cov: Math.round(m.hrCoverage*100), low: m.hrCoverage < minCov } : null,
+          hr: m && m.hrAvg != null ? { start: m.hrStart, end: m.hrEnd, min: m.hrMin, avg: m.hrAvg, max: m.hrPeak, rec30: m.hrRec30, cov: Math.round(m.hrCoverage*100), low: m.hrCoverage < minCov } : null,
         };
       });
       sets.push({ name: set.name || ('Set ' + (si+1)), info: info.title + (info.sub ? ' · ' + info.sub : ''), hr: setHrSummary(d.reps), reps });
@@ -1965,7 +1997,7 @@ const SwimCore = (function(){
       y += 22;
       set.reps.forEach(r => {
         const showTable = r.lengths.length && (r.hasHr || r.lengths.some(l => l.sc || l.sr));
-        const h = 14 + 16 + 34 + (r.testLine ? 20 : 0) + (showTable ? 22 + r.lengths.length * 22 + 4 : 0) + (r.hr ? 22 : 0) + 10;
+        const h = 14 + 16 + 34 + (r.testLine ? 20 : 0) + (showTable ? 22 + r.lengths.length * 22 + 4 : 0) + (r.hr ? 42 : 0) + 10;
         rrect(P, y, W - P*2, h, 12, col.surface, col.line);
         let cy = y + 14;
         font(800, 12); text('Rep ' + r.no, P + 14, cy + 11, col.muted);
@@ -1996,9 +2028,12 @@ const SwimCore = (function(){
         }
         if (r.hr){
           font(700, 12.5); text('♥', P + 14, cy + 15, col.lane);
-          const bits = 'min ' + r.hr.min + '   avg ' + r.hr.avg + '   max ' + r.hr.max + (r.hr.rec30 != null ? '   +30s ' + r.hr.rec30 : '');
+          const bits = 'min ' + r.hr.min + '   avg ' + r.hr.avg + '   max ' + r.hr.max;
           font(600, 12.5); text(bits, P + 32, cy + 15, col.ink);
           text(r.hr.cov + '% covered' + (r.hr.low ? ' — patchy' : ''), W - P - 14, cy + 15, r.hr.low ? col.warn : col.muted, 'right');
+          cy += 20;
+          const se = ['HR-Start ' + (r.hr.start ?? '–'), 'HR-End ' + (r.hr.end ?? '–')].concat(r.hr.rec30 != null ? ['+30s ' + r.hr.rec30] : []).join('   ');
+          text(se, P + 32, cy + 15, col.ink);
           cy += 22;
         }
         y += h + 10;

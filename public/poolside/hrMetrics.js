@@ -46,28 +46,35 @@ export function hrAt(pSamples, t, tolMs = 3000) {
  * @param startedAt rep start (ISO string or epoch ms)
  * @param timeSec   rep duration
  * @param nextStartedAt optional — recovery readings stop at the next rep's start
- * @returns { hr, hrAvg, hrPeak, hrEnd, hrRec10, hrRec30, hrRec60, hrDrop30, hrCoverage, hrSamples }
- *   hr = best single figure for the readings sheet: the end-of-rep value if known, else peak.
+ * @returns { hr, hrStart, hrAvg, hrMin, hrPeak, hrEnd, hrRec10, hrRec30, hrRec60, hrDrop30, hrCoverage, hrSamples }
+ *   hrStart ("HR-Start") = the last reading before the start (within 30 s);
+ *   hrEnd   ("HR-End")   = the first reading after the touch (within 15 s — the
+ *                          swimmer surfaces at the wall);
+ *   hr = best single figure for the readings sheet: HR-End if known, else max.
  *   Values are null when there was no data.
  */
 export function repHrMetrics(pSamples, { startedAt, timeSec, nextStartedAt } = {}) {
   const mStart = typeof startedAt === 'number' ? startedAt : Date.parse(startedAt);
   if (!pSamples?.length || !Number.isFinite(mStart) || !(timeSec > 0)) return emptyMetrics();
   const mFinish = mStart + timeSec * 1000;
-  const mNext = nextStartedAt == null ? Infinity
+  const mNextRaw = nextStartedAt == null ? Infinity
     : (typeof nextStartedAt === 'number' ? nextStartedAt : Date.parse(nextStartedAt));
+  const mNext = Number.isNaN(mNextRaw) ? Infinity : mNextRaw;
 
-  // Min / avg / max cover the swim only (start → touch). The end reading may come
-  // up to 5 s after the touch, as the swimmer surfaces at the wall.
+  // Min / avg / max cover the swim only (start → touch). HR-Start is the last
+  // reading before the start; HR-End the first after the touch.
   const mWork = inWindow(pSamples, mStart, mFinish);
   const mBpms = mWork.map((s) => s.bpm);
   const hrAvg = mBpms.length ? Math.round(mBpms.reduce((a, b) => a + b, 0) / mBpms.length) : null;
   const hrPeak = mBpms.length ? Math.max(...mBpms) : null;
   const hrMin = mBpms.length ? Math.min(...mBpms) : null;
-  const hrEnd = hrAt(pSamples, mFinish, 5000);
+  const mBefore = (pSamples || []).filter((s) => s.bpm > 0 && s.t < mStart && s.t >= mStart - 30000);
+  const hrStart = mBefore.length ? mBefore.reduce((a, b) => (b.t > a.t ? b : a)).bpm : null;
+  const mAfter = (pSamples || []).filter((s) => s.bpm > 0 && s.t >= mFinish && s.t <= Math.min(mFinish + 15000, mNext));
+  const hrEnd = mAfter.length ? mAfter.reduce((a, b) => (b.t < a.t ? b : a)).bpm : null;
 
   const mOut = {
-    hrAvg, hrMin, hrPeak, hrEnd,
+    hrStart, hrAvg, hrMin, hrPeak, hrEnd,
     hrCoverage: Math.round(coverage(pSamples, mStart, mFinish) * 100) / 100,
     hrSamples: mWork.length,
   };
@@ -81,7 +88,7 @@ export function repHrMetrics(pSamples, { startedAt, timeSec, nextStartedAt } = {
 }
 
 function emptyMetrics() {
-  return { hr: null, hrAvg: null, hrMin: null, hrPeak: null, hrEnd: null, hrRec10: null, hrRec30: null,
+  return { hr: null, hrStart: null, hrAvg: null, hrMin: null, hrPeak: null, hrEnd: null, hrRec10: null, hrRec30: null,
     hrRec60: null, hrDrop30: null, hrCoverage: 0, hrSamples: 0 };
 }
 
@@ -195,7 +202,7 @@ export function freshness(pSamples, now = Date.now(), windowMs = 60000) {
 // ── Recording side: the stream as stored, and per-rep / per-run roll-ups ─────
 
 /** Per-rep metric keys the sensor fills (besides `hr`, which a coach may also type). */
-export const HR_METRIC_KEYS = ['hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
+export const HR_METRIC_KEYS = ['hrStart', 'hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
 
 /**
  * Compact a stream for a file / the database: { source, sensor, samples:[[t,bpm],…] }.

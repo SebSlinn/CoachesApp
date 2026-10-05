@@ -48,6 +48,15 @@ test('avg / peak / end / recovery', () => {
   assert.equal(m.hrDrop30, 30);
   assert.ok(m.hrCoverage > 0.9, `coverage ${m.hrCoverage}`);
 });
+test('HR-Start = last reading before the start; HR-End = first reading after the touch', () => {
+  const s = [{ t: T0 - 40000, bpm: 99 }, { t: T0 - 6000, bpm: 118 }, { t: T0 - 2000, bpm: 122 }, { t: T0 + 10000, bpm: 150 },
+             { t: T0 + 19000, bpm: 168 }, { t: T0 + 23000, bpm: 171 }, { t: T0 + 28000, bpm: 165 }];
+  const m = repHrMetrics(s, { startedAt: T0, timeSec: 20 });
+  assert.equal(m.hrStart, 122); assert.equal(m.hrEnd, 171); assert.equal(m.hr, 171);
+  assert.deepEqual([m.hrMin, m.hrPeak], [150, 168]);
+  assert.equal(repHrMetrics(s, { startedAt: T0 + 50000, timeSec: 5 }).hrStart, 165);   // within 30 s before
+  assert.equal(repHrMetrics(s, { startedAt: T0, timeSec: 20, nextStartedAt: T0 + 21000 }).hrEnd, null);   // next rep began first
+});
 test('ISO startedAt accepted', () => {
   assert.equal(repHrMetrics(mStream, { startedAt: new Date(T0).toISOString(), timeSec: 60 }).hrPeak, 170);
 });

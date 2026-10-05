@@ -28,7 +28,7 @@ export const METRIC_KEYS = ['sc', 'sr', 'hr', 'rpe', 'lactate'];
  * `hr` stays the single "HR for this rep" figure: typed by the coach, else the
  * sensor's end-of-rep reading.
  */
-export const HR_SENSOR_KEYS = ['hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
+export const HR_SENSOR_KEYS = ['hrStart', 'hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
 const STORED_METRIC_KEYS = METRIC_KEYS.concat(HR_SENSOR_KEYS);
 export const PARAM_KINDS = ['onTime', 'restSec'];
 const KEY_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
