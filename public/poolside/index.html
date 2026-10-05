@@ -695,7 +695,7 @@ const SwimCore = (function(){
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
     const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time'];
     const lenHr = exported.reps.some(r => r.lengths.some(l => l.hr));
-    for (let i=1;i<=maxLengths;i++){ header.push('L'+i,'L'+i+' SC','L'+i+' SR'); if (lenHr) header.push('L'+i+' HR first','L'+i+' HR last'); }
+    for (let i=1;i<=maxLengths;i++){ header.push('L'+i,'L'+i+' SC','L'+i+' SR'); if (lenHr) header.push('L'+i+' HR1','L'+i+' HR2'); }   // HR1 = first reading in the length, HR2 = last
     const anyHr = exported.reps.some(r => r.hr);
     const HR_COLS = [['HR-Start','hrStart'],['HR min','hrMin'],['HR avg','hrAvg'],['HR max','hrPeak'],['HR-End','hrEnd'],['HR +30s','hrRec30']];
     if (anyHr) header.push(...HR_COLS.map(c => c[0]), 'HR cover %');
