@@ -90,3 +90,63 @@ export function sliceStream(pSamples, pFrom, pTo) {
 
 /** Coverage below this means the rep's HR shouldn't be trusted for trends. */
 export const HR_MIN_COVERAGE = 0.4;
+
+/** A run of identical bpm longer than this, with no fresh beat data, is flagged as "held". */
+export const HR_HELD_SEC = 8;
+
+/**
+ * How trustworthy the live stream has been over the last window.
+ * Answers: how often is the display fresh, and is the sensor repeating itself?
+ *
+ * @param samples  [{ t, bpm, rr? }]
+ * @param now      epoch ms (default Date.now())
+ * @param windowMs default 60 s
+ * @returns {
+ *   freshPct      0–100: share of 1-second slots in the window that received a reading
+ *   readings      readings in the window
+ *   longestGapSec longest stretch with no reading (includes the gap up to `now`)
+ *   currentAgeSec seconds since the last reading (null if none)
+ *   rrPct         0–100: share of readings carrying beat-to-beat (RR) data — real beats
+ *   heldSec       longest run of the same bpm with no changing RR data
+ *   held          true if heldSec ≥ HR_HELD_SEC (sensor probably repeating an old estimate)
+ *   verdict       'good' | 'patchy' | 'poor' | 'none'
+ * }
+ */
+export function freshness(pSamples, now = Date.now(), windowMs = 60000) {
+  const mAll = (pSamples || []).filter((s) => s.t <= now && s.bpm > 0);
+  const mLast = mAll.at(-1) || null;
+  const currentAgeSec = mLast ? Math.round((now - mLast.t) / 100) / 10 : null;
+  // The window starts at the first reading if that's more recent — time before the
+  // sensor was connected isn't a gap.
+  const mFrom = mAll.length ? Math.max(now - windowMs, mAll[0].t - 1) : now - windowMs;
+  const mIn = mAll.filter((s) => s.t > mFrom);
+  if (!mIn.length) {
+    return { freshPct: 0, readings: 0, longestGapSec: windowMs / 1000, currentAgeSec,
+      rrPct: 0, heldSec: 0, held: false, verdict: 'none', windowSec: windowMs / 1000 };
+  }
+
+  const mSlots = new Set(mIn.map((s) => Math.floor((s.t - mFrom) / 1000)));
+  const mSlotCount = Math.max(1, Math.ceil((now - mFrom) / 1000));
+  const freshPct = Math.round((Math.min(mSlots.size, mSlotCount) / mSlotCount) * 100);
+
+  let mGap = (mIn[0].t - mFrom) / 1000;
+  for (let i = 1; i < mIn.length; i++) mGap = Math.max(mGap, (mIn[i].t - mIn[i - 1].t) / 1000);
+  mGap = Math.max(mGap, (now - mIn.at(-1).t) / 1000);
+
+  const rrPct = Math.round((mIn.filter((s) => s.rr?.length).length / mIn.length) * 100);
+
+  // Held: same bpm, and either no RR data or RR identical to the previous packet.
+  let mHeld = 0, mRunStart = mIn[0].t;
+  const same = (a, b) => a.bpm === b.bpm &&
+    (!b.rr?.length || (a.rr?.length && a.rr.join() === b.rr.join()));
+  for (let i = 1; i < mIn.length; i++) {
+    if (same(mIn[i - 1], mIn[i])) mHeld = Math.max(mHeld, (mIn[i].t - mRunStart) / 1000);
+    else mRunStart = mIn[i].t;
+  }
+  const heldSec = Math.round(mHeld * 10) / 10;
+  const held = heldSec >= HR_HELD_SEC;
+
+  const verdict = held || freshPct < 30 ? 'poor' : freshPct < 70 || mGap > 10 ? 'patchy' : 'good';
+  return { freshPct, readings: mIn.length, longestGapSec: Math.round(mGap * 10) / 10,
+    currentAgeSec, rrPct, heldSec, held, verdict, windowSec: Math.round((now - mFrom) / 1000) };
+}

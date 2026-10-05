@@ -21,6 +21,11 @@
   canvas { width:100%; height:120px; display:block; margin-top:10px; }
   table { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; }
   td, th { padding:6px 4px; text-align:right; border-bottom:1px solid #24344c; } th { color:var(--dim); font-weight:500; } td:first-child, th:first-child { text-align:left; }
+  .tiles { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+  @media (max-width:420px) { .tiles { grid-template-columns:repeat(2,1fr); } }
+  .tile { background:#0e1622; border-radius:10px; padding:10px 8px; text-align:center; }
+  .tv { font-size:26px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .tl { color:var(--dim); font-size:12px; line-height:1.2; margin-top:2px; }
   .warn { background:#3a2a10; color:var(--gap); padding:10px; border-radius:10px; font-size:14px; }
 </style>
 </head>
@@ -49,6 +54,19 @@
 </div>
 
 <div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:baseline">
+    <b>How fresh is the reading?</b><span class="dim" style="font-size:13px" id="fWin">last 60 s</span>
+  </div>
+  <div class="tiles">
+    <div class="tile"><div class="tv" id="fFresh">–</div><div class="tl">seconds with a new reading</div></div>
+    <div class="tile"><div class="tv" id="fGap">–</div><div class="tl">longest gap</div></div>
+    <div class="tile"><div class="tv" id="fRr">–</div><div class="tl">readings with real beat data</div></div>
+    <div class="tile"><div class="tv" id="fHeld">–</div><div class="tl">same number repeated</div></div>
+  </div>
+  <div id="fVerdict" class="dim" style="margin-top:8px;font-size:14px">Waiting for readings.</div>
+</div>
+
+<div class="card">
   <div class="row" style="margin-top:0">
     <button id="rep">Start rep</button>
     <button id="csv" class="ghost">Download samples (CSV)</button>
@@ -62,7 +80,7 @@
 
 <script type="module">
 import { HrMonitor, isSupported, sensorFor, forgetSensor } from './hrMonitor.js';
-import { repHrMetrics, HR_MIN_COVERAGE } from './hrMetrics.js';
+import { repHrMetrics, HR_MIN_COVERAGE, freshness } from './hrMetrics.js';
 
 const $ = (id) => document.getElementById(id);
 if (!isSupported()) { $('unsupported').hidden = false; ['pair','connect'].forEach(i => $(i).disabled = true); }
@@ -134,7 +152,34 @@ function paint() {
     st.textContent = labels[mon.status] || mon.status;
   }
   if (sig !== 'live') $('bpm').classList.add('dim'); else $('bpm').classList.remove('dim');
+  paintFreshness();
   $('meta').textContent = [mon.sensorName && `Sensor ${mon.sensorName}`, mon.battery != null && `battery ${mon.battery}%`, `${mon.samples.length} readings`].filter(Boolean).join(' · ');
+}
+
+function paintFreshness() {
+  const f = freshness(mon?.samples || []);
+  $('fWin').textContent = f.readings && f.windowSec < 60 ? `since connecting (${f.windowSec} s)` : 'last 60 s';
+  const tone = (el, cls) => { el.className = 'tv ' + cls; };
+  $('fFresh').textContent = f.readings ? f.freshPct + '%' : '–';
+  tone($('fFresh'), f.freshPct >= 70 ? 'live' : f.freshPct >= 30 ? 'gap' : 'bad');
+  $('fGap').textContent = f.readings ? f.longestGapSec.toFixed(0) + ' s' : '–';
+  tone($('fGap'), f.longestGapSec <= 5 ? 'live' : f.longestGapSec <= 10 ? 'gap' : 'bad');
+  $('fRr').textContent = f.readings ? f.rrPct + '%' : '–';
+  tone($('fRr'), f.rrPct >= 70 ? 'live' : f.rrPct > 0 ? 'gap' : 'dim');
+  $('fHeld').textContent = f.readings ? f.heldSec.toFixed(0) + ' s' : '–';
+  tone($('fHeld'), f.held ? 'bad' : 'live');
+  const msg = {
+    none: 'No readings in the last minute.',
+    good: 'Good — the number on screen is current.',
+    patchy: `Patchy — the number on screen can be up to ${f.longestGapSec.toFixed(0)} s old.`,
+    poor: f.held
+      ? `Suspect — the same value repeated for ${f.heldSec.toFixed(0)} s without new beat data; the sensor may be holding an old estimate.`
+      : 'Poor — readings are rare; treat the number on screen as old.',
+  }[f.verdict];
+  const v = $('fVerdict');
+  v.textContent = msg;
+  v.className = { good: 'live', patchy: 'gap', poor: 'bad', none: 'dim' }[f.verdict];
+  v.style.fontSize = '14px'; v.style.marginTop = '8px';
 }
 
 // last 3 minutes, gaps drawn as breaks

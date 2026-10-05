@@ -2,7 +2,7 @@
 // Packet parsing + per-rep metrics. No browser, no Bluetooth needed.
 import assert from 'node:assert/strict';
 import { parseHeartRate } from './hrMonitor.js';
-import { repHrMetrics, coverage, hrAt, sliceStream } from './hrMetrics.js';
+import { repHrMetrics, coverage, hrAt, sliceStream, freshness } from './hrMetrics.js';
 
 let mPass = 0;
 const test = (name, fn) => { fn(); mPass++; console.log('  ✓', name); };
@@ -74,6 +74,44 @@ test('coverage of empty window is 0', () => assert.equal(coverage(mStream, T0, T
 test('sliceStream trims and compacts', () => {
   const s = sliceStream([{ t: T0, bpm: 100, rr: [1] }, { t: T0 + 5000, bpm: 110 }], T0, T0 + 1000);
   assert.deepEqual(s, [{ t: T0, bpm: 100 }]);
+});
+
+console.log('freshness');
+const N = T0 + 60000;
+test('every second → 100% fresh, good', () => {
+  const s = Array.from({ length: 60 }, (_, i) => ({ t: T0 + i * 1000 + 500, bpm: 140 + (i % 5), rr: [400 + i] }));
+  const f = freshness(s, N);
+  assert.equal(f.freshPct, 100); assert.equal(f.verdict, 'good'); assert.equal(f.rrPct, 100);
+  assert.ok(f.longestGapSec <= 1, `gap ${f.longestGapSec}`); assert.equal(f.held, false);
+});
+test('surfacing every 3 s with 8 s underwater gaps → patchy', () => {
+  const s = [];
+  for (let t = 0; t < 60; t += 11) for (let k = 0; k < 3; k++) s.push({ t: T0 + (t + k) * 1000 + 100, bpm: 150 + k, rr: [400 + k] });
+  const f = freshness(s, N);
+  assert.ok(f.freshPct > 25 && f.freshPct < 40, `fresh ${f.freshPct}`);
+  assert.ok(f.longestGapSec >= 8, `gap ${f.longestGapSec}`);
+  assert.notEqual(f.verdict, 'good');
+});
+test('same bpm, no RR for 12 s → held, poor', () => {
+  const s = Array.from({ length: 13 }, (_, i) => ({ t: T0 + 40000 + i * 1000, bpm: 162, rr: [] }));
+  const f = freshness(s, N);
+  assert.equal(f.held, true); assert.ok(f.heldSec >= 12); assert.equal(f.verdict, 'poor');
+});
+test('same bpm but fresh RR each time → not held (steady real HR)', () => {
+  const s = Array.from({ length: 13 }, (_, i) => ({ t: T0 + 40000 + i * 1000, bpm: 162, rr: [370 + (i % 3)] }));
+  assert.equal(freshness(s, N).held, false);
+});
+test('current age = time since last reading', () => {
+  assert.equal(freshness([{ t: N - 7000, bpm: 150 }], N).currentAgeSec, 7);
+});
+test('just connected: time before the first reading is not a gap', () => {
+  const s = Array.from({ length: 5 }, (_, i) => ({ t: N - 5000 + i * 1000 + 100, bpm: 140 + i, rr: [400 + i] }));
+  const f = freshness(s, N);
+  assert.equal(f.verdict, 'good'); assert.ok(f.freshPct >= 80, `fresh ${f.freshPct}`); assert.ok(f.windowSec <= 6);
+});
+test('no readings → none', () => {
+  const f = freshness([], N);
+  assert.equal(f.verdict, 'none'); assert.equal(f.currentAgeSec, null);
 });
 
 console.log(`\n${mPass} passed`);
