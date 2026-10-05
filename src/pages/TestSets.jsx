@@ -58,8 +58,9 @@ function hrLine(reps) {
   const h = hrRollup(reps);
   if (!h) return null;
   const bits = [];
-  if (h.peak != null) bits.push(`peak ${h.peak}`);
-  if (h.meanEnd != null) bits.push(`end ${h.meanEnd}`);
+  if (h.min != null) bits.push(`min ${h.min}`);
+  if (h.avg != null) bits.push(`avg ${h.avg}`);
+  if (h.peak != null) bits.push(`max ${h.peak}`);
   if (h.meanDrop30 != null) bits.push(`−${h.meanDrop30} in 30 s`);
   if (h.coverage != null) bits.push(`${Math.round(h.coverage * 100)}% covered`);
   return { text: '♥ ' + bits.join(' · '), low: h.coverage != null && h.coverage < HR_MIN_COVERAGE };
@@ -69,7 +70,7 @@ const fmtRep = (s) => (s >= 60 ? fmtClock(s) : Number(s).toFixed(1));
 // shown only when a length carries more than its time.
 function lengthRows(splits) {
   if (!Array.isArray(splits) || !splits.length || !splits.every((x) => Number.isFinite(Number(x.sec)))) return null;
-  if (!splits.some((x) => x.sc || x.sr || x.hrAvg != null)) return null;
+  if (!splits.some((x) => x.sc || x.sr || x.hrFirst != null)) return null;
   let prev = 0;
   return splits.map((x) => { const lap = Number(x.sec) - prev; prev = Number(x.sec);
     return { ...x, lap, low: x.hrCoverage != null && x.hrCoverage < HR_MIN_COVERAGE }; });
@@ -407,7 +408,7 @@ export default function TestSets() {
                         {isOpen && (
                           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6, fontSize: 11 }}>
                             <thead><tr style={{ color: 'rgba(255,255,255,0.45)' }}>
-                              {['Rep', 'Time', 'HR', 'Avg', 'Peak', '+30 s', 'Cover', 'Other'].map((h) => (
+                              {['Rep', 'Time', 'HR', 'Min', 'Avg', 'Max', '+30 s', 'Cover', 'Other'].map((h) => (
                                 <th key={h} style={{ textAlign: h === 'Rep' || h === 'Other' ? 'left' : 'right', fontWeight: 500, padding: '2px 4px' }}>{h}</th>))}
                             </tr></thead>
                             <tbody>
@@ -424,6 +425,7 @@ export default function TestSets() {
                                     <td style={{ padding: '2px 4px' }}>{x.repNo}</td>
                                     <td style={td}>{x.timeSec != null ? fmtRep(x.timeSec) : '—'}</td>
                                     <td style={td}>{m.hr ?? '—'}</td>
+                                    <td style={td}>{m.hrMin ?? ''}</td>
                                     <td style={td}>{m.hrAvg ?? ''}</td>
                                     <td style={td}>{m.hrPeak ?? ''}</td>
                                     <td style={td}>{m.hrRec30 ?? ''}</td>
@@ -432,16 +434,12 @@ export default function TestSets() {
                                   </tr>
                                   {lens && (
                                     <tr><td />
-                                      <td colSpan={7} style={{ padding: '0 4px 4px', color: 'rgba(255,255,255,0.55)', fontSize: 10.5 }}>
+                                      <td colSpan={8} style={{ padding: '0 4px 4px', color: 'rgba(255,255,255,0.55)', fontSize: 10.5 }}>
                                         {lens.map((l) => (
                                           <span key={l.dist} style={{ display: 'inline-block', marginRight: 10, whiteSpace: 'nowrap' }}>
-                                            {l.dist}m {fmtRep(l.lap)}{l.sc ? ` · SC ${l.sc}` : ''}{l.sr ? ` · SR ${l.sr}` : ''}
-                                            {l.hrAvg != null && (
-                                              <span style={{ color: l.low ? '#f2b654' : '#ff9a63' }}
-                                                title={l.hrFirst != null ? `first ${l.hrFirst} · last ${l.hrLast}` : undefined}>
-                                                {' · ♥ '}{l.hrMin != null ? `${l.hrMin}–` : ''}{l.hrAvg}{l.hrPeak != null ? `–${l.hrPeak}` : ''}
-                                                {l.hrFirst != null && <span style={{ opacity: 0.7 }}> ({l.hrFirst}→{l.hrLast})</span>}
-                                              </span>)}
+                                            {l.dist}m {fmtRep(l.lap)}{l.sc ? ` · SC ${l.sc}` : ''}{l.sr ? ` · SR ${Math.round(l.sr)}` : ''}
+                                            {l.hrFirst != null && (
+                                              <span style={{ color: l.low ? '#f2b654' : '#ff9a63' }}>{` · ♥ ${l.hrFirst}→${l.hrLast}`}</span>)}
                                           </span>
                                         ))}
                                       </td>

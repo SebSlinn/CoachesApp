@@ -38,7 +38,8 @@ mStream.push({ t: T0 + 120000, bpm: 120 });
 
 test('avg / peak / end / recovery', () => {
   const m = repHrMetrics(mStream, { startedAt: T0, timeSec: 60 });
-  assert.equal(m.hrPeak, 171);
+  assert.equal(m.hrPeak, 170);                       // 171 arrives after the touch — not part of the swim
+  assert.equal(m.hrMin, 140);
   assert.equal(m.hrEnd, 170);
   assert.equal(m.hr, 170);
   assert.equal(m.hrRec10, 160);
@@ -48,7 +49,7 @@ test('avg / peak / end / recovery', () => {
   assert.ok(m.hrCoverage > 0.9, `coverage ${m.hrCoverage}`);
 });
 test('ISO startedAt accepted', () => {
-  assert.equal(repHrMetrics(mStream, { startedAt: new Date(T0).toISOString(), timeSec: 60 }).hrPeak, 171);
+  assert.equal(repHrMetrics(mStream, { startedAt: new Date(T0).toISOString(), timeSec: 60 }).hrPeak, 170);
 });
 test('recovery stops at next rep start', () => {
   const m = repHrMetrics(mStream, { startedAt: T0, timeSec: 60, nextStartedAt: T0 + 80000 });
@@ -128,7 +129,7 @@ test('unpack tolerates junk and object samples', () => {
 test('applyHrToReps: typed hr kept, sensor figures added', () => {
   const reps = [{ repNo: 1, startedAt: new Date(T0).toISOString(), timeSec: 60, metrics: { hr: 175, rpe: 15 } }];
   const [r] = applyHrToReps(reps, mStream);
-  assert.equal(r.metrics.hr, 175); assert.equal(r.metrics.hrPeak, 171); assert.equal(r.metrics.rpe, 15);
+  assert.equal(r.metrics.hr, 175); assert.equal(r.metrics.hrPeak, 170); assert.equal(r.metrics.rpe, 15);
   assert.equal(r.metrics.hrRec30, 140);
 });
 test('applyHrToReps: rep outside the stream left alone', () => {
@@ -137,7 +138,9 @@ test('applyHrToReps: rep outside the stream left alone', () => {
 });
 test('hrRollup', () => {
   const ru = hrRollup([{ metrics: { hr: 160, hrPeak: 165, hrDrop30: 20, hrCoverage: 0.8 } }, { metrics: { hr: 170, hrPeak: 178, hrDrop30: 30, hrCoverage: 0.6 } }, { metrics: {} }]);
-  assert.deepEqual(ru, { reps: 2, peak: 178, meanEnd: 165, meanDrop30: 25, coverage: 0.7, fromSensor: true });
+  assert.deepEqual(ru, { reps: 2, peak: 178, min: null, avg: null, meanEnd: 165, meanDrop30: 25, coverage: 0.7, fromSensor: true });
+  assert.deepEqual([hrRollup([{ metrics: { hrMin: 120, hrAvg: 150, hrPeak: 170 } }, { metrics: { hrMin: 130, hrAvg: 160, hrPeak: 180 } }]).min,
+                    hrRollup([{ metrics: { hrMin: 120, hrAvg: 150, hrPeak: 170 } }, { metrics: { hrMin: 130, hrAvg: 160, hrPeak: 180 } }]).avg], [120, 155]);
   assert.equal(hrRollup([{ metrics: { rpe: 12 } }]), null);
   assert.equal(hrRollup([{ metrics: { hr: 150 } }]).fromSensor, false);
 });
@@ -163,12 +166,14 @@ test('lengthHrMetrics: underwater length → nulls, 0 coverage', () => {
 test('splitsWithHr: cumulative splits keep sc/sr and gain HR', () => {
   const rep = { startedAt: new Date(T0).toISOString(), splits: [{ dist: 25, sec: 15, sc: 12, sr: 40 }, { dist: 50, sec: 30, sc: 13 }] };
   const out = splitsWithHr(rep, mStream);
-  assert.equal(out[0].sc, 12); assert.equal(out[0].sr, 40); assert.equal(out[0].hrPeak, 146); assert.ok(out[1].hrAvg > 145);
+  assert.equal(out[0].sc, 12); assert.equal(out[0].sr, 40);
+  assert.deepEqual([out[0].hrFirst, out[0].hrLast], [140, 146]);
+  assert.ok(!('hrAvg' in out[0]) && !('hrPeak' in out[0]) && !('hrMin' in out[0]), 'per length: first/last only');
   assert.deepEqual(splitsWithHr({ startedAt: 'x', splits: rep.splits }, mStream), rep.splits);
 });
 test('applyHrToReps also fills per-length HR on splits', () => {
   const [r] = applyHrToReps([{ startedAt: new Date(T0).toISOString(), timeSec: 60, metrics: {}, splits: [{ dist: 50, sec: 30 }, { dist: 100, sec: 60 }] }], mStream);
-  assert.equal(r.splits[1].hrEnd, 170); assert.equal(r.metrics.hrPeak, 171);
+  assert.equal(r.splits[1].hrLast, 170); assert.equal(r.metrics.hrPeak, 170); assert.equal(r.metrics.hrMin, 140);
 });
 
 console.log(`\n${mPass} passed`);

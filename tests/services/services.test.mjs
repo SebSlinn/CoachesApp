@@ -94,7 +94,7 @@ console.log('\nlive heart rate in a Poolside test file');
   ok('rep 2: coach-typed hr kept over the sensor', r2.metrics.hr === 181 && r2.metrics.hrPeak === 170, r2.metrics);
   ok('rep 2: stream stopped before the finish → no end reading, partial coverage', r2.metrics.hrEnd === undefined && r2.metrics.hrCoverage < 0.9, r2.metrics);
   ok('recovery after rep 1 measured (+30 s)', r1.metrics.hrRec30 === 155 && r1.metrics.hrDrop30 === 15, r1.metrics);
-  ok('per-length HR added to each split, SC/SR kept', r1.splits[0].hrPeak === 145 && r1.splits[1].hrPeak === 170 && r1.splits[1].sc === 32 && r1.splits[1].sr === 38, r1.splits);
+  ok('per-length HR (first/last) added to each split, SC/SR kept', r1.splits[0].hrFirst === 120 && r1.splits[0].hrLast === 145 && r1.splits[1].hrLast === 170 && !('hrPeak' in r1.splits[1]) && r1.splits[1].sc === 32 && r1.splits[1].sr === 38, r1.splits);
   ok('other readings untouched', r1.metrics.lactate === 2.1 && r2.metrics.lactate === 5.2);
   ok('raw stream kept in conditions.hrStream', eff.conditions.hrStream && eff.conditions.hrStream.samples.length === samples.length && eff.conditions.hrStream.sensor === 'Polar Sense TEST');
   ok('no stream → reps saved exactly as given', !store.reps.filter((r) => r.effortId === i1.data.effortId).some((r) => 'hrPeak' in r.metrics));

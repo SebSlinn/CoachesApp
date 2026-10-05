@@ -57,8 +57,9 @@ export function repHrMetrics(pSamples, { startedAt, timeSec, nextStartedAt } = {
   const mNext = nextStartedAt == null ? Infinity
     : (typeof nextStartedAt === 'number' ? nextStartedAt : Date.parse(nextStartedAt));
 
-  // Swimmers surface at the wall: allow the finish reading up to 5 s after the touch.
-  const mWork = inWindow(pSamples, mStart, mFinish + 5000);
+  // Min / avg / max cover the swim only (start → touch). The end reading may come
+  // up to 5 s after the touch, as the swimmer surfaces at the wall.
+  const mWork = inWindow(pSamples, mStart, mFinish);
   const mBpms = mWork.map((s) => s.bpm);
   const hrAvg = mBpms.length ? Math.round(mBpms.reduce((a, b) => a + b, 0) / mBpms.length) : null;
   const hrPeak = mBpms.length ? Math.max(...mBpms) : null;
@@ -241,7 +242,9 @@ export function applyHrToReps(pReps, pSamples) {
  * format: one entry per length, the last at the finish). Other split fields
  * (sc, sr…) are kept; splits without cumulative `sec` are returned unchanged.
  */
-export const LENGTH_HR_KEYS = ['hrAvg', 'hrMin', 'hrPeak', 'hrFirst', 'hrLast', 'hrEnd', 'hrCoverage'];
+// Stored per length: first and last reading (+ how well the length was covered).
+// Min / avg / max are kept for the rep and the set, not each length.
+export const LENGTH_HR_KEYS = ['hrFirst', 'hrLast', 'hrCoverage'];
 export function splitsWithHr(pRep, pSamples) {
   const mSplits = pRep.splits;
   const t0 = Date.parse(pRep.startedAt);
@@ -252,7 +255,8 @@ export function splitsWithHr(pRep, pSamples) {
   return mSplits.map((x, i) => {
     const h = per[i] || {};
     const out = { ...x };
-    for (const k of LENGTH_HR_KEYS) { if (h[k] != null && (k !== 'hrCoverage' || h.hrSamples || h.hrEnd != null)) out[k] = h[k]; else delete out[k]; }
+    for (const k of ['hrAvg', 'hrMin', 'hrPeak', 'hrEnd']) delete out[k];
+    for (const k of LENGTH_HR_KEYS) { if (h.hrSamples && h[k] != null) out[k] = h[k]; else delete out[k]; }
     return out;
   });
 }
@@ -267,12 +271,16 @@ export function hrRollup(pReps) {
   const vals = (k) => mWith.map((r) => Number(r.metrics[k])).filter(Number.isFinite);
   const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
   const peaks = vals('hrPeak').concat(vals('hr'));
+  const mins = vals('hrMin');
+  const avgs = vals('hrAvg');
   const cover = vals('hrCoverage');
   const drop = vals('hrDrop30');
   const mEnd = mean(vals('hr'));
   return {
     reps: mWith.length,
     peak: peaks.length ? Math.max(...peaks) : null,
+    min: mins.length ? Math.min(...mins) : null,
+    avg: avgs.length ? Math.round(mean(avgs)) : null,
     meanEnd: mEnd == null ? null : Math.round(mEnd),
     meanDrop30: drop.length ? Math.round(mean(drop)) : null,
     coverage: cover.length ? Math.round(mean(cover) * 100) / 100 : null,
