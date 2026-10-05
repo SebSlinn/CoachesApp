@@ -150,3 +150,71 @@ export function freshness(pSamples, now = Date.now(), windowMs = 60000) {
   return { freshPct, readings: mIn.length, longestGapSec: Math.round(mGap * 10) / 10,
     currentAgeSec, rrPct, heldSec, held, verdict, windowSec: Math.round((now - mFrom) / 1000) };
 }
+
+// ── Recording side: the stream as stored, and per-rep / per-run roll-ups ─────
+
+/** Per-rep metric keys the sensor fills (besides `hr`, which a coach may also type). */
+export const HR_METRIC_KEYS = ['hrAvg', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
+
+/**
+ * Compact a stream for a file / the database: { source, sensor, samples:[[t,bpm],…] }.
+ * Keeps only samples within [from, to] when given.
+ */
+export function packStream(pSamples, { source = 'ble-poolside', sensor = '', from = -Infinity, to = Infinity } = {}) {
+  const samples = (pSamples || [])
+    .filter((s) => s && s.bpm > 0 && s.t >= from && s.t <= to)
+    .map((s) => [Math.round(s.t), s.bpm]);
+  return { source, sensor, samples };
+}
+
+/** Inverse of packStream → [{t,bpm}] (accepts either packed pairs or {t,bpm} objects). */
+export function unpackStream(pStream) {
+  const mRaw = Array.isArray(pStream) ? pStream : pStream && pStream.samples;
+  if (!Array.isArray(mRaw)) return [];
+  return mRaw.map((x) => (Array.isArray(x) ? { t: Number(x[0]), bpm: Number(x[1]) } : { t: Number(x.t), bpm: Number(x.bpm) }))
+    .filter((s) => Number.isFinite(s.t) && s.bpm > 0)
+    .sort((a, b) => a.t - b.t);
+}
+
+/**
+ * Fill each rep's metrics from the stream. Reps need startedAt + timeSec.
+ * A coach-typed `hr` is kept (typed wins); the sensor's figure is used otherwise.
+ * Returns new rep objects; reps with no HR data are returned unchanged.
+ */
+export function applyHrToReps(pReps, pSamples) {
+  if (!pSamples || !pSamples.length) return pReps;
+  const mOrder = pReps.map((r, i) => ({ i, t: Date.parse(r.startedAt) })).sort((a, b) => a.t - b.t);
+  const mNext = new Map();
+  mOrder.forEach((o, k) => mNext.set(o.i, mOrder[k + 1] ? mOrder[k + 1].t : undefined));
+  return pReps.map((r, i) => {
+    const m = repHrMetrics(pSamples, { startedAt: r.startedAt, timeSec: Number(r.timeSec), nextStartedAt: mNext.get(i) });
+    if (!m.hrSamples && m.hrRec30 == null) return r;
+    const mMetrics = { ...(r.metrics || {}) };
+    for (const k of HR_METRIC_KEYS) if (m[k] != null) mMetrics[k] = m[k];
+    if (mMetrics.hr == null && m.hr != null) mMetrics.hr = m.hr;
+    return { ...r, metrics: mMetrics };
+  });
+}
+
+/**
+ * One line per run for lists: peak, typical end-of-rep HR, mean 30-s drop,
+ * and how much of the swimming had readings. null when no rep has HR.
+ */
+export function hrRollup(pReps) {
+  const mWith = (pReps || []).filter((r) => r.metrics && (r.metrics.hrPeak != null || r.metrics.hr != null));
+  if (!mWith.length) return null;
+  const vals = (k) => mWith.map((r) => Number(r.metrics[k])).filter(Number.isFinite);
+  const mean = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+  const peaks = vals('hrPeak').concat(vals('hr'));
+  const cover = vals('hrCoverage');
+  const drop = vals('hrDrop30');
+  const mEnd = mean(vals('hr'));
+  return {
+    reps: mWith.length,
+    peak: peaks.length ? Math.max(...peaks) : null,
+    meanEnd: mEnd == null ? null : Math.round(mEnd),
+    meanDrop30: drop.length ? Math.round(mean(drop)) : null,
+    coverage: cover.length ? Math.round(mean(cover) * 100) / 100 : null,
+    fromSensor: cover.length > 0,
+  };
+}

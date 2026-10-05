@@ -13,6 +13,7 @@ import { getResultsRepository, getProtocolsRepository } from '../repositories/Re
 import { validateSetFormat } from '../session/setFormat'
 import { analyse, cleanMetrics, expandReps } from '../session/protocolFormat'
 import { recordsToResultRows } from '../athlete/swimmingResults'
+import { unpackStream, applyHrToReps } from '../hr/hrMetrics'
 
 const repo = () => getResultsRepository()
 
@@ -252,7 +253,10 @@ export const ingestPoolsideExport = async (pAthleteId, pEnvelope) => {
     const mProblem = validateResult(mRow)
     if (mProblem) return invalid(`${mProblem} (record ${i + 1})`)
   }
-  return repo().addManyIdempotent(pAthleteId, mRows.map(withEffort))
+  // Poolside fills per-swim metrics (e.g. heart rate from a live sensor) — keep
+  // only the known numeric keys, like set reps.
+  const mClean = mRows.map((r) => (r.metrics ? { ...r, metrics: cleanMetrics(r.metrics) } : r))
+  return repo().addManyIdempotent(pAthleteId, mClean.map(withEffort))
 }
 
 // Ingest a Poolside TEST file (swimzone.setresult/1, from Poolside set mode)
@@ -278,6 +282,7 @@ export const ingestPoolsideSetResult = async (pEnvelope, pOpts = {}) => {
     params: pEnvelope.params,
     conditions: pEnvelope.conditions || {},
     reps: pEnvelope.reps,
+    hrStream: pEnvelope.hrStream || null,
     source: 'stopwatch',
   })
   if (r.error) return r
@@ -296,18 +301,32 @@ export const ingestPoolsideSetResult = async (pEnvelope, pOpts = {}) => {
 //     snapshot stays generic), and chosen params in conditions.params;
 //   • idempotent: pass `id` (or `sessionId`) and saving the same run again is a
 //     no-op → { alreadyPresent: true }.
+//   • live heart rate (2026-10-05): `hrStream` { source, sensor, samples:[[t,bpm],…] }
+//     is the raw truth. Each rep's HR figures (hrAvg, hrPeak, hrEnd, hrRec10/30/60,
+//     hrDrop30, hrCoverage, and hr unless the coach typed one) are RE-DERIVED here
+//     from the stream, and the stream is kept in conditions.hrStream so they can be
+//     recomputed later. No stream → reps are saved exactly as given.
 // Returns { effortId, reps, alreadyPresent, summary }.
 export const addSetResult = async (pAthleteId, pSetResult) => {
   const mSetErr = pSetResult && pSetResult.set ? validateSetFormat(pSetResult.set) : 'set snapshot missing'
   if (mSetErr) return invalid(`INVALID set: ${mSetErr}`)
   if (!Array.isArray(pSetResult.reps)) return invalid('INVALID: reps missing')
 
-  const mReps = pSetResult.reps.map((r) => ({ ...r, metrics: cleanMetrics(r.metrics) }))
+  const mStreamIn = pSetResult.hrStream || (pSetResult.conditions && pSetResult.conditions.hrStream) || null
+  const mSamples = unpackStream(mStreamIn)
+  const mRepsIn = mSamples.length ? applyHrToReps(pSetResult.reps, mSamples) : pSetResult.reps
+  const mReps = mRepsIn.map((r) => ({ ...r, metrics: cleanMetrics(r.metrics) }))
   const mTargets = mReps.filter((r) => r.targetTime).map((r) => ({ repNo: r.repNo, targetTime: r.targetTime }))
+  const { hrStream: _ignored, ...mCondIn } = pSetResult.conditions || {}
   const mConditions = {
-    ...(pSetResult.conditions || {}),
+    ...mCondIn,
     ...(pSetResult.params ? { params: pSetResult.params } : {}),
     ...(mTargets.length ? { targets: mTargets } : {}),
+    ...(mSamples.length ? { hrStream: {
+      source: (mStreamIn && mStreamIn.source) || 'ble-poolside',
+      sensor: (mStreamIn && mStreamIn.sensor) || '',
+      samples: mSamples.map((x) => [x.t, x.bpm]),
+    } } : {}),
   }
 
   let mSummary = pSetResult.summary ?? null
@@ -322,8 +341,9 @@ export const addSetResult = async (pAthleteId, pSetResult) => {
       ? stableUuid(`set|${pAthleteId}|${pSetResult.protocolId || ''}|${pSetResult.swumOn}|${pSetResult.sessionId}`)
       : undefined)
 
+  const { hrStream: _stream, ...mRest } = pSetResult
   const { data, error } = await repo().addSetResult(pAthleteId, {
-    ...pSetResult, id: mId, reps: mReps, conditions: mConditions, summary: mSummary,
+    ...mRest, id: mId, reps: mReps, conditions: mConditions, summary: mSummary,
   })
   if (error) return { data: null, error }
   return { data: { ...data, summary: mSummary }, error: null }

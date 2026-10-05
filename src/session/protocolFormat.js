@@ -22,6 +22,14 @@ import { SET_FMT, parseSetTime, fmtSetTime, resolveTarget, resolveRestSec, valid
 export const PROTOCOL_MEASURES = ['time', 'splits', 'sc', 'sr', 'hr', 'rpe', 'lactate'];
 /** Measures stored in performance_results.metrics (time/splits have their own columns). */
 export const METRIC_KEYS = ['sc', 'sr', 'hr', 'rpe', 'lactate'];
+/**
+ * Per-rep figures a live heart-rate sensor adds (derived from the stream — see
+ * src/hr/hrMetrics.js HR_METRIC_KEYS; kept in step by hand to stay import-free).
+ * `hr` stays the single "HR for this rep" figure: typed by the coach, else the
+ * sensor's end-of-rep reading.
+ */
+export const HR_SENSOR_KEYS = ['hrAvg', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
+const STORED_METRIC_KEYS = METRIC_KEYS.concat(HR_SENSOR_KEYS);
 export const PARAM_KINDS = ['onTime', 'restSec'];
 const KEY_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
@@ -50,7 +58,7 @@ function slope(xs, ys) {
 export function cleanMetrics(metrics) {
   const out = {};
   if (!metrics || typeof metrics !== 'object') return out;
-  for (const k of METRIC_KEYS) {
+  for (const k of STORED_METRIC_KEYS) {
     const v = metrics[k];
     if (v === null || v === undefined || v === '') continue;
     const n = Number(v);
@@ -425,12 +433,13 @@ export const ANALYSERS = {
 
   // Max HR: the peak reading.
   maxhr: {
-    v: 1,
+    v: 2,   // v2: also reads the sensor's in-rep peak (hrPeak), not just the end-of-rep hr
     label: 'Max heart rate',
     run(reps) {
       let peak = null, at = null;
       for (const r of reps) {
-        const hr = met(r, 'hr');
+        const a = met(r, 'hr'), b = met(r, 'hrPeak');
+        const hr = Number.isFinite(b) && !(b < a) ? b : a;
         if (Number.isFinite(hr) && (peak == null || hr > peak)) { peak = hr; at = r.repNo; }
       }
       return { peakHr: peak, peakRepNo: at };

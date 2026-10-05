@@ -203,6 +203,33 @@
   .toast button{ background:none; border:none; color:var(--accent); font-weight:800; font-size:13px; cursor:pointer; }
   .toast[hidden]{ display:none; }
 
+  /* ---- live heart rate (a Bluetooth HR sensor, one per athlete) ---- */
+  header.bar .bar-right{ display:flex; align-items:center; gap:8px; }
+  .hr-chip{ display:flex; align-items:center; gap:6px; height:38px; padding:0 11px; border-radius:10px; border:1px solid var(--line);
+    background:none; color:var(--muted); font-family:inherit; font-weight:800; font-size:14px; cursor:pointer; }
+  .hr-chip .heart{ font-size:15px; line-height:1; }
+  .hr-chip .bpm{ font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; min-width:2.2em; text-align:right; }
+  .hr-chip .age{ font-size:11px; font-weight:700; opacity:.85; }
+  .hr-chip.good{ border-color:var(--good); color:var(--good); background:var(--good-bg); }
+  .hr-chip.patchy{ border-color:var(--warn); color:var(--warn); background:var(--warn-bg); }
+  .hr-chip.poor{ border-color:var(--lane); color:var(--lane); }
+  .hr-chip.act{ border-color:var(--accent); color:var(--accent); }
+  #hrOverlay .actions button:disabled{ opacity:.4; cursor:default; }
+  .hr-big{ font-family:'JetBrains Mono',monospace; font-size:56px; font-weight:700; text-align:center; line-height:1; margin:4px 0 2px; }
+  .hr-status{ text-align:center; font-size:13px; font-weight:700; color:var(--muted); min-height:18px; }
+  .hr-status.good{ color:var(--good);} .hr-status.patchy{ color:var(--warn);} .hr-status.poor{ color:var(--lane);}
+  .hr-tiles{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:12px 0 4px; }
+  .hr-tile{ background:var(--surface-2); border-radius:10px; padding:8px 4px; text-align:center; }
+  .hr-tile b{ display:block; font-family:'JetBrains Mono',monospace; font-size:17px; }
+  .hr-tile span{ display:block; font-size:10.5px; color:var(--muted); line-height:1.2; margin-top:2px; }
+  .hr-note{ font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
+  .hr-link{ background:none; border:none; color:var(--muted); text-decoration:underline; font-family:inherit; font-size:12px; padding:0; cursor:pointer; }
+  .rep-hr{ margin-top:6px; font-size:12px; font-weight:600; color:var(--ink); display:flex; gap:10px; flex-wrap:wrap; }
+  .rep-hr .heart{ color:var(--lane); }
+  .rep-hr .low{ color:var(--warn); }
+  .field .from-sensor{ display:block; margin-top:5px; font-size:11.5px; color:var(--good); font-weight:600; text-transform:none; letter-spacing:0; }
+  .field .from-sensor.low{ color:var(--warn); }
+
   /* ---- test set mode (a SwimZone test handed over from Test Sets) ---- */
   .test-panel{ margin-top:8px; background:var(--surface); border:1px solid var(--accent); border-radius:14px; padding:10px 14px; box-shadow:var(--shadow); }
   .test-panel[hidden]{ display:none; }
@@ -231,7 +258,10 @@
 <div id="app">
   <header class="bar">
     <div class="word">Pool<b>side</b><span id="athleteTag" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-left:10px;letter-spacing:0;"></span></div>
-    <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
+    <div class="bar-right">
+      <button class="hr-chip" id="hrChip" type="button" aria-label="Heart rate sensor" title="Heart rate sensor"><span class="heart">&#9829;</span><span class="bpm" id="hrChipBpm"></span><span class="age" id="hrChipAge"></span></button>
+      <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
+    </div>
   </header>
 
   <div class="set-strip" id="setStrip"></div>
@@ -380,6 +410,32 @@
       <button class="ghost" id="measuresSkip" type="button">Skip</button>
       <button class="primary" id="measuresSave" type="button">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- ============ live heart rate: the athlete's own Bluetooth sensor ============ -->
+<div class="overlay" id="hrOverlay" hidden>
+  <div class="sheet">
+    <h3 id="hrTitle">Heart rate</h3>
+    <div class="hr-big" id="hrBig">--</div>
+    <div class="hr-status" id="hrStatus"></div>
+    <div class="hr-tiles" id="hrTiles">
+      <div class="hr-tile"><b id="hrFresh">–</b><span>seconds with a new reading</span></div>
+      <div class="hr-tile"><b id="hrGap">–</b><span>longest gap</span></div>
+      <div class="hr-tile"><b id="hrRr">–</b><span>real beat data</span></div>
+      <div class="hr-tile"><b id="hrHeld">–</b><span>same number repeated</span></div>
+    </div>
+    <div class="hr-note" id="hrVerdict"></div>
+    <div class="hr-note" id="hrSensor"></div>
+    <div class="actions">
+      <button class="ghost" id="hrPairBtn" type="button">Pair sensor</button>
+      <button class="primary" id="hrConnectBtn" type="button">Connect</button>
+    </div>
+    <div class="actions">
+      <button class="ghost" id="hrDisconnectBtn" type="button">Disconnect</button>
+      <button class="ghost" id="hrCloseBtn" type="button">Close</button>
+    </div>
+    <div class="hr-note">Readings arrive when the sensor is out of the water (each breath, turns, the wall), so short gaps are normal. Times here use the same clock as your taps, so every rep gets its own heart rate automatically.</div>
   </div>
 </div>
 
@@ -594,7 +650,7 @@ const SwimCore = (function(){
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
           set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
           distance: rep.distance, poolLength: set.event ? set.event.poolLength : null, startType: rep.startType,
-          startClock: fmtWallClock(rep.startTime),
+          startClock: fmtWallClock(rep.startTime), startTime: rep.startTime, finishTime: rep.finishTime,
           totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
           lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
@@ -625,6 +681,8 @@ const SwimCore = (function(){
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
     const header=['Athlete','Date','Location','Set','Rep','Stroke','Distance (m)','Pool length (m)','Rest before','Start type','Start time','Total time'];
     for (let i=1;i<=maxLengths;i++) header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR');
+    const anyHr = exported.reps.some(r => r.hr);
+    if (anyHr) header.push('HR avg','HR peak','HR end','HR +30s','HR coverage %');
     header.push('Result','Notes');
     const lines=[header.join(',')];
     exported.reps.forEach(r=>{
@@ -636,7 +694,9 @@ const SwimCore = (function(){
       const resultText = r.status==='complete' ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
       const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,r.restBeforeFormatted,r.startType,r.startClock,r.totalFormatted,
-        ...lengthCells, resultText, notesText]
+        ...lengthCells,
+        ...(anyHr ? (r.hr ? [r.hr.hrAvg, r.hr.hrPeak, r.hr.hrEnd, r.hr.hrRec30, r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : ''] : ['','','','','']) : []),
+        resultText, notesText]
         .map(c=>{ const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
       lines.push(cells.join(','));
     });
@@ -659,7 +719,8 @@ const SwimCore = (function(){
         lines.push(label + ':');
       }
       const resultText = r.status==='complete' ? '' : '  (check — ' + flagNotes(r).join('; ').toLowerCase() + ')';
-      lines.push('  Rep ' + r.rep + ': ' + r.totalFormatted + resultText);
+      const hrText = r.hr && r.hr.hrPeak != null ? '  ♥ peak ' + r.hr.hrPeak + (r.hr.hrEnd != null ? ', end ' + r.hr.hrEnd : '') : '';
+      lines.push('  Rep ' + r.rep + ': ' + r.totalFormatted + hrText + resultText);
     });
     if (exported.reps.length === 0) lines.push('', 'No reps recorded yet.');
     return lines.join('\n');
@@ -705,6 +766,7 @@ const SwimCore = (function(){
         splits: (r.lengths || []).map(l => ({ from:l.from, to:l.to, ms:l.ms, sc:l.sc, sr:l.sr })),
         source: 'stopwatch',
         note: r.set || '',                  // which Poolside set this rep came from
+        ...(r.hr ? { metrics: r.hr } : {}), // live heart rate for this swim (avg/peak/end/recovery/coverage)
       });
     });
     return {
@@ -950,19 +1012,41 @@ const SwimCore = (function(){
     if (!list.length) return;
     measuresRepNo = repNo;
     $('measuresTitle').textContent = 'Rep ' + repNo + ' — ' + (rep ? SwimCore.fmtClock(rep.finishTime - rep.startTime) : '') + (pr.targetLabel ? ' (target ' + pr.targetLabel + ')' : '');
+    // A connected sensor pre-fills HR (the end-of-rep reading); the coach can
+    // overwrite it. A value left as the sensor gave it isn't saved as "typed",
+    // so the export uses the sensor's final figure (it keeps improving for a few
+    // seconds after the touch as the swimmer surfaces).
+    const sensorHr = list.includes('hr') && have.hr == null && rep && HR.hasData();
     $('measuresFields').innerHTML = list.map(k => {
       const f = READING_FIELDS[k]; if (!f) return '';
+      const auto = k === 'hr' && sensorHr;
       return '<div class="field"><label>'+f.label+' <span style="text-transform:none;font-weight:600">· '+f.unit+'</span></label>'+
-             '<input type="number" inputmode="decimal" step="'+f.step+'" data-reading="'+k+'" placeholder="'+f.ph+'" value="'+(have[k]!=null?have[k]:'')+'"></div>';
+             '<input type="number" inputmode="decimal" step="'+f.step+'" data-reading="'+k+'" placeholder="'+(auto ? 'waiting for sensor…' : f.ph)+'" value="'+(have[k]!=null?have[k]:'')+'"'+(auto ? ' data-auto="1"' : '')+'>'+
+             (auto ? '<span class="from-sensor" id="hrFromSensor"></span>' : '')+'</div>';
     }).join('');
     openOverlay($('measuresOverlay'));
-    setTimeout(() => { const first = $('measuresFields').querySelector('input'); if (first) try { first.focus(); } catch(e){} }, 60);
+    if (sensorHr){
+      const inp = $('measuresFields').querySelector('[data-reading="hr"]');
+      inp.addEventListener('input', () => { inp.dataset.auto = ''; const n = $('hrFromSensor'); if (n) n.textContent = 'typed'; });
+      const fill = () => {
+        if ($('measuresOverlay').hidden || inp.dataset.auto !== '1'){ clearInterval(fill.t); return; }
+        const m = HR.repMetrics(rep, nextRepStart(rep.startTime)); const note = $('hrFromSensor');
+        if (!m || m.hr == null){ if (note) note.textContent = 'From sensor — waiting for a reading at the wall…'; return; }
+        inp.value = m.hr; inp.dataset.autoVal = String(m.hr);
+        const low = m.hrCoverage < HR.lib.HR_MIN_COVERAGE;
+        if (note){ note.className = 'from-sensor' + (low ? ' low' : ''); note.textContent = 'From sensor · peak ' + (m.hrPeak ?? '–') + ' · ' + Math.round(m.hrCoverage*100) + '% of rep covered' + (low ? ' — patchy, check it' : ''); }
+      };
+      fill(); fill.t = setInterval(fill, 1000);
+    }
+    setTimeout(() => { const first = $('measuresFields').querySelector('input:not([data-auto="1"])') || $('measuresFields').querySelector('input'); if (first) try { first.focus(); } catch(e){} }, 60);
   }
   function saveReadings(){
     if (measuresRepNo == null) return;
     const vals = {};
     $('measuresFields').querySelectorAll('[data-reading]').forEach(inp => {
-      const v = inp.value.trim(); if (v === '') return; const n = Number(v); if (Number.isFinite(n)) vals[inp.dataset.reading] = n;
+      const v = inp.value.trim(); if (v === '') return;
+      if (inp.dataset.auto === '1' && v === inp.dataset.autoVal) return;   // still the sensor's value — filled at export
+      const n = Number(v); if (Number.isFinite(n)) vals[inp.dataset.reading] = n;
     });
     state.test.readings[measuresRepNo] = vals;
     measuresRepNo = null; hideOverlay($('measuresOverlay')); render();
@@ -975,7 +1059,7 @@ const SwimCore = (function(){
       const pr = repPlan(repNo);
       let cum = 0;
       const splits = SwimCore.repLengthTimes(rep).filter(l => l.to != null).map(l => { cum += l.ms; return { dist:l.to, sec: Math.round(cum/10)/100 }; });
-      const m = Object.assign({}, t.readings[repNo] || {});
+      const m = Object.assign({}, sensorMetrics(rep) || {}, t.readings[repNo] || {});   // typed readings win
       if (m.sc == null && rep.scCount) m.sc = rep.scCount;
       if (m.sr == null && rep.srResults.length){
         const v = rep.srResults.map(r => r.strokeRate).filter(x => x != null);
@@ -994,6 +1078,11 @@ const SwimCore = (function(){
       set: run.set, params: run.params,
       conditions: { poolType: run.set && run.set.poolType, location: state.session.location || '' },
       reps, missing: run.reps.filter(r => !pg.doneNos.has(r.repNo)).map(r => r.repNo), extraReps: pg.extra,
+      ...(function(){
+        if (!pg.done.length) return {};
+        const st = HR.packFor(Math.min(...pg.done.map(d => d.rep.startTime)), Math.max(...pg.done.map(d => d.rep.finishTime)));
+        return st ? { hrStream: st } : {};
+      })(),
     };
   }
   function testSummaryText(sr){
@@ -1002,6 +1091,7 @@ const SwimCore = (function(){
       const bits = [];
       if (r.targetTime) bits.push('target ' + r.targetTime);
       ['hr','lactate','rpe','sc','sr'].forEach(k => { if (r.metrics[k] != null) bits.push(({hr:'HR',lactate:'La',rpe:'RPE',sc:'SC',sr:'SR'})[k] + ' ' + r.metrics[k]); });
+      if (r.metrics.hrPeak != null) bits.push('peak ' + r.metrics.hrPeak + (r.metrics.hrRec30 != null ? ', +30s ' + r.metrics.hrRec30 : ''));
       lines.push('Rep ' + r.repNo + ': ' + SwimCore.fmtClock(r.timeSec*1000) + (bits.length ? '  (' + bits.join(', ') + ')' : '') + (r.note ? '  — ' + r.note : ''));
     });
     if (sr.missing.length) lines.push('', 'Not timed: rep' + (sr.missing.length>1?'s ':' ') + sr.missing.join(', '));
@@ -1041,6 +1131,201 @@ const SwimCore = (function(){
         nextHint=$('nextHint'), btnDive=$('btnDive'), btnPush=$('btnPush'), btnTurn=$('btnTurn'), btnFinish=$('btnFinish'),
         btnSR=$('btnSR'), btnSC=$('btnSC'), undoBtn=$('undoBtn'), wakeBtn=$('wakeBtn'), repList=$('repList'),
         toast=$('toast');
+
+  /* ============================================================
+     LIVE HEART RATE — the loaded athlete's own Bluetooth sensor.
+     Every reading is stamped with Date.now() on arrival — the same
+     clock as the Start/Turn/Finish taps — so each rep's HR is just
+     "the readings between its start and finish". The raw stream is
+     kept per athlete (localStorage, last 12 h) and goes out with the
+     SwimZone files; per-rep numbers are derived from it.
+     ============================================================ */
+  const HR = (function(){
+    const STREAM_KEY = 'poolside-hr-stream-v1';
+    const KEEP_MS = 12 * 3600 * 1000;
+    let lib = window.PoolsideHR || null;
+    let mon = null, key = null, stream = [], dirty = false, sheetTimer = null;
+
+    function athleteKey(){
+      if (state.session.szAthleteId) return state.session.szAthleteId;
+      const nm = (state.session.athlete || '').trim().toLowerCase();
+      return nm ? 'name:' + nm : '';
+    }
+    function loadAll(){ try { return JSON.parse(localStorage.getItem(STREAM_KEY)) || {}; } catch(e){ return {}; } }
+    function loadFor(k){
+      const cut = Date.now() - KEEP_MS;
+      return ((loadAll()[k]) || []).filter(x => x[0] > cut).map(x => ({ t:x[0], bpm:x[1] }));
+    }
+    function persist(){
+      if (!dirty || !key) return;
+      const all = loadAll(), cut = Date.now() - KEEP_MS;
+      all[key] = stream.filter(s => s.t > cut).map(s => [s.t, s.bpm]);
+      Object.keys(all).forEach(k => { all[k] = all[k].filter(x => x[0] > cut); if (!all[k].length) delete all[k]; });
+      try { localStorage.setItem(STREAM_KEY, JSON.stringify(all)); dirty = false; } catch(e){}
+    }
+    setInterval(persist, 5000);
+    window.addEventListener('pagehide', persist);
+
+    async function sync(){
+      if (!lib) return;
+      const k = athleteKey();
+      if (k === key) return;
+      persist();
+      if (mon){ const old = mon; mon = null; try { await old.disconnect(); } catch(e){} }
+      key = k; stream = k ? loadFor(k) : [];
+      if (k && lib.isSupported()){
+        mon = new lib.HrMonitor({ athleteId:k, onStatus: paint,
+          onSample: (smp) => { stream.push(smp); dirty = true; paint(); refreshCardsSoon(); } });
+        if (lib.sensorFor(k)) mon.connectSaved({ prompt:false }).catch(() => {});
+      }
+      paint();
+    }
+
+    function lastReading(){ return stream.length ? stream[stream.length-1] : null; }
+
+    // Per-rep HR from the stream. rep.startTime/finishTime are epoch ms (same clock).
+    function repMetrics(rep, nextStart){
+      if (!lib || !stream.length || !rep || !rep.finishTime) return null;
+      const m = lib.repHrMetrics(stream, { startedAt: rep.startTime, timeSec: (rep.finishTime - rep.startTime)/1000, nextStartedAt: nextStart });
+      return (m.hrSamples || m.hrRec30 != null) ? m : null;
+    }
+    // Stream to ship with a file: from a minute before the first start to 3 min after the last finish.
+    function packFor(from, to){
+      if (!lib || !stream.length) return null;
+      const p = lib.packStream(stream, { source:'ble-poolside', sensor: (mon && mon.sensorName) || (lib.sensorFor(key)||{}).name || '', from: from - 60000, to: to + 180000 });
+      return p.samples.length ? p : null;
+    }
+
+    function chipState(){
+      if (!lib || !lib.isSupported()) return { cls:'', bpm:'', age:'' };
+      if (!key) return { cls:'', bpm:'', age:'' };
+      const saved = lib.sensorFor(key);
+      if (!saved) return { cls:'act', bpm:'Pair', age:'' };
+      const last = lastReading(), st = mon ? mon.status : 'idle';
+      if (st === 'connected' || st === 'reconnecting' || st === 'connecting'){
+        if (!last || Date.now() - last.t > 60000) return { cls:'', bpm: st === 'connected' ? '…' : '…', age:'' };
+        const ageS = Math.round((Date.now() - last.t)/1000);
+        const f = lib.freshness(mon.samples.length ? mon.samples : stream);
+        const cls = ageS > 10 ? 'poor' : (f.verdict === 'good' ? 'good' : f.verdict === 'patchy' ? 'patchy' : f.verdict === 'poor' ? 'poor' : '');
+        return { cls, bpm: String(last.bpm), age: ageS > 4 ? ageS + 's' : '' };
+      }
+      return { cls:'act', bpm:'Connect', age:'' };
+    }
+    function paint(){
+      const chip = $('hrChip'); if (!chip) return;
+      const c = chipState();
+      chip.className = 'hr-chip ' + c.cls;
+      $('hrChipBpm').textContent = c.bpm;
+      $('hrChipAge').textContent = c.age;
+      if (!$('hrOverlay').hidden) paintSheet();
+    }
+    setInterval(() => { if (mon) paint(); }, 1000);
+
+    function paintSheet(){
+      const name = state.session.athlete || '';
+      $('hrTitle').textContent = 'Heart rate' + (name ? ' — ' + name : '');
+      const supported = lib && lib.isSupported();
+      const saved = supported && key ? lib.sensorFor(key) : null;
+      const last = lastReading(), st = mon ? mon.status : 'idle';
+      const live = last && Date.now() - last.t < 60000 && (st === 'connected' || st === 'reconnecting');
+      $('hrBig').textContent = live ? last.bpm : '--';
+      $('hrBig').style.opacity = live && Date.now() - last.t <= 4000 ? 1 : .45;
+      const f = mon && mon.samples.length ? lib.freshness(mon.samples) : null;
+      let status = '', scls = '';
+      if (!lib) status = 'Loading…';
+      else if (!supported) status = 'This browser can\'t use Bluetooth sensors — use Chrome or Edge on Android, Windows or Mac.';
+      else if (!key) status = 'Set the athlete first (⚙ Session details), then pair their sensor.';
+      else if (!saved) status = 'No sensor paired for this athlete yet.';
+      else if (st === 'connected') { const a = last ? Math.round((Date.now()-last.t)/1000) : null; status = a == null ? 'Connected — waiting for the first reading' : a <= 4 ? 'Live' : 'No reading for ' + a + ' s (normal underwater)'; scls = a != null && a <= 4 ? 'good' : 'patchy'; }
+      else if (st === 'reconnecting') { status = 'Link dropped — reconnecting (normal underwater)'; scls = 'patchy'; }
+      else if (st === 'connecting') status = 'Connecting…';
+      else if (st === 'needs-tap') status = 'Tap Connect to link ' + (saved.name || 'the sensor');
+      else status = 'Not connected';
+      $('hrStatus').textContent = status; $('hrStatus').className = 'hr-status ' + scls;
+      const set = (id, v, cls) => { const el = $(id); el.textContent = v; el.style.color = cls ? 'var(--' + cls + ')' : ''; };
+      if (f && f.readings){
+        set('hrFresh', f.freshPct + '%', f.freshPct >= 70 ? 'good' : f.freshPct >= 30 ? 'warn' : 'lane');
+        set('hrGap', Math.round(f.longestGapSec) + ' s', f.longestGapSec <= 5 ? 'good' : f.longestGapSec <= 10 ? 'warn' : 'lane');
+        set('hrRr', f.rrPct + '%', f.rrPct >= 70 ? 'good' : f.rrPct > 0 ? 'warn' : '');
+        set('hrHeld', Math.round(f.heldSec) + ' s', f.held ? 'lane' : 'good');
+        $('hrVerdict').textContent = ({
+          good: 'Good — the number on screen is current.',
+          patchy: 'Patchy — the number on screen can be up to ' + Math.round(f.longestGapSec) + ' s old.',
+          poor: f.held ? 'Suspect — the same value repeated for ' + Math.round(f.heldSec) + ' s without new beat data.' : 'Poor — readings are rare; treat the number on screen as old.',
+        })[f.verdict] || '';
+      } else { ['hrFresh','hrGap','hrRr','hrHeld'].forEach(id => set(id, '–')); $('hrVerdict').textContent = ''; }
+      $('hrSensor').innerHTML = saved
+        ? 'Sensor: <b>' + escapeHtml(saved.name || saved.id) + '</b>' + (mon && mon.battery != null ? ' · battery ' + mon.battery + '%' : '') +
+          ' · ' + stream.length + ' readings kept · <button class="hr-link" id="hrForget" type="button">forget sensor</button>'
+        : '';
+      const fg = $('hrForget'); if (fg) fg.onclick = forget;
+      $('hrPairBtn').disabled = !supported || !key;
+      $('hrPairBtn').textContent = saved ? 'Pair a different sensor' : 'Pair sensor';
+      $('hrConnectBtn').disabled = !saved || st === 'connected' || st === 'connecting';
+      $('hrDisconnectBtn').disabled = !mon || !(st === 'connected' || st === 'reconnecting' || st === 'connecting');
+    }
+
+    async function pair(){ if (!mon) return; try { await mon.pair(); showToast('Paired ' + mon.sensorName); } catch(e){ if (e && e.name !== 'NotFoundError') showToast(e.message || 'Pairing failed'); } paint(); }
+    async function connect(){ if (!mon) return; try { await mon.connectSaved(); } catch(e){ if (e && e.name !== 'NotFoundError') showToast(e.message || 'Could not connect'); } paint(); }
+    async function disconnect(){ if (mon) await mon.disconnect(); paint(); }
+    async function forget(){ if (!key) return; await disconnect(); lib.forgetSensor(key); showToast('Sensor forgotten for ' + (state.session.athlete || 'this athlete')); paint(); }
+
+    function openSheet(){
+      paintSheet(); openOverlay($('hrOverlay'));
+      clearInterval(sheetTimer); sheetTimer = setInterval(() => { if ($('hrOverlay').hidden){ clearInterval(sheetTimer); return; } paintSheet(); }, 500);
+    }
+    // Chip tap: one tap connects when we can; otherwise open the sheet.
+    function onChip(){
+      const st = mon ? mon.status : 'idle';
+      if (lib && mon && lib.sensorFor(key) && (st === 'needs-tap' || st === 'idle' || st === 'disconnected')){
+        mon.connectSaved().then(paint).catch(() => openSheet());   // picker cancelled → show the sheet
+        return;
+      }
+      openSheet();
+    }
+
+    // Rep cards show HR; the end-of-rep and recovery readings keep arriving for a
+    // while after the touch, so refresh the cards (at most once a second) then.
+    let cardsT = 0;
+    function refreshCardsSoon(){
+      if (cardsT) return;
+      const recent = state.sets.some(set => SwimCore.derive(set.events, SwimCore.buildPlan(set.event)).reps
+        .some(r => Date.now() - r.finishTime < 65000));
+      if (!recent) return;
+      cardsT = setTimeout(() => { cardsT = 0; renderAllReps(); }, 1000);
+    }
+
+    // The modules load after this script: once they're in, attach the athlete's
+    // sensor and redraw so stored readings show on the rep cards.
+    window.addEventListener('poolside-hr-ready', () => { lib = window.PoolsideHR; key = null; sync().then(() => render()); });
+    return { sync, paint, repMetrics, packFor, openSheet, onChip, pair, connect, disconnect, hasData: () => stream.length > 0,
+             get lib(){ return lib; } };
+  })();
+
+  // Chronological start times of every timed rep in the session — a rep's
+  // recovery readings stop when the next rep starts.
+  function nextRepStart(startTime){
+    let best;
+    state.sets.forEach(set => SwimCore.derive(set.events, SwimCore.buildPlan(set.event)).reps.forEach(r => {
+      if (r.startTime > startTime && (best === undefined || r.startTime < best)) best = r.startTime;
+    }));
+    return best;
+  }
+  const HR_SHORT = { hrAvg:'avg', hrPeak:'peak', hrEnd:'end', hrRec30:'+30s' };
+  function hrLineHtml(m){
+    if (!m) return '';
+    const bits = ['hrAvg','hrPeak','hrEnd','hrRec30'].filter(k => m[k] != null).map(k => HR_SHORT[k] + ' ' + m[k]);
+    const low = m.hrCoverage < (HR.lib ? HR.lib.HR_MIN_COVERAGE : 0.4);
+    return '<div class="rep-hr"><span class="heart">&#9829;</span>' + bits.map(b => '<span>' + b + '</span>').join('') +
+      '<span class="' + (low ? 'low' : '') + '">' + Math.round(m.hrCoverage*100) + '% covered' + (low ? ' — patchy' : '') + '</span></div>';
+  }
+  // Sensor figures to put on a rep's metrics (typed hr wins over the sensor's).
+  function sensorMetrics(rep){
+    const m = HR.repMetrics(rep, nextRepStart(rep.startTime)); if (!m) return null;
+    const out = {}; (HR.lib.HR_METRIC_KEYS || []).forEach(k => { if (m[k] != null) out[k] = m[k]; });
+    if (m.hr != null) out.hr = m.hr;
+    return out;
+  }
 
   function plan(){ return SwimCore.buildPlan(activeSet().event); }
   function derived(){ return SwimCore.derive(activeSet().events, plan()); }
@@ -1151,6 +1436,7 @@ const SwimCore = (function(){
 
     renderAllReps();
     renderTestPanel();
+    HR.sync(); HR.paint();
     saveState();
   }
 
@@ -1198,6 +1484,7 @@ const SwimCore = (function(){
       (splitsHtml ? '<div class="splits">'+splitsHtml+'</div>' : '')+
       '<div class="rep-meta">'+timeMeta+'</div>'+
       (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
+      hrLineHtml(HR.repMetrics(rep, nextRepStart(rep.startTime)))+
       (flagLines ? '<div class="flags">'+flagLines+'</div>' : '')+
       actions+
     '</div>';
@@ -1522,6 +1809,8 @@ const SwimCore = (function(){
   function buildExport(){
     const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets };
     currentExport = SwimCore.exportSession(session);
+    // live heart rate → per-rep figures on each row (CSV, recap and SwimZone file)
+    currentExport.reps.forEach(r => { const m = sensorMetrics({ startTime:r.startTime, finishTime:r.finishTime }); if (m) r.hr = m; });
     // a time-of-save suffix (not just the date) so saving the same athlete
     // twice in a day — a new session after the last one was already saved —
     // never reuses the previous filename and overwrites it.
@@ -1599,10 +1888,16 @@ const SwimCore = (function(){
      confirm sheet handles its own backdrop inside askConfirm, since its
      buttons carry per-call listeners that need matching cleanup) ---- */
   addTapListener($('measuresSave'), saveReadings);
+  addTapListener($('hrChip'), () => HR.onChip());
+  $('hrChip').addEventListener('contextmenu', (e) => { e.preventDefault(); HR.openSheet(); });
+  addTapListener($('hrPairBtn'), () => HR.pair());
+  addTapListener($('hrConnectBtn'), () => HR.connect());
+  addTapListener($('hrDisconnectBtn'), () => HR.disconnect());
+  addTapListener($('hrCloseBtn'), () => hideOverlay($('hrOverlay')));
   addTapListener($('measuresSkip'), () => { measuresRepNo = null; hideOverlay($('measuresOverlay')); });
   $('measuresFields').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveReadings(); });
 
-  [eventOverlay, settingsOverlay, resultsOverlay, $('measuresOverlay')].forEach(ov => {
+  [eventOverlay, settingsOverlay, resultsOverlay, $('measuresOverlay'), $('hrOverlay')].forEach(ov => {
     ov.addEventListener('click', (e) => { if (e.target === ov) hideOverlay(ov); });
   });
 
@@ -1613,6 +1908,17 @@ const SwimCore = (function(){
     decodeRun(RUN_HASH).then(applyRun).catch(() => showToast('That test link could not be read — open it again from SwimZone'));
   }
 })();
+</script>
+
+<!-- Live heart rate. The two modules are copied from src/hr/ by
+     scripts/copy-setformat.mjs (edit them there). Module scripts run after the
+     page script above, so it waits for 'poolside-hr-ready'. Poolside still works
+     without them (or on browsers with no Bluetooth). -->
+<script type="module">
+  import { HrMonitor, isSupported, sensorFor, forgetSensor } from './hrMonitor.js';
+  import { repHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS } from './hrMetrics.js';
+  window.PoolsideHR = { HrMonitor, isSupported, sensorFor, forgetSensor, repHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS };
+  window.dispatchEvent(new Event('poolside-hr-ready'));
 </script>
 
 </body>

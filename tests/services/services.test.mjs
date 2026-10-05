@@ -72,5 +72,31 @@ ok('file with no athlete uses the fallback',
    (await R.ingestPoolsideSetResult({ ...file, sessionId: 'x3', athleteId: null }, { fallbackAthleteId: 'jo' })).data?.athleteId === 'jo');
 ok('not a test file → clear error', (await R.ingestPoolsideSetResult({ fmt: 'swimzone.import/1' })).error?.message.includes('not a Poolside test file'));
 
+console.log('\nlive heart rate in a Poolside test file');
+{
+  const T0 = Date.parse('2026-10-05T18:00:00Z');
+  const samples = [];
+  for (let t = 0; t <= 400; t += 2) {                           // 2 reps: 0–150 s and 300–432 s
+    const bpm = t <= 150 ? 120 + Math.round(t / 3) : t < 300 ? Math.max(110, 170 - Math.round((t - 150) / 2)) : 130 + Math.round((t - 300) / 2.5);
+    samples.push([T0 + t * 1000, bpm]);
+  }
+  const hrFile = { ...file, sessionId: 'pool-hr-1',
+    reps: [{ repNo: 1, distM: 200, stroke: 'FS', timeSec: 150, startedAt: new Date(T0).toISOString(), targetTime: '2:30', metrics: { lactate: 2.1 } },
+           { repNo: 2, distM: 200, stroke: 'FS', timeSec: 132, startedAt: new Date(T0 + 300000).toISOString(), targetTime: '2:10', metrics: { hr: 181, lactate: 5.2 } }],
+    hrStream: { source: 'ble-poolside', sensor: 'Polar Sense TEST', samples } };
+  const h1 = await R.ingestPoolsideSetResult(hrFile, {});
+  ok('saved with a heart-rate stream', h1.data && h1.data.reps === 2 && !h1.data.alreadyPresent, h1);
+  const eff = store.efforts.find((e) => e.id === h1.data.effortId);
+  const [r1, r2] = store.reps.filter((r) => r.effortId === eff.id).sort((a, b) => a.repNo - b.repNo);
+  ok('rep HR derived from the stream (avg/peak/end/coverage)', r1.metrics.hrPeak === 170 && r1.metrics.hrEnd === 170 && r1.metrics.hrCoverage > 0.9 && r1.metrics.hrAvg > 130, r1.metrics);
+  ok('rep 1: hr filled from the sensor when not typed', r1.metrics.hr === 170, r1.metrics);
+  ok('rep 2: coach-typed hr kept over the sensor', r2.metrics.hr === 181 && r2.metrics.hrPeak === 170, r2.metrics);
+  ok('rep 2: stream stopped before the finish → no end reading, partial coverage', r2.metrics.hrEnd === undefined && r2.metrics.hrCoverage < 0.9, r2.metrics);
+  ok('recovery after rep 1 measured (+30 s)', r1.metrics.hrRec30 === 155 && r1.metrics.hrDrop30 === 15, r1.metrics);
+  ok('other readings untouched', r1.metrics.lactate === 2.1 && r2.metrics.lactate === 5.2);
+  ok('raw stream kept in conditions.hrStream', eff.conditions.hrStream && eff.conditions.hrStream.samples.length === samples.length && eff.conditions.hrStream.sensor === 'Polar Sense TEST');
+  ok('no stream → reps saved exactly as given', !store.reps.filter((r) => r.effortId === i1.data.effortId).some((r) => 'hrPeak' in r.metrics));
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

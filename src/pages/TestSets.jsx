@@ -21,6 +21,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listProtocols, prescribeForAthletes } from '../services/protocols';
 import { getSetResultsByProtocol, ingestPoolsideSetResult } from '../services/results';
 import { prescribeGroup, buildHandoff, encodeHandoff } from '../session/protocolFormat';
+import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
 const MEASURE_LABEL = { time: 'time', splits: 'splits', sc: 'strokes', sr: 'rate', hr: 'HR', rpe: 'RPE', lactate: 'lactate' };
@@ -51,6 +52,19 @@ const B = {
 const isDraft = (p) => /^DRAFT/i.test(p.description || '') || /DRAFT/i.test(p.set?.note || '');
 const fmtClock = (s) => { const m = Math.floor(s / 60); return `${m}:${String(Math.round(s - m * 60)).padStart(2, '0')}`; };
 const paramValueLabel = (def, v) => (def.kind === 'restSec' ? (v >= 60 && v % 60 === 0 ? `${v / 60} min` : `${v} s`) : v);
+
+// One line of heart-rate for a run (live sensor or typed HR), or null.
+function hrLine(reps) {
+  const h = hrRollup(reps);
+  if (!h) return null;
+  const bits = [];
+  if (h.peak != null) bits.push(`peak ${h.peak}`);
+  if (h.meanEnd != null) bits.push(`end ${h.meanEnd}`);
+  if (h.meanDrop30 != null) bits.push(`−${h.meanDrop30} in 30 s`);
+  if (h.coverage != null) bits.push(`${Math.round(h.coverage * 100)}% covered`);
+  return { text: '♥ ' + bits.join(' · '), low: h.coverage != null && h.coverage < HR_MIN_COVERAGE };
+}
+const fmtRep = (s) => (s >= 60 ? fmtClock(s) : Number(s).toFixed(1));
 
 function intervalLabel(iv) {
   if (!iv) return '';
@@ -112,6 +126,7 @@ export default function TestSets() {
   const [prescription, setPrescription] = useState(null);
   const [prError, setPrError] = useState(null);
   const [runs, setRuns] = useState([]);
+  const [openRun, setOpenRun] = useState(null);
   const [runsTick, setRunsTick] = useState(0);
   const [importMsg, setImportMsg] = useState(null);     // { ok, text }
 
@@ -367,12 +382,51 @@ export default function TestSets() {
                 <span style={C.label}>Previous runs · {athletes.find((a) => a.id === picked[0])?.name?.replace(' (me)', '') || 'athlete'}</span>
                 {runs.length === 0
                   ? <div style={C.muted}>Not swum yet.</div>
-                  : runs.map((r) => (
-                    <div key={r.id} style={{ display: 'flex', gap: 12, padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12 }}>
-                      <span style={{ color: 'rgba(255,255,255,0.5)', minWidth: 90 }}>{r.swumOn}</span>
-                      <span>{headline(r.summary)}</span>
-                    </div>
-                  ))}
+                  : runs.map((r) => {
+                    const reps = (r.reps || []).slice().sort((a, b) => a.repNo - b.repNo);
+                    const hr = hrLine(reps);
+                    const isOpen = openRun === r.id;
+                    return (
+                      <div key={r.id} style={{ padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: 12 }}>
+                        <div onClick={() => reps.length && setOpenRun(isOpen ? null : r.id)}
+                          style={{ display: 'flex', gap: 12, flexWrap: 'wrap', cursor: reps.length ? 'pointer' : 'default' }}>
+                          <span style={{ color: 'rgba(255,255,255,0.5)', minWidth: 90 }}>{r.swumOn}</span>
+                          <span style={{ flex: 1 }}>{headline(r.summary)}</span>
+                          {hr && <span style={{ color: hr.low ? '#f2b654' : '#ff9a63' }}>{hr.text}</span>}
+                          {reps.length > 0 && <span style={{ color: 'rgba(255,255,255,0.4)' }}>{isOpen ? 'hide reps ▴' : 'reps ▾'}</span>}
+                        </div>
+                        {isOpen && (
+                          <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: 6, fontSize: 11 }}>
+                            <thead><tr style={{ color: 'rgba(255,255,255,0.45)' }}>
+                              {['Rep', 'Time', 'HR', 'Avg', 'Peak', '+30 s', 'Cover', 'Other'].map((h) => (
+                                <th key={h} style={{ textAlign: h === 'Rep' || h === 'Other' ? 'left' : 'right', fontWeight: 500, padding: '2px 4px' }}>{h}</th>))}
+                            </tr></thead>
+                            <tbody>
+                              {reps.map((x) => {
+                                const m = x.metrics || {};
+                                const low = m.hrCoverage != null && m.hrCoverage < HR_MIN_COVERAGE;
+                                const td = { textAlign: 'right', padding: '2px 4px' };
+                                const other = ['lactate', 'rpe', 'sc', 'sr'].filter((k) => m[k] != null)
+                                  .map((k) => `${{ lactate: 'La', rpe: 'RPE', sc: 'SC', sr: 'SR' }[k]} ${m[k]}`).join(' · ');
+                                return (
+                                  <tr key={x.id || x.repNo} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                    <td style={{ padding: '2px 4px' }}>{x.repNo}</td>
+                                    <td style={td}>{x.timeSec != null ? fmtRep(x.timeSec) : '—'}</td>
+                                    <td style={td}>{m.hr ?? '—'}</td>
+                                    <td style={td}>{m.hrAvg ?? ''}</td>
+                                    <td style={td}>{m.hrPeak ?? ''}</td>
+                                    <td style={td}>{m.hrRec30 ?? ''}</td>
+                                    <td style={{ ...td, color: low ? '#f2b654' : undefined }}>{m.hrCoverage != null ? `${Math.round(m.hrCoverage * 100)}%` : ''}</td>
+                                    <td style={{ padding: '2px 4px', color: 'rgba(255,255,255,0.6)' }}>{other}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>

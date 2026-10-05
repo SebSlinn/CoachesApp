@@ -74,7 +74,7 @@ function withTimeout(pPromise, pMs, pMsg) {
 }
 
 // ── One monitor = one athlete's sensor ───────────────────────────────────────
-// status: idle | connecting | connected | reconnecting | disconnected | error
+// status: idle | needs-tap | connecting | connected | reconnecting | disconnected
 export class HrMonitor {
   constructor({ athleteId, onSample = () => {}, onStatus = () => {}, staleMs = 4000 } = {}) {
     this.athleteId = athleteId;
@@ -117,8 +117,10 @@ export class HrMonitor {
    * Connect the sensor already saved for this athlete. Uses getDevices() where the
    * browser supports remembered permissions (no prompt); otherwise shows the picker
    * filtered to that one sensor — one tap. Must run from a user gesture in the latter case.
+   * With { prompt:false } it never shows the picker: resolves null and sets status
+   * 'needs-tap' when a tap is required.
    */
-  async connectSaved() {
+  async connectSaved({ prompt = true } = {}) {
     if (!isSupported()) throw new Error('Web Bluetooth is not available in this browser.');
     const mSaved = sensorFor(this.athleteId);
     if (!mSaved) throw new Error('No sensor saved for this athlete — pair one first.');
@@ -130,6 +132,9 @@ export class HrMonitor {
       } catch { /* not permitted — fall back to picker */ }
     }
     if (!mDevice) {
+      // Without remembered permission the browser must show its picker, which
+      // needs a tap. prompt:false (e.g. on page load / athlete switch) → report it.
+      if (!prompt) { this._setStatus('needs-tap'); return null; }
       mDevice = await navigator.bluetooth.requestDevice({
         filters: mSaved.name ? [{ name: mSaved.name }] : [{ services: [HR_SERVICE] }],
         optionalServices: [HR_SERVICE, BATTERY_SERVICE],

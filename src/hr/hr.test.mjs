@@ -2,7 +2,7 @@
 // Packet parsing + per-rep metrics. No browser, no Bluetooth needed.
 import assert from 'node:assert/strict';
 import { parseHeartRate } from './hrMonitor.js';
-import { repHrMetrics, coverage, hrAt, sliceStream, freshness } from './hrMetrics.js';
+import { repHrMetrics, coverage, hrAt, sliceStream, freshness, packStream, unpackStream, applyHrToReps, hrRollup } from './hrMetrics.js';
 
 let mPass = 0;
 const test = (name, fn) => { fn(); mPass++; console.log('  ✓', name); };
@@ -112,6 +112,34 @@ test('just connected: time before the first reading is not a gap', () => {
 test('no readings → none', () => {
   const f = freshness([], N);
   assert.equal(f.verdict, 'none'); assert.equal(f.currentAgeSec, null);
+});
+
+console.log('stored stream + roll-ups');
+test('pack → unpack round trip, trimmed to window', () => {
+  const p = packStream(mStream, { sensor: 'S', from: T0, to: T0 + 60000 });
+  assert.equal(p.sensor, 'S'); assert.ok(Array.isArray(p.samples[0]));
+  const u = unpackStream(p);
+  assert.equal(u.length, p.samples.length); assert.deepEqual(u[0], { t: T0, bpm: 140 });
+});
+test('unpack tolerates junk and object samples', () => {
+  assert.deepEqual(unpackStream({ samples: [[T0, 0], ['x', 1], { t: T0 + 1, bpm: 99 }] }), [{ t: T0 + 1, bpm: 99 }]);
+  assert.deepEqual(unpackStream(null), []);
+});
+test('applyHrToReps: typed hr kept, sensor figures added', () => {
+  const reps = [{ repNo: 1, startedAt: new Date(T0).toISOString(), timeSec: 60, metrics: { hr: 175, rpe: 15 } }];
+  const [r] = applyHrToReps(reps, mStream);
+  assert.equal(r.metrics.hr, 175); assert.equal(r.metrics.hrPeak, 171); assert.equal(r.metrics.rpe, 15);
+  assert.equal(r.metrics.hrRec30, 140);
+});
+test('applyHrToReps: rep outside the stream left alone', () => {
+  const reps = [{ repNo: 1, startedAt: new Date(T0 + 3600000).toISOString(), timeSec: 60, metrics: {} }];
+  assert.equal(applyHrToReps(reps, mStream)[0], reps[0]);
+});
+test('hrRollup', () => {
+  const ru = hrRollup([{ metrics: { hr: 160, hrPeak: 165, hrDrop30: 20, hrCoverage: 0.8 } }, { metrics: { hr: 170, hrPeak: 178, hrDrop30: 30, hrCoverage: 0.6 } }, { metrics: {} }]);
+  assert.deepEqual(ru, { reps: 2, peak: 178, meanEnd: 165, meanDrop30: 25, coverage: 0.7, fromSensor: true });
+  assert.equal(hrRollup([{ metrics: { rpe: 12 } }]), null);
+  assert.equal(hrRollup([{ metrics: { hr: 150 } }]).fromSensor, false);
 });
 
 console.log(`\n${mPass} passed`);

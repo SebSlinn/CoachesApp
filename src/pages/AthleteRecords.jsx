@@ -189,7 +189,10 @@ export default function AthleteRecords() {
                 <tr key={s.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                   <td style={{ padding: '5px 0' }}>{s.swumOn}</td>
                   <td style={{ padding: '5px 0' }}>{s.set?.name || '—'}</td>
-                  <td style={{ padding: '5px 0', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>{s.protocolId ? 'test' : '—'}</td>
+                  <td style={{ padding: '5px 0', textAlign: 'right', color: 'rgba(255,255,255,0.4)', fontSize: 10 }}>
+                    {s.conditions?.hrStream?.samples?.length ? <span title="Live heart rate recorded" style={{ color: '#ff9a63', marginRight: 6 }}>♥ HR</span> : null}
+                    {s.protocolId ? 'test' : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>

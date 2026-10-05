@@ -107,6 +107,7 @@ async function run() {
 
   console.log('\nMetrics + constraints');
   ok('cleanMetrics keeps known numeric keys', JSON.stringify(cleanMetrics({ hr: '162', sc: 14, vo2: 50, rpe: '' })) === '{"sc":14,"hr":162}');
+  ok('cleanMetrics keeps sensor HR figures', JSON.stringify(cleanMetrics({ hr: 170, hrPeak: 176, hrRec30: 141, hrCoverage: 0.8, bogus: 1 })) === '{"hr":170,"hrPeak":176,"hrRec30":141,"hrCoverage":0.8}');
   const broken = checkConstraints({ scMax: 16, hrMin: 150 }, { sc: 18, hr: 140 });
   ok('constraints flag both breaches', broken.length === 2, broken);
   ok('constraints: none broken', checkConstraints({ scMax: 16 }, { sc: 15 }).length === 0);
@@ -148,6 +149,8 @@ async function run() {
 
   const mh = analyse('maxhr', [{ repNo: 1, metrics: { hr: 170 } }, { repNo: 4, metrics: { hr: 196 } }]);
   ok('maxhr: 196 on rep 4', mh.peakHr === 196 && mh.peakRepNo === 4);
+  const mh2 = analyse('maxhr', [{ repNo: 1, metrics: { hr: 190 } }, { repNo: 2, metrics: { hr: 188, hrPeak: 199 } }]);
+  ok('maxhr v2: sensor in-rep peak counts', mh2.peakHr === 199 && mh2.peakRepNo === 2 && mh2.v === 2, mh2);
 
   const se = analyse('series', [290, 292, 294, 296].map((ts, i) => ({ repNo: i + 1, distM: 400, timeSec: ts, metrics: { hr: 160 } })));
   ok('series: mean 293, spread 6, drift +2 s/rep', se.meanSec === 293 && se.spreadSec === 6 && se.driftSecPerRep === 2, se);
