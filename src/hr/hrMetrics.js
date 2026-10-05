@@ -62,10 +62,11 @@ export function repHrMetrics(pSamples, { startedAt, timeSec, nextStartedAt } = {
   const mBpms = mWork.map((s) => s.bpm);
   const hrAvg = mBpms.length ? Math.round(mBpms.reduce((a, b) => a + b, 0) / mBpms.length) : null;
   const hrPeak = mBpms.length ? Math.max(...mBpms) : null;
+  const hrMin = mBpms.length ? Math.min(...mBpms) : null;
   const hrEnd = hrAt(pSamples, mFinish, 5000);
 
   const mOut = {
-    hrAvg, hrPeak, hrEnd,
+    hrAvg, hrMin, hrPeak, hrEnd,
     hrCoverage: Math.round(coverage(pSamples, mStart, mFinish) * 100) / 100,
     hrSamples: mWork.length,
   };
@@ -79,8 +80,47 @@ export function repHrMetrics(pSamples, { startedAt, timeSec, nextStartedAt } = {
 }
 
 function emptyMetrics() {
-  return { hr: null, hrAvg: null, hrPeak: null, hrEnd: null, hrRec10: null, hrRec30: null,
+  return { hr: null, hrAvg: null, hrMin: null, hrPeak: null, hrEnd: null, hrRec10: null, hrRec30: null,
     hrRec60: null, hrDrop30: null, hrCoverage: 0, hrSamples: 0 };
+}
+
+/**
+ * HR for each length of a rep. `marks` are the epoch-ms boundaries:
+ * [start, turn1, turn2, …, finish] — n+1 marks for n lengths (same clock as the taps).
+ * Average/peak use readings inside the length; `hrEnd` is the reading nearest the
+ * turn (±3 s — swimmers often surface there) or the finish (up to 5 s after).
+ * Also min, and the first / last reading inside the length.
+ * Returns [{ hrAvg, hrMin, hrPeak, hrFirst, hrLast, hrEnd, hrCoverage, hrSamples }] — nulls where no data.
+ */
+export function lengthHrMetrics(pSamples, pMarks) {
+  const mOut = [];
+  if (!Array.isArray(pMarks) || pMarks.length < 2) return mOut;
+  for (let i = 1; i < pMarks.length; i++) {
+    const a = pMarks[i - 1], b = pMarks[i];
+    const last = i === pMarks.length - 1;
+    const mIn = (pSamples || []).filter((s) => s.t >= a && s.t <= b && s.bpm > 0);
+    const bpms = mIn.map((s) => s.bpm);
+    mOut.push({
+      hrAvg: bpms.length ? Math.round(bpms.reduce((x, y) => x + y, 0) / bpms.length) : null,
+      hrMin: bpms.length ? Math.min(...bpms) : null,
+      hrPeak: bpms.length ? Math.max(...bpms) : null,
+      hrFirst: bpms.length ? bpms[0] : null,
+      hrLast: bpms.length ? bpms[bpms.length - 1] : null,
+      hrEnd: last ? hrAtAfter(pSamples, b, 1000, 5000) : hrAt(pSamples, b, 3000),
+      hrCoverage: Math.round(coverage(pSamples || [], a, b) * 100) / 100,
+      hrSamples: mIn.length,
+    });
+  }
+  return mOut;
+}
+
+// Nearest sample in [t − before, t + after].
+function hrAtAfter(pSamples, t, before, after) {
+  let mBest = null;
+  for (const s of pSamples || []) {
+    if (s.bpm > 0 && s.t >= t - before && s.t <= t + after && (!mBest || Math.abs(s.t - t) < Math.abs(mBest.t - t))) mBest = s;
+  }
+  return mBest ? mBest.bpm : null;
 }
 
 /** Trim a stream to a session window and compact it for storage/export. */
@@ -154,7 +194,7 @@ export function freshness(pSamples, now = Date.now(), windowMs = 60000) {
 // ── Recording side: the stream as stored, and per-rep / per-run roll-ups ─────
 
 /** Per-rep metric keys the sensor fills (besides `hr`, which a coach may also type). */
-export const HR_METRIC_KEYS = ['hrAvg', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
+export const HR_METRIC_KEYS = ['hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
 
 /**
  * Compact a stream for a file / the database: { source, sensor, samples:[[t,bpm],…] }.
@@ -192,7 +232,28 @@ export function applyHrToReps(pReps, pSamples) {
     const mMetrics = { ...(r.metrics || {}) };
     for (const k of HR_METRIC_KEYS) if (m[k] != null) mMetrics[k] = m[k];
     if (mMetrics.hr == null && m.hr != null) mMetrics.hr = m.hr;
-    return { ...r, metrics: mMetrics };
+    return { ...r, metrics: mMetrics, ...(r.splits ? { splits: splitsWithHr(r, pSamples) } : {}) };
+  });
+}
+
+/**
+ * Per-length HR onto a rep's cumulative splits [{dist, sec, …}] (Poolside test
+ * format: one entry per length, the last at the finish). Other split fields
+ * (sc, sr…) are kept; splits without cumulative `sec` are returned unchanged.
+ */
+export const LENGTH_HR_KEYS = ['hrAvg', 'hrMin', 'hrPeak', 'hrFirst', 'hrLast', 'hrEnd', 'hrCoverage'];
+export function splitsWithHr(pRep, pSamples) {
+  const mSplits = pRep.splits;
+  const t0 = Date.parse(pRep.startedAt);
+  if (!Array.isArray(mSplits) || !mSplits.length || !Number.isFinite(t0)) return mSplits;
+  if (!mSplits.every((x) => x && Number.isFinite(Number(x.sec)))) return mSplits;
+  const marks = [t0, ...mSplits.map((x) => t0 + Number(x.sec) * 1000)];
+  const per = lengthHrMetrics(pSamples, marks);
+  return mSplits.map((x, i) => {
+    const h = per[i] || {};
+    const out = { ...x };
+    for (const k of LENGTH_HR_KEYS) { if (h[k] != null && (k !== 'hrCoverage' || h.hrSamples || h.hrEnd != null)) out[k] = h[k]; else delete out[k]; }
+    return out;
   });
 }
 

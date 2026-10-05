@@ -16,7 +16,7 @@
 // offline). Poolside's "SwimZone test" file comes back through "Import Poolside
 // results" and is saved with its summary.
 
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listProtocols, prescribeForAthletes } from '../services/protocols';
 import { getSetResultsByProtocol, ingestPoolsideSetResult } from '../services/results';
@@ -65,6 +65,15 @@ function hrLine(reps) {
   return { text: '♥ ' + bits.join(' · '), low: h.coverage != null && h.coverage < HR_MIN_COVERAGE };
 }
 const fmtRep = (s) => (s >= 60 ? fmtClock(s) : Number(s).toFixed(1));
+// Per-length rows from a rep's cumulative splits [{dist, sec, sc?, sr?, hrAvg?…}],
+// shown only when a length carries more than its time.
+function lengthRows(splits) {
+  if (!Array.isArray(splits) || !splits.length || !splits.every((x) => Number.isFinite(Number(x.sec)))) return null;
+  if (!splits.some((x) => x.sc || x.sr || x.hrAvg != null)) return null;
+  let prev = 0;
+  return splits.map((x) => { const lap = Number(x.sec) - prev; prev = Number(x.sec);
+    return { ...x, lap, low: x.hrCoverage != null && x.hrCoverage < HR_MIN_COVERAGE }; });
+}
 
 function intervalLabel(iv) {
   if (!iv) return '';
@@ -408,8 +417,10 @@ export default function TestSets() {
                                 const td = { textAlign: 'right', padding: '2px 4px' };
                                 const other = ['lactate', 'rpe', 'sc', 'sr'].filter((k) => m[k] != null)
                                   .map((k) => `${{ lactate: 'La', rpe: 'RPE', sc: 'SC', sr: 'SR' }[k]} ${m[k]}`).join(' · ');
+                                const lens = lengthRows(x.splits);
                                 return (
-                                  <tr key={x.id || x.repNo} style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                  <Fragment key={x.id || x.repNo}>
+                                  <tr style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}>
                                     <td style={{ padding: '2px 4px' }}>{x.repNo}</td>
                                     <td style={td}>{x.timeSec != null ? fmtRep(x.timeSec) : '—'}</td>
                                     <td style={td}>{m.hr ?? '—'}</td>
@@ -419,6 +430,24 @@ export default function TestSets() {
                                     <td style={{ ...td, color: low ? '#f2b654' : undefined }}>{m.hrCoverage != null ? `${Math.round(m.hrCoverage * 100)}%` : ''}</td>
                                     <td style={{ padding: '2px 4px', color: 'rgba(255,255,255,0.6)' }}>{other}</td>
                                   </tr>
+                                  {lens && (
+                                    <tr><td />
+                                      <td colSpan={7} style={{ padding: '0 4px 4px', color: 'rgba(255,255,255,0.55)', fontSize: 10.5 }}>
+                                        {lens.map((l) => (
+                                          <span key={l.dist} style={{ display: 'inline-block', marginRight: 10, whiteSpace: 'nowrap' }}>
+                                            {l.dist}m {fmtRep(l.lap)}{l.sc ? ` · SC ${l.sc}` : ''}{l.sr ? ` · SR ${l.sr}` : ''}
+                                            {l.hrAvg != null && (
+                                              <span style={{ color: l.low ? '#f2b654' : '#ff9a63' }}
+                                                title={l.hrFirst != null ? `first ${l.hrFirst} · last ${l.hrLast}` : undefined}>
+                                                {' · ♥ '}{l.hrMin != null ? `${l.hrMin}–` : ''}{l.hrAvg}{l.hrPeak != null ? `–${l.hrPeak}` : ''}
+                                                {l.hrFirst != null && <span style={{ opacity: 0.7 }}> ({l.hrFirst}→{l.hrLast})</span>}
+                                              </span>)}
+                                          </span>
+                                        ))}
+                                      </td>
+                                    </tr>
+                                  )}
+                                  </Fragment>
                                 );
                               })}
                             </tbody>

@@ -81,7 +81,8 @@ console.log('\nlive heart rate in a Poolside test file');
     samples.push([T0 + t * 1000, bpm]);
   }
   const hrFile = { ...file, sessionId: 'pool-hr-1',
-    reps: [{ repNo: 1, distM: 200, stroke: 'FS', timeSec: 150, startedAt: new Date(T0).toISOString(), targetTime: '2:30', metrics: { lactate: 2.1 } },
+    reps: [{ repNo: 1, distM: 200, stroke: 'FS', timeSec: 150, startedAt: new Date(T0).toISOString(), targetTime: '2:30', metrics: { lactate: 2.1 },
+             splits: [{ dist: 100, sec: 75, sc: 30 }, { dist: 200, sec: 150, sc: 32, sr: 38 }] },
            { repNo: 2, distM: 200, stroke: 'FS', timeSec: 132, startedAt: new Date(T0 + 300000).toISOString(), targetTime: '2:10', metrics: { hr: 181, lactate: 5.2 } }],
     hrStream: { source: 'ble-poolside', sensor: 'Polar Sense TEST', samples } };
   const h1 = await R.ingestPoolsideSetResult(hrFile, {});
@@ -93,6 +94,7 @@ console.log('\nlive heart rate in a Poolside test file');
   ok('rep 2: coach-typed hr kept over the sensor', r2.metrics.hr === 181 && r2.metrics.hrPeak === 170, r2.metrics);
   ok('rep 2: stream stopped before the finish → no end reading, partial coverage', r2.metrics.hrEnd === undefined && r2.metrics.hrCoverage < 0.9, r2.metrics);
   ok('recovery after rep 1 measured (+30 s)', r1.metrics.hrRec30 === 155 && r1.metrics.hrDrop30 === 15, r1.metrics);
+  ok('per-length HR added to each split, SC/SR kept', r1.splits[0].hrPeak === 145 && r1.splits[1].hrPeak === 170 && r1.splits[1].sc === 32 && r1.splits[1].sr === 38, r1.splits);
   ok('other readings untouched', r1.metrics.lactate === 2.1 && r2.metrics.lactate === 5.2);
   ok('raw stream kept in conditions.hrStream', eff.conditions.hrStream && eff.conditions.hrStream.samples.length === samples.length && eff.conditions.hrStream.sensor === 'Polar Sense TEST');
   ok('no stream → reps saved exactly as given', !store.reps.filter((r) => r.effortId === i1.data.effortId).some((r) => 'hrPeak' in r.metrics));

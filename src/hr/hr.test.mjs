@@ -2,7 +2,7 @@
 // Packet parsing + per-rep metrics. No browser, no Bluetooth needed.
 import assert from 'node:assert/strict';
 import { parseHeartRate } from './hrMonitor.js';
-import { repHrMetrics, coverage, hrAt, sliceStream, freshness, packStream, unpackStream, applyHrToReps, hrRollup } from './hrMetrics.js';
+import { repHrMetrics, coverage, hrAt, sliceStream, freshness, packStream, unpackStream, applyHrToReps, hrRollup, lengthHrMetrics, splitsWithHr } from './hrMetrics.js';
 
 let mPass = 0;
 const test = (name, fn) => { fn(); mPass++; console.log('  ✓', name); };
@@ -140,6 +140,35 @@ test('hrRollup', () => {
   assert.deepEqual(ru, { reps: 2, peak: 178, meanEnd: 165, meanDrop30: 25, coverage: 0.7, fromSensor: true });
   assert.equal(hrRollup([{ metrics: { rpe: 12 } }]), null);
   assert.equal(hrRollup([{ metrics: { hr: 150 } }]).fromSensor, false);
+});
+
+console.log('per length');
+test('lengthHrMetrics: 4 × 15 s lengths', () => {
+  const marks = [T0, T0 + 15000, T0 + 30000, T0 + 45000, T0 + 60000];
+  const L = lengthHrMetrics(mStream, marks);
+  assert.equal(L.length, 4);
+  assert.deepEqual([L[0].hrPeak, L[3].hrPeak], [146, 170]);       // 140,142,144,146 … 164,166,168,170
+  assert.deepEqual([L[0].hrMin, L[0].hrFirst, L[0].hrLast], [140, 140, 146]);
+  assert.deepEqual([L[3].hrMin, L[3].hrFirst, L[3].hrLast], [164, 164, 170]);
+  assert.equal(L[1].hrEnd, 154);                                  // nearest to the 30 s turn (28 s → 154, 32 s → 156; tie → first)
+  assert.equal(L[3].hrEnd, 170);
+  assert.ok(L.every((x) => x.hrCoverage > 0.9));
+});
+test('lengthHrMetrics: underwater length → nulls, 0 coverage', () => {
+  const gappy = [{ t: T0 + 1000, bpm: 130 }, { t: T0 + 29000, bpm: 160 }];
+  const L = lengthHrMetrics(gappy, [T0, T0 + 15000, T0 + 30000]);
+  assert.equal(L[1].hrAvg, 160); assert.ok(L[1].hrCoverage < 0.3);
+  assert.equal(lengthHrMetrics(gappy, [T0 + 40000, T0 + 50000])[0].hrAvg, null);
+});
+test('splitsWithHr: cumulative splits keep sc/sr and gain HR', () => {
+  const rep = { startedAt: new Date(T0).toISOString(), splits: [{ dist: 25, sec: 15, sc: 12, sr: 40 }, { dist: 50, sec: 30, sc: 13 }] };
+  const out = splitsWithHr(rep, mStream);
+  assert.equal(out[0].sc, 12); assert.equal(out[0].sr, 40); assert.equal(out[0].hrPeak, 146); assert.ok(out[1].hrAvg > 145);
+  assert.deepEqual(splitsWithHr({ startedAt: 'x', splits: rep.splits }, mStream), rep.splits);
+});
+test('applyHrToReps also fills per-length HR on splits', () => {
+  const [r] = applyHrToReps([{ startedAt: new Date(T0).toISOString(), timeSec: 60, metrics: {}, splits: [{ dist: 50, sec: 30 }, { dist: 100, sec: 60 }] }], mStream);
+  assert.equal(r.splits[1].hrEnd, 170); assert.equal(r.metrics.hrPeak, 171);
 });
 
 console.log(`\n${mPass} passed`);

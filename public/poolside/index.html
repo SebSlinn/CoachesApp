@@ -224,6 +224,12 @@
   .hr-tile span{ display:block; font-size:10.5px; color:var(--muted); line-height:1.2; margin-top:2px; }
   .hr-note{ font-size:12px; color:var(--muted); line-height:1.5; margin-top:8px; }
   .hr-link{ background:none; border:none; color:var(--muted); text-decoration:underline; font-family:inherit; font-size:12px; padding:0; cursor:pointer; }
+  .len-table{ width:100%; border-collapse:collapse; margin-top:8px; font-family:'JetBrains Mono',monospace; font-size:12px; font-variant-numeric:tabular-nums; }
+  .len-table th{ font-family:'Archivo',sans-serif; font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; text-align:right; padding:2px 4px; }
+  .len-table td{ text-align:right; padding:3px 4px; border-top:1px solid var(--line); font-weight:600; }
+  .len-table td:first-child, .len-table th:first-child{ text-align:left; color:var(--muted); }
+  .len-table th.hrh{ color:var(--lane); cursor:pointer; }
+  .len-table .dim{ color:var(--muted); opacity:.6; } .len-table .low{ color:var(--warn); }
   .rep-hr{ margin-top:6px; font-size:12px; font-weight:600; color:var(--ink); display:flex; gap:10px; flex-wrap:wrap; }
   .rep-hr .heart{ color:var(--lane); }
   .rep-hr .low{ color:var(--warn); }
@@ -587,6 +593,8 @@ const SwimCore = (function(){
     if (nextIdx < plan.turnLegs.length) return { label:'Turn → '+plan.turnLegs[nextIdx].endDistance+'m', kind:'turn' };
     return { label:'Finish → '+plan.finishDistance+'m', kind:'finish' };
   }
+  // epoch-ms boundaries of each length: start, every split, finish
+  function repMarks(rep){ return [rep.startTime, ...rep.splits.map(s=>s.t), rep.finishTime]; }
   function repLengthTimes(rep){
     const marks=[{distance:0,t:rep.startTime}, ...rep.splits.map(s=>({distance:s.distance,t:s.t})), {distance:rep.distance,t:rep.finishTime}];
     const lengths=[]; for (let i=1;i<marks.length;i++) lengths.push({ from:marks[i-1].distance, to:marks[i].distance, ms:marks[i].t-marks[i-1].t });
@@ -650,7 +658,7 @@ const SwimCore = (function(){
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
           set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
           distance: rep.distance, poolLength: set.event ? set.event.poolLength : null, startType: rep.startType,
-          startClock: fmtWallClock(rep.startTime), startTime: rep.startTime, finishTime: rep.finishTime,
+          startClock: fmtWallClock(rep.startTime), startTime: rep.startTime, finishTime: rep.finishTime, marks: repMarks(rep),
           totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
           lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
@@ -680,7 +688,8 @@ const SwimCore = (function(){
     // a real recorded absence rather than "not applicable".
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
     const header=['Athlete','Date','Location','Set','Rep','Stroke','Distance (m)','Pool length (m)','Rest before','Start type','Start time','Total time'];
-    for (let i=1;i<=maxLengths;i++) header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR');
+    const lenHr = exported.reps.some(r => r.lengths.some(l => l.hr));
+    for (let i=1;i<=maxLengths;i++){ header.push('Length '+i+' time','Length '+i+' SC','Length '+i+' SR'); if (lenHr) header.push('Length '+i+' HR min','Length '+i+' HR avg','Length '+i+' HR max','Length '+i+' HR first','Length '+i+' HR last'); }
     const anyHr = exported.reps.some(r => r.hr);
     if (anyHr) header.push('HR avg','HR peak','HR end','HR +30s','HR coverage %');
     header.push('Result','Notes');
@@ -690,6 +699,7 @@ const SwimCore = (function(){
       for (let i=0;i<maxLengths;i++){
         const l = r.lengths[i];
         lengthCells.push(l ? l.formatted : '', l ? l.sc : '', l ? l.sr : '');
+        if (lenHr) ['hrMin','hrAvg','hrPeak','hrFirst','hrLast'].forEach(k => lengthCells.push(l && l.hr && l.hr[k] != null ? l.hr[k] : ''));
       }
       const resultText = r.status==='complete' ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
@@ -763,7 +773,7 @@ const SwimCore = (function(){
         swumOn: exported.session.date || '',
         stroke, distM, poolType,
         timeSec: Math.round(r.totalMs / 10) / 100,   // ms → s, 2dp
-        splits: (r.lengths || []).map(l => ({ from:l.from, to:l.to, ms:l.ms, sc:l.sc, sr:l.sr })),
+        splits: (r.lengths || []).map(l => ({ from:l.from, to:l.to, ms:l.ms, sc:l.sc, sr:l.sr, ...(l.hr || {}) })),
         source: 'stopwatch',
         note: r.set || '',                  // which Poolside set this rep came from
         ...(r.hr ? { metrics: r.hr } : {}), // live heart rate for this swim (avg/peak/end/recovery/coverage)
@@ -783,7 +793,7 @@ const SwimCore = (function(){
     };
   }
 
-  return { buildPlan, makeEvent, derive, repLengthTimes, fmtClock, fmtWallClock, exportSession, toCSV, toSummaryText, toSwimZone, flagNotes, DOUBLE_TAP_MS };
+  return { buildPlan, makeEvent, derive, repLengthTimes, perLengthStats, repMarks, fmtClock, fmtWallClock, exportSession, toCSV, toSummaryText, toSwimZone, flagNotes, DOUBLE_TAP_MS };
 })();
 
 /* ============================================================
@@ -955,7 +965,8 @@ const SwimCore = (function(){
     const m = pr.measures || [];
     const out = [];
     ['hr','lactate','rpe'].forEach(k => { if (m.includes(k)) out.push(k); });
-    if (m.includes('sc') && !(rep && rep.scCount)) out.push('sc');
+    // Stroke count isn't asked for at the end — a whole-rep total is no use; count
+    // it per length with the SC button instead (still recorded when tapped).
     if (m.includes('sr') && !(rep && rep.srResults && rep.srResults.length)) out.push('sr');
     return out;
   }
@@ -1058,7 +1069,14 @@ const SwimCore = (function(){
     const reps = pg.done.slice().sort((a,b) => a.repNo - b.repNo).map(({ repNo, rep }) => {
       const pr = repPlan(repNo);
       let cum = 0;
-      const splits = SwimCore.repLengthTimes(rep).filter(l => l.to != null).map(l => { cum += l.ms; return { dist:l.to, sec: Math.round(cum/10)/100 }; });
+      const lens = SwimCore.repLengthTimes(rep), st = SwimCore.perLengthStats(rep, lens), lhr = HR.lengths(SwimCore.repMarks(rep)) || [];
+      // one entry per length: cumulative time + that length's SC / SR / heart rate
+      const splits = lens.map((l, i) => { cum += l.ms; if (l.to == null) return null;
+        const x = { dist:l.to, sec: Math.round(cum/10)/100 };
+        if (st.sc[i]) x.sc = st.sc[i];
+        if (st.sr[i]) x.sr = st.sr[i];
+        const h = lhr[i]; if (h){ ['hrAvg','hrMin','hrPeak','hrFirst','hrLast','hrEnd','hrCoverage'].forEach(k => { if (h[k] != null && (k !== 'hrCoverage' || h.hrSamples)) x[k] = h[k]; }); }
+        return x; }).filter(Boolean);
       const m = Object.assign({}, sensorMetrics(rep) || {}, t.readings[repNo] || {});   // typed readings win
       if (m.sc == null && rep.scCount) m.sc = rep.scCount;
       if (m.sr == null && rep.srResults.length){
@@ -1189,6 +1207,12 @@ const SwimCore = (function(){
       const m = lib.repHrMetrics(stream, { startedAt: rep.startTime, timeSec: (rep.finishTime - rep.startTime)/1000, nextStartedAt: nextStart });
       return (m.hrSamples || m.hrRec30 != null) ? m : null;
     }
+    // Per-length HR between the rep's start / turn / finish taps → [{hrAvg,hrPeak,hrEnd,hrCoverage}] or null.
+    function lengths(marks){
+      if (!lib || !stream.length || !marks || marks.length < 2 || marks[marks.length-1] == null) return null;
+      const L = lib.lengthHrMetrics(stream, marks);
+      return L.some(x => x.hrSamples || x.hrEnd != null) ? L : null;
+    }
     // Stream to ship with a file: from a minute before the first start to 3 min after the last finish.
     function packFor(from, to){
       if (!lib || !stream.length) return null;
@@ -1298,9 +1322,16 @@ const SwimCore = (function(){
     // The modules load after this script: once they're in, attach the athlete's
     // sensor and redraw so stored readings show on the rep cards.
     window.addEventListener('poolside-hr-ready', () => { lib = window.PoolsideHR; key = null; sync().then(() => render()); });
-    return { sync, paint, repMetrics, packFor, openSheet, onChip, pair, connect, disconnect, hasData: () => stream.length > 0,
+    return { sync, paint, repMetrics, lengths, packFor, openSheet, onChip, pair, connect, disconnect, hasData: () => stream.length > 0,
              get lib(){ return lib; } };
   })();
+
+  const HR_VIEWS = {
+    range: { labels:['min','avg','max'], keys:['hrMin','hrAvg','hrPeak'] },
+    trend: { labels:['first','avg','last'], keys:['hrFirst','hrAvg','hrLast'] },
+  };
+  function hrView(){ try { return localStorage.getItem('poolside-hr-view') === 'trend' ? 'trend' : 'range'; } catch(e){ return 'range'; } }
+  function toggleHrView(){ try { localStorage.setItem('poolside-hr-view', hrView() === 'range' ? 'trend' : 'range'); } catch(e){} renderAllReps(); }
 
   // Chronological start times of every timed rep in the session — a rep's
   // recovery readings stop when the next rep starts.
@@ -1461,7 +1492,21 @@ const SwimCore = (function(){
     }
     const total = SwimCore.fmtClock(rep.finishTime - rep.startTime);
     const lengths = SwimCore.repLengthTimes(rep);
-    const splitsHtml = lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
+    // One row per length: split, stroke count, stroke rate and heart rate side by
+    // side. Falls back to the simple split chips when there's nothing else to show.
+    const st = SwimCore.perLengthStats(rep, lengths);
+    const lhr = HR.lengths(SwimCore.repMarks(rep));
+    const anyStat = st.sc.some(x => x) || st.sr.some(x => x) || lhr;
+    const minCov = HR.lib ? HR.lib.HR_MIN_COVERAGE : 0.4;
+    // HR columns: min · avg · max, or first · avg · last — tap the ♥ heading to switch.
+    const hv = HR_VIEWS[hrView()];
+    const hrCell = (h) => !h || h.hrAvg == null ? '<td class="dim">–</td><td class="dim">–</td><td class="dim">–</td>'
+      : hv.keys.map(k => '<td class="'+(h.hrCoverage < minCov ? 'low' : '')+'">'+(h[k] ?? '–')+'</td>').join('');
+    const splitsHtml = (anyStat && lengths.length)
+      ? '<table class="len-table"><thead><tr><th></th><th>Split</th><th>SC</th><th>SR</th>'+(lhr ? hv.labels.map((l, i) => '<th class="hrh" data-hrview="1">'+(i ? '' : '&#9829; ')+l+(i === 2 ? ' &#8644;' : '')+'</th>').join('') : '')+'</tr></thead><tbody>'+
+          lengths.map((l, i) => '<tr><td>'+(l.to!=null ? l.to+'m' : '•')+'</td><td>'+SwimCore.fmtClock(l.ms)+'</td><td>'+(st.sc[i] || '<span class="dim">–</span>')+'</td><td>'+(st.sr[i] || '<span class="dim">–</span>')+'</td>'+(lhr ? hrCell(lhr[i]) : '')+'</tr>').join('')+
+        '</tbody></table>'
+      : lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
     const ackKey = String(rep.startTime);
     const acked = set.acked.includes(ackKey);
     const badge = rep.status === 'complete' ? '<span class="badge complete">Complete</span>' : (acked ? '<span class="badge complete">Reviewed</span>' : '<span class="badge review">Review</span>');
@@ -1470,7 +1515,7 @@ const SwimCore = (function(){
     const meta = [
       rep.startType ? (rep.startType==='dive'?'Dive start':'Push start') : null,
       rep.scCount ? rep.scCount+' strokes' : null,
-      srBit,
+      anyStat ? null : srBit,   // per-length rates are already in the length table
     ].filter(Boolean).join(' &middot; ');
     // when this rep started, and how long since the previous rep finished —
     // restBeforeMs is null for a rep with nothing before it to compare to
@@ -1481,7 +1526,7 @@ const SwimCore = (function(){
       '<div class="rep-top"><span class="rep-num">Rep '+idx+'</span>'+badge+'</div>'+
       '<div class="rep-total mono">'+total+'</div>'+
       testBit+
-      (splitsHtml ? '<div class="splits">'+splitsHtml+'</div>' : '')+
+      (splitsHtml ? (splitsHtml.startsWith('<table') ? splitsHtml : '<div class="splits">'+splitsHtml+'</div>') : '')+
       '<div class="rep-meta">'+timeMeta+'</div>'+
       (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
       hrLineHtml(HR.repMetrics(rep, nextRepStart(rep.startTime)))+
@@ -1529,6 +1574,7 @@ const SwimCore = (function(){
       const fields = have.concat(readingsNeeded(no, rep)).filter((k,i,a) => a.indexOf(k) === i);
       openReadings(no, rep, fields.length ? fields : ['hr','lactate','rpe']);
     }));
+    repList.querySelectorAll('[data-hrview]').forEach(b => b.addEventListener('click', toggleHrView));
     repList.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => {
       state.sets[Number(b.dataset.setidx)].acked.push(b.dataset.ack); render();
     }));
@@ -1810,7 +1856,11 @@ const SwimCore = (function(){
     const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets };
     currentExport = SwimCore.exportSession(session);
     // live heart rate → per-rep figures on each row (CSV, recap and SwimZone file)
-    currentExport.reps.forEach(r => { const m = sensorMetrics({ startTime:r.startTime, finishTime:r.finishTime }); if (m) r.hr = m; });
+    currentExport.reps.forEach(r => {
+      const m = sensorMetrics({ startTime:r.startTime, finishTime:r.finishTime }); if (m) r.hr = m;
+      const L = HR.lengths(r.marks);
+      if (L) r.lengths.forEach((l, i) => { const h = L[i]; if (h && (h.hrAvg != null || h.hrEnd != null)) l.hr = { hrMin:h.hrMin, hrAvg:h.hrAvg, hrPeak:h.hrPeak, hrFirst:h.hrFirst, hrLast:h.hrLast, hrEnd:h.hrEnd, hrCoverage:h.hrCoverage }; });
+    });
     // a time-of-save suffix (not just the date) so saving the same athlete
     // twice in a day — a new session after the last one was already saved —
     // never reuses the previous filename and overwrites it.
@@ -1916,8 +1966,8 @@ const SwimCore = (function(){
      without them (or on browsers with no Bluetooth). -->
 <script type="module">
   import { HrMonitor, isSupported, sensorFor, forgetSensor } from './hrMonitor.js';
-  import { repHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS } from './hrMetrics.js';
-  window.PoolsideHR = { HrMonitor, isSupported, sensorFor, forgetSensor, repHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS };
+  import { repHrMetrics, lengthHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS } from './hrMetrics.js';
+  window.PoolsideHR = { HrMonitor, isSupported, sensorFor, forgetSensor, repHrMetrics, lengthHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS };
   window.dispatchEvent(new Event('poolside-hr-ready'));
 </script>
 
