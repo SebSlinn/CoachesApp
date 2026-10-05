@@ -684,36 +684,36 @@ const SwimCore = (function(){
     return notes;
   }
   function toCSV(exported){
-    // One row per rep; enough per-length columns for the longest rep in the
-    // session. A length that wasn't reached stays blank; a length swum with no
-    // stroke count / rate taken reads 0 (a real recorded absence).
-    // Headers are display labels only — the JSON files and the database use
-    // their own field names (timeSec, hrFirst… / time_sec…), so these can stay short.
-    // Times are written as ="12.50" so spreadsheets keep the hundredths
-    // (a bare 12.50 is read as the number 12.5).
+    // One row per rep, in a FIXED column order so any export pastes straight into
+    // the SwimZone results spreadsheet: the swim and its whole-rep heart rate first,
+    // then one 5-column group per length (L1 … Ln) at the end — so a 50 and a 400
+    // line up column-for-column; only the number of length groups differs.
+    // Heart-rate columns are always present (blank without a sensor).
+    // A length that wasn't reached stays blank; a length swum with no stroke
+    // count / rate taken reads 0 (a real recorded absence).
+    // Headers are display labels only — the JSON files and the database use their
+    // own field names (timeSec, hrFirst… / time_sec…).
+    // Times are written as ="12.50" so spreadsheets keep the hundredths.
     const T = (t) => t ? { raw: '="' + t + '"' } : '';
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
-    const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time'];
-    const lenHr = exported.reps.some(r => r.lengths.some(l => l.hr));
-    for (let i=1;i<=maxLengths;i++){ header.push('L'+i,'L'+i+' SC','L'+i+' SR'); if (lenHr) header.push('L'+i+' HR1','L'+i+' HR2'); }   // HR1 = first reading in the length, HR2 = last
-    const anyHr = exported.reps.some(r => r.hr);
     const HR_COLS = [['HR-Start','hrStart'],['HR min','hrMin'],['HR avg','hrAvg'],['HR max','hrPeak'],['HR-End','hrEnd'],['HR +30s','hrRec30']];
-    if (anyHr) header.push(...HR_COLS.map(c => c[0]), 'HR cover %');
-    header.push('Result','Notes');
+    const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time',
+                  ...HR_COLS.map(c => c[0]), 'HR cover %', 'Result', 'Notes'];
+    for (let i=1;i<=maxLengths;i++) header.push('L'+i,'L'+i+' SC','L'+i+' SR','L'+i+' HR1','L'+i+' HR2');   // HR1/HR2 = first/last reading in the length
     const lines=[header.join(',')];
     exported.reps.forEach(r=>{
       const lengthCells=[];
       for (let i=0;i<maxLengths;i++){
         const l = r.lengths[i];
-        lengthCells.push(l ? T(l.formatted) : '', l ? l.sc : '', l ? l.sr : '');
-        if (lenHr) ['hrFirst','hrLast'].forEach(k => lengthCells.push(l && l.hr && l.hr[k] != null ? l.hr[k] : ''));
+        lengthCells.push(l ? T(l.formatted) : '', l ? l.sc : '', l ? l.sr : '',
+          l && l.hr && l.hr.hrFirst != null ? l.hr.hrFirst : '', l && l.hr && l.hr.hrLast != null ? l.hr.hrLast : '');
       }
       const resultText = r.status==='complete' ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
       const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,T(r.restBeforeFormatted),r.startType,r.startClock,T(r.totalFormatted),
-        ...lengthCells,
-        ...(anyHr ? HR_COLS.map(c => r.hr && r.hr[c[1]] != null ? r.hr[c[1]] : '').concat([r.hr && r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : '']) : []),
-        resultText, notesText]
+        ...HR_COLS.map(c => r.hr && r.hr[c[1]] != null ? r.hr[c[1]] : ''),
+        r.hr && r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : '',
+        resultText, notesText, ...lengthCells]
         .map(c=>{ if (c && c.raw) return c.raw; const s=String(c==null?'':c); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; });
       lines.push(cells.join(','));
     });

@@ -1,0 +1,59 @@
+{
+  "fmt": "swimzone.import/1",
+  "athlete": {
+    "id": null,
+    "seNumber": "",
+    "name": "Kit Keys"
+  },
+  "session": {
+    "date": "2026-10-05",
+    "location": ""
+  },
+  "records": [
+    {
+      "fmt": "swimzone.result/1",
+      "id": "6b09b1a4-8388-4996-a22e-0aeca9c107b4",
+      "athleteId": null,
+      "kind": "training",
+      "effort": "submaximal",
+      "swumOn": "2026-10-05",
+      "stroke": "FS",
+      "distM": 100,
+      "poolType": "25SC",
+      "timeSec": 23.18,
+      "splits": [
+        {
+          "from": 0,
+          "to": 25,
+          "ms": 6123,
+          "sc": 3,
+          "sr": 146
+        },
+        {
+          "from": 25,
+          "to": 50,
+          "ms": 5687,
+          "sc": 3,
+          "sr": 146
+        },
+        {
+          "from": 50,
+          "to": 75,
+          "ms": 5686,
+          "sc": 3,
+          "sr": 146
+        },
+        {
+          "from": 75,
+          "to": 100,
+          "ms": 5683,
+          "sc": 3,
+          "sr": 255
+        }
+      ],
+      "source": "stopwatch",
+      "note": "Set 1"
+    }
+  ],
+  "skipped": 0
+}

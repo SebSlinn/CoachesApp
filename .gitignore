@@ -6,3 +6,4 @@ dist
 .env*
 
 tests/services/.out.mjs
+tests/db/.out.mjs

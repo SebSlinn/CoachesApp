@@ -1,0 +1,80 @@
+{
+  "fmt": "swimzone.import/1",
+  "athlete": {
+    "id": null,
+    "seNumber": "",
+    "name": "Kit Keys"
+  },
+  "session": {
+    "date": "2026-10-05",
+    "location": ""
+  },
+  "records": [
+    {
+      "fmt": "swimzone.result/1",
+      "id": "3431729b-da5c-472b-bef4-7271eb37e0d8",
+      "athleteId": null,
+      "kind": "training",
+      "effort": "submaximal",
+      "swumOn": "2026-10-05",
+      "stroke": "FS",
+      "distM": 100,
+      "poolType": "25SC",
+      "timeSec": 23.16,
+      "splits": [
+        {
+          "from": 0,
+          "to": 25,
+          "ms": 6101,
+          "sc": 3,
+          "sr": 146,
+          "hrFirst": 128,
+          "hrLast": 142,
+          "hrCoverage": 1
+        },
+        {
+          "from": 25,
+          "to": 50,
+          "ms": 5682,
+          "sc": 3,
+          "sr": 146,
+          "hrFirst": 143,
+          "hrLast": 157,
+          "hrCoverage": 1
+        },
+        {
+          "from": 50,
+          "to": 75,
+          "ms": 5683,
+          "sc": 3,
+          "sr": 146,
+          "hrFirst": 158,
+          "hrLast": 171,
+          "hrCoverage": 1
+        },
+        {
+          "from": 75,
+          "to": 100,
+          "ms": 5689,
+          "sc": 3,
+          "sr": 254,
+          "hrFirst": 172,
+          "hrLast": 129,
+          "hrCoverage": 1
+        }
+      ],
+      "source": "stopwatch",
+      "note": "Set 1",
+      "metrics": {
+        "hrStart": 127,
+        "hrAvg": 147,
+        "hrMin": 120,
+        "hrPeak": 175,
+        "hrEnd": 130,
+        "hrCoverage": 1,
+        "hr": 130
+      }
+    }
+  ],
+  "skipped": 0
+}
