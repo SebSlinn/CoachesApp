@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Poolside HR Test</title>
+<style>
+  :root { --bg:#0e1622; --card:#172233; --ink:#e8eef6; --dim:#8a9bb2; --live:#2fd67b; --gap:#f0b429; --bad:#ff5d5d; --acc:#3aa0ff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.4 system-ui, sans-serif; padding:16px; max-width:640px; margin-inline:auto; }
+  h1 { font-size:20px; margin:0 0 4px; } p.sub { color:var(--dim); margin:0 0 16px; font-size:14px; }
+  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px; }
+  label { display:block; color:var(--dim); font-size:13px; margin-bottom:4px; }
+  input { width:100%; padding:10px; border-radius:10px; border:1px solid #2a3a52; background:#0e1622; color:var(--ink); font-size:16px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  button { flex:1; min-width:120px; padding:12px; border:0; border-radius:10px; background:var(--acc); color:#fff; font-size:16px; font-weight:600; }
+  button.ghost { background:#24344c; } button:disabled { opacity:.4; }
+  .bpm { font-size:84px; font-weight:800; line-height:1; text-align:center; font-variant-numeric:tabular-nums; }
+  .state { text-align:center; margin-top:6px; font-weight:600; }
+  .live { color:var(--live);} .gap { color:var(--gap);} .bad { color:var(--bad);} .dim { color:var(--dim); }
+  canvas { width:100%; height:120px; display:block; margin-top:10px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; font-variant-numeric:tabular-nums; }
+  td, th { padding:6px 4px; text-align:right; border-bottom:1px solid #24344c; } th { color:var(--dim); font-weight:500; } td:first-child, th:first-child { text-align:left; }
+  .warn { background:#3a2a10; color:var(--gap); padding:10px; border-radius:10px; font-size:14px; }
+</style>
+</head>
+<body>
+<h1>Heart rate — pool test</h1>
+<p class="sub">Pair a swimmer's sensor, watch the live reading, time a rep or two, and check the numbers. Nothing is saved to SwimZone from this page.</p>
+
+<div id="unsupported" class="warn" hidden>This browser can't use Bluetooth. Use Chrome or Edge on Android, Windows or Mac (not iPhone Safari), over https or localhost.</div>
+
+<div class="card">
+  <label for="athlete">Athlete id (or name, for this test)</label>
+  <input id="athlete" placeholder="e.g. esme" autocomplete="off">
+  <div class="dim" id="saved" style="margin-top:6px;font-size:13px"></div>
+  <div class="row">
+    <button id="pair">Pair sensor</button>
+    <button id="connect" class="ghost">Connect saved</button>
+    <button id="stop" class="ghost" disabled>Disconnect</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="bpm" id="bpm">--</div>
+  <div class="state dim" id="state">Not connected</div>
+  <canvas id="chart" width="600" height="120"></canvas>
+  <div class="dim" style="font-size:13px;margin-top:6px" id="meta"></div>
+</div>
+
+<div class="card">
+  <div class="row" style="margin-top:0">
+    <button id="rep">Start rep</button>
+    <button id="csv" class="ghost">Download samples (CSV)</button>
+  </div>
+  <table style="margin-top:12px">
+    <thead><tr><th>Rep</th><th>Time</th><th>Avg</th><th>Peak</th><th>End</th><th>+30s</th><th>Cover</th></tr></thead>
+    <tbody id="reps"></tbody>
+  </table>
+  <div class="dim" style="font-size:12px;margin-top:8px">Recovery (+30s) fills in 30 s after the rep finishes. "Cover" = share of the rep with readings; under 40% means don't trust it.</div>
+</div>
+
+<script type="module">
+import { HrMonitor, isSupported, sensorFor, forgetSensor } from './hrMonitor.js';
+import { repHrMetrics, HR_MIN_COVERAGE } from './hrMetrics.js';
+
+const $ = (id) => document.getElementById(id);
+if (!isSupported()) { $('unsupported').hidden = false; ['pair','connect'].forEach(i => $(i).disabled = true); }
+
+let mon = null;
+const reps = [];          // { startedAt, timeSec }
+let repStart = null;
+
+$('athlete').value = localStorage.getItem('poolside-hr-test-athlete') || '';
+const athleteId = () => $('athlete').value.trim() || 'test';
+function showSaved() {
+  const s = sensorFor(athleteId());
+  $('saved').innerHTML = s ? `Saved sensor: <b>${s.name || s.id}</b> <a href="#" id="forget" style="color:var(--dim)">forget</a>` : 'No sensor saved for this athlete yet.';
+  const f = $('forget'); if (f) f.onclick = (e) => { e.preventDefault(); forgetSensor(athleteId()); showSaved(); };
+}
+$('athlete').oninput = () => { localStorage.setItem('poolside-hr-test-athlete', $('athlete').value); showSaved(); };
+showSaved();
+
+async function start(how) {
+  if (mon) await mon.disconnect();
+  mon = new HrMonitor({
+    athleteId: athleteId(),
+    onSample: (s) => { $('bpm').textContent = s.bpm; },
+    onStatus: () => paint(),
+  });
+  try { await (how === 'pair' ? mon.pair() : mon.connectSaved()); showSaved(); }
+  catch (e) { $('state').className = 'state bad'; $('state').textContent = e.message; }
+  $('stop').disabled = false;
+}
+$('pair').onclick = () => start('pair');
+$('connect').onclick = () => start('saved');
+$('stop').onclick = async () => { if (mon) await mon.disconnect(); $('stop').disabled = true; paint(); };
+
+$('rep').onclick = () => {
+  if (repStart == null) { repStart = Date.now(); $('rep').textContent = 'Finish rep'; }
+  else { reps.push({ startedAt: repStart, timeSec: (Date.now() - repStart) / 1000 }); repStart = null; $('rep').textContent = 'Start rep'; }
+  renderReps();
+};
+
+$('csv').onclick = () => {
+  const rows = ['t_iso,t_ms,bpm,rr_ms', ...(mon?.samples || []).map(s => `${new Date(s.t).toISOString()},${s.t},${s.bpm},${s.rr.join(' ')}`)];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([rows.join('\n')], { type: 'text/csv' }));
+  a.download = `hr_${athleteId()}_${new Date().toISOString().slice(0,16).replace(':','')}.csv`;
+  a.click();
+};
+
+const fmt = (sec) => { const m = Math.floor(sec / 60), s = (sec % 60).toFixed(1).padStart(4, '0'); return m ? `${m}:${s}` : `${(+s).toFixed(1)}`; };
+function renderReps() {
+  const samples = mon?.samples || [];
+  $('reps').innerHTML = reps.map((r, i) => {
+    const m = repHrMetrics(samples, { ...r, nextStartedAt: reps[i + 1]?.startedAt });
+    const cls = m.hrCoverage < HR_MIN_COVERAGE ? 'bad' : '';
+    const v = (x) => x ?? '–';
+    return `<tr><td>${i + 1}</td><td>${fmt(r.timeSec)}</td><td>${v(m.hrAvg)}</td><td>${v(m.hrPeak)}</td><td>${v(m.hrEnd)}</td><td>${v(m.hrRec30)}</td><td class="${cls}">${Math.round(m.hrCoverage * 100)}%</td></tr>`;
+  }).join('') + (repStart != null ? `<tr><td>${reps.length + 1}</td><td colspan="6" class="dim">swimming… ${fmt((Date.now() - repStart) / 1000)}</td></tr>` : '');
+}
+
+function paint() {
+  const st = $('state');
+  if (!mon) { st.className = 'state dim'; st.textContent = 'Not connected'; return; }
+  const sig = mon.signal();
+  const labels = { connecting: 'Connecting…', reconnecting: 'Link dropped — reconnecting (normal underwater)', disconnected: 'Disconnected', idle: 'Not connected' };
+  if (mon.status === 'connected') {
+    st.className = 'state ' + (sig === 'live' ? 'live' : 'gap');
+    st.textContent = sig === 'live' ? 'Live' : sig === 'gap' ? `No reading for ${Math.round((Date.now() - mon.lastSample.t) / 1000)} s` : 'Connected — waiting for first reading';
+  } else {
+    st.className = 'state ' + (mon.status === 'reconnecting' ? 'gap' : 'dim');
+    st.textContent = labels[mon.status] || mon.status;
+  }
+  if (sig !== 'live') $('bpm').classList.add('dim'); else $('bpm').classList.remove('dim');
+  $('meta').textContent = [mon.sensorName && `Sensor ${mon.sensorName}`, mon.battery != null && `battery ${mon.battery}%`, `${mon.samples.length} readings`].filter(Boolean).join(' · ');
+}
+
+// last 3 minutes, gaps drawn as breaks
+function draw() {
+  const c = $('chart'), g = c.getContext('2d'), W = c.width, H = c.height;
+  g.clearRect(0, 0, W, H);
+  const now = Date.now(), span = 180000, s = (mon?.samples || []).filter(x => x.t > now - span);
+  for (const r of reps.concat(repStart != null ? [{ startedAt: repStart, timeSec: (now - repStart) / 1000 }] : [])) {
+    const x0 = W * (1 - (now - r.startedAt) / span), x1 = W * (1 - (now - r.startedAt - r.timeSec * 1000) / span);
+    if (x1 > 0) { g.fillStyle = 'rgba(58,160,255,.15)'; g.fillRect(Math.max(0, x0), 0, x1 - Math.max(0, x0), H); }
+  }
+  if (s.length) {
+    const lo = 60, hi = 210, y = (b) => H - (Math.min(hi, Math.max(lo, b)) - lo) / (hi - lo) * H;
+    g.strokeStyle = '#2fd67b'; g.lineWidth = 2; g.beginPath();
+    s.forEach((p, i) => { const x = W * (1 - (now - p.t) / span); (i && p.t - s[i - 1].t < 5000) ? g.lineTo(x, y(p.bpm)) : g.moveTo(x, y(p.bpm)); });
+    g.stroke();
+  }
+}
+
+setInterval(() => { paint(); draw(); renderReps(); }, 500);
+</script>
+</body>
+</html>
