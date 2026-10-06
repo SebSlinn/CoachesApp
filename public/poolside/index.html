@@ -88,7 +88,7 @@
   .event-card .legs span{ font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; background:var(--surface-2); color:var(--ink); padding:2px 7px; border-radius:999px; }
 
   /* ---- clock ---- */
-  .clock-wrap{ text-align:center; padding:10px 0 6px; border-radius:20px; transition:background-color .12s ease; }
+  .clock-wrap{ text-align:center; padding:10px 0 0; border-radius:20px; transition:background-color .12s ease; }
   .clock-wrap.flash{ background-color:var(--flash-bg,var(--lane)); }
   .clock{ font-size:50px; font-weight:700; line-height:1; letter-spacing:-.02em; transition:color .12s ease, transform .12s ease; }
   .clock-wrap.flash .clock{ color:var(--lane-ink); transform:scale(1.04); }
@@ -98,13 +98,13 @@
      counting from the first tap of the session, running or not, so a coach
      running sets on a fixed total time can see it without doing the maths. */
   .session-clock{ font-size:21px; font-weight:700; color:var(--muted); margin-top:-2px; letter-spacing:-.01em; }
-  .state-pill{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background:var(--surface-2); color:var(--muted); }
+  .state-pill{ display:inline-flex; align-items:center; gap:6px; margin-top:3px; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background:var(--surface-2); color:var(--muted); }
   .state-pill.running{ background:var(--good-bg); color:var(--good); }
   .state-pill .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
-  .next-hint{ margin-top:4px; font-size:14px; font-weight:700; color:var(--accent); min-height:18px; }
+  .next-hint{ margin-top:2px; font-size:14px; font-weight:700; color:var(--accent); min-height:0; }
 
   /* ---- buttons ---- */
-  .grid{ display:grid; gap:7px; margin-top:5px; }
+  .grid{ display:grid; gap:7px; margin-top:2px; }
   .grid.gap-top{ margin-top:14px; }
   .row2{ grid-template-columns:1fr 1fr; }
   .row3{ grid-template-columns:1fr 1fr 1fr; }
