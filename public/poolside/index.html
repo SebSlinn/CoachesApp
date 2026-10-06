@@ -86,6 +86,11 @@
   .clock{ font-size:50px; font-weight:700; line-height:1; letter-spacing:-.02em; transition:color .12s ease, transform .12s ease; }
   .clock-wrap.flash .clock{ color:var(--lane-ink); transform:scale(1.04); }
   .clock-wrap.flash .state-pill, .clock-wrap.flash .next-hint{ opacity:0; }
+  /* the session clock sits right under the big rep stopwatch, noticeably
+     smaller so the two are never confused at a glance — this one just keeps
+     counting from the first tap of the session, running or not, so a coach
+     running sets on a fixed total time can see it without doing the maths. */
+  .session-clock{ font-size:21px; font-weight:700; color:var(--muted); margin-top:-2px; letter-spacing:-.01em; }
   .state-pill{ display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:4px 11px; border-radius:999px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background:var(--surface-2); color:var(--muted); }
   .state-pill.running{ background:var(--good-bg); color:var(--good); }
   .state-pill .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
@@ -280,6 +285,7 @@
 
   <div class="clock-wrap">
     <div class="clock mono" id="clockDisplay">0.00</div>
+    <div class="session-clock mono" id="sessionClockDisplay">0:00</div>
     <div class="state-pill" id="statePill"><span class="dot"></span><span id="stateLabel">Ready</span></div>
     <div class="next-hint" id="nextHint"></div>
   </div>
@@ -1006,11 +1012,15 @@ const SwimCore = (function(){
       }
     }
     const dots = run.reps.map(r => '<span class="'+(pg.doneNos.has(r.repNo)?'done':(cur && r.repNo===cur.repNo?'next':''))+'"></span>').join('');
+    // pool size is the one thing the orange event card showed that this
+    // panel didn't — now that the event card is hidden while a test is
+    // loaded (it only repeated what's here), this is its only home.
+    const poolLength = POOL_LEN[run.set && run.set.poolType] || 25;
     panel.innerHTML =
-      '<div class="t-head"><span>Test</span><b>'+escapeHtml(run.protocol.name)+(run.protocol.version>1?' v'+run.protocol.version:'')+'</b></div>'+
+      '<div class="t-head"><b>'+escapeHtml(run.protocol.name)+(run.protocol.version>1?' v'+run.protocol.version:'')+'</b><span>'+poolLength+'m pool</span></div>'+
       (cur ? '<div class="t-row"><div class="t-rep">Rep '+cur.repNo+' of '+pg.total+
-        '<span class="sub">'+cur.distM+' '+(PS_STROKE_NAME[cur.stroke]||cur.stroke)+(cur.intensity?' · '+escapeHtml(cur.intensity):'')+' · '+goLabel(cur.interval)+(cur.note?' · '+escapeHtml(cur.note):'')+'</span></div>'+
-        '<div class="t-target"><div class="lbl">Target</div><div class="val mono">'+escapeHtml(cur.targetLabel||'—')+'</div></div></div>' : '')+
+        '<span class="sub">'+cur.distM+' '+(PS_STROKE_NAME[cur.stroke]||cur.stroke)+(cur.intensity?' · '+escapeHtml(cur.intensity):'')+' · '+goLabel(cur.interval)+
+        (cur.targetLabel ? ' · target '+escapeHtml(cur.targetLabel) : '')+(cur.note?' · '+escapeHtml(cur.note):'')+'</span></div></div>' : '')+
       '<div class="t-go '+goCls+'">'+go+'</div>'+
       '<div class="t-dots">'+dots+'</div>'+
       (pg.extra ? '<div class="rep-meta">'+pg.extra+' extra rep'+(pg.extra===1?'':'s')+' beyond the test — left out of the SwimZone file</div>' : '');
@@ -1379,9 +1389,43 @@ const SwimCore = (function(){
   }
 
   function renderEventCard(){
+    // While a test is loaded, the white test panel already shows the
+    // stroke/distance/pool for the set that's up next — showing the orange
+    // card as well just repeated it and ate screen space above the buttons.
+    // The set-strip tabs take over its old job of opening Set details.
+    if (state.test){ eventCard.hidden = true; return; }
+    eventCard.hidden = false;
     const info = eventLabel(activeSet().event);
     eventCard.innerHTML = '<div class="title">'+info.title+'</div><div class="sub">'+info.sub+'</div>' +
       (info.legs.length ? '<div class="legs">'+info.legs.map(l=>'<span>'+l+'</span>').join('')+'</div>' : '');
+  }
+
+  // The session clock just keeps counting from the first tap of the whole
+  // session, whether a rep is running or not — useful for sets run to a
+  // fixed total time, or just to see how long the athlete's been in the
+  // water. It runs on its own 1s tick rather than the rAF loop the rep
+  // stopwatch uses, since a per-second update is all it needs.
+  function sessionStartTime(){
+    let min = null;
+    state.sets.forEach(s => s.events.forEach(e => { if (e.type==='start' && (min==null || e.t<min)) min = e.t; }));
+    return min;
+  }
+  function fmtSessionDuration(ms){
+    const s = Math.floor(ms/1000);
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    return (h>0 ? h+':'+String(m).padStart(2,'0') : m) + ':' + String(sec).padStart(2,'0');
+  }
+  let sessionClockTimer = null;
+  function tickSessionClock(){
+    const el = $('sessionClockDisplay'); if (!el) return;
+    const start = sessionStartTime();
+    if (start == null){
+      el.textContent = '0:00';
+      if (sessionClockTimer){ clearInterval(sessionClockTimer); sessionClockTimer = null; }
+      return;
+    }
+    el.textContent = fmtSessionDuration(Date.now() - start);
+    if (!sessionClockTimer) sessionClockTimer = setInterval(tickSessionClock, 1000);
   }
 
   function renderSetStrip(){
@@ -1391,9 +1435,15 @@ const SwimCore = (function(){
         escapeHtml(s.name || ('Set '+(i+1)))+'<span class="count">'+count+'</span></button>';
     }).join('');
     setStrip.innerHTML = pills + '<button class="set-pill add" type="button" id="addSetBtn">+ Add set</button>';
+    // Tapping a different set's tab just switches to it, same as before —
+    // but tapping the tab that's ALREADY active (switching does nothing)
+    // now opens Set details instead, taking over the job the orange event
+    // card used to do on its own tap, now that the card is hidden whenever
+    // a test is loaded and this is the only way left to reach it.
     setStrip.querySelectorAll('[data-setidx]').forEach(b => b.addEventListener('click', () => {
       const i = Number(b.dataset.setidx);
       if (i !== state.activeSetIndex){ state.activeSetIndex = i; render(); }
+      else openEventSheet();
     }));
     $('addSetBtn').addEventListener('click', addSet);
   }
@@ -1476,6 +1526,7 @@ const SwimCore = (function(){
 
     renderAllReps();
     renderTestPanel();
+    tickSessionClock();
     HR.sync(); HR.paint();
     saveState();
   }
@@ -1680,7 +1731,6 @@ const SwimCore = (function(){
 
   function addEvent(type, meta, button){
     if (Date.now() - lastOverlayCloseAt < GHOST_TAP_GUARD_MS) return;
-    const doneBefore = state.test ? testProgress().done.length : 0;
     const t = Date.now();
     const ev = SwimCore.makeEvent(type, t, meta);
     activeSet().events.push(ev);
@@ -1698,13 +1748,10 @@ const SwimCore = (function(){
     if (flagged) vibrate([35,60,35]); // distinct double-buzz when something needs a look
     render();
     if (flagged) showToast('Possible double-tap', 'Undo', () => { const set = activeSet(); set.events = set.events.filter(e=>e.id!==ev.id); render(); });
-    if (state.test && !flagged){
-      const pg = testProgress();
-      if (pg.done.length > doneBefore){
-        const justDone = pg.done.reduce((a,b) => (b.rep.finishTime > a.rep.finishTime ? b : a));
-        if (readingsNeeded(justDone.repNo, justDone.rep).length) setTimeout(() => openReadings(justDone.repNo, justDone.rep), 350);
-      }
-    }
+    // No automatic readings prompt here any more — interrupting right after
+    // every rep to ask for RPE/heart rate got in the way. Each rep card
+    // still carries its own "Add readings" button (see renderRepCard) for
+    // whenever the coach wants to fill them in.
   }
 
   addTapListener(btnDive, () => addEvent('start', { startType:'dive' }, btnDive));
