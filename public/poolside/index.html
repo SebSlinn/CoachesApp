@@ -46,10 +46,14 @@
 
   #app{ display:flex; flex-direction:column; min-height:100%; max-width:640px; margin:0 auto; width:100%; padding:0 16px; }
 
-  /* ---- top bar ---- */
-  header.bar{
+  /* ---- top bar + set tabs, pinned together as one unit (see the HTML
+     comment above the markup for why) ---- */
+  .top-sticky{
     position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
-    background:var(--paper); padding:8px 0 4px; display:flex; align-items:center; justify-content:space-between;
+    background:var(--paper);
+  }
+  header.bar{
+    padding:8px 0 4px; display:flex; align-items:center; justify-content:space-between;
     border-bottom:1px solid transparent;
   }
   header.bar .word{ font-weight:800; font-size:19px; letter-spacing:-.01em; }
@@ -272,15 +276,22 @@
 <body>
 
 <div id="app">
-  <header class="bar">
-    <div class="word">Pool<b>side</b><span id="athleteTag" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-left:10px;letter-spacing:0;"></span></div>
-    <div class="bar-right">
-      <button class="hr-chip" id="hrChip" type="button" aria-label="Heart rate sensor" title="Heart rate sensor"><span class="heart">&#9829;</span><span class="bpm" id="hrChipBpm"></span><span class="age" id="hrChipAge"></span></button>
-      <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
-    </div>
-  </header>
+  <!-- Header + set tabs stick together as one pinned unit. The tabs now open
+       Set details (see renderSetStrip), so once the rep list grows past one
+       screen they can't be left to scroll away — sticking only the header
+       left the tabs half-tucked under it at any scroll position other than
+       exactly the top, unreachable right when you'd want to tap one. -->
+  <div class="top-sticky">
+    <header class="bar">
+      <div class="word">Pool<b>side</b><span id="athleteTag" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-left:10px;letter-spacing:0;"></span></div>
+      <div class="bar-right">
+        <button class="hr-chip" id="hrChip" type="button" aria-label="Heart rate sensor" title="Heart rate sensor"><span class="heart">&#9829;</span><span class="bpm" id="hrChipBpm"></span><span class="age" id="hrChipAge"></span></button>
+        <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
+      </div>
+    </header>
 
-  <div class="set-strip" id="setStrip"></div>
+    <div class="set-strip" id="setStrip"></div>
+  </div>
 
   <button class="event-card" id="eventCard" type="button"></button>
 
@@ -1149,18 +1160,60 @@ const SwimCore = (function(){
      on touchend fires on the very first physical touch, before any keyboard-
      close reflow gets a chance to interfere. Falls back to a plain click for
      mouse/trackpad use, guarded so the two never both fire. ---- */
+  // A finger that scrolls the page often ends its drag resting on top of a
+  // button — the browser still fires touchend there, and without this check
+  // that alone would trigger the button. TAP_MOVE_THRESHOLD_PX distinguishes
+  // "lifted without moving" (a real tap) from "dragged across the screen and
+  // happened to lift here" (a scroll) by tracking how far the touch travelled
+  // between touchstart and touchend.
+  const TAP_MOVE_THRESHOLD_PX = 12;
   function addTapListener(el, fn){
     let touched = false;
-    function onTouchEnd(e){ touched = true; e.preventDefault(); fn(e); setTimeout(() => { touched = false; }, 500); }
+    let startX = 0, startY = 0, moved = false;
+    function onTouchStart(e){
+      moved = false;
+      if (e.touches && e.touches.length){ startX = e.touches[0].clientX; startY = e.touches[0].clientY; }
+    }
+    function onTouchMove(e){
+      if (!e.touches || !e.touches.length) return;
+      const dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
+      if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD_PX) moved = true;
+    }
+    function onTouchEnd(e){
+      touched = true;
+      if (!moved){ e.preventDefault(); fn(e); }
+      setTimeout(() => { touched = false; }, 500);
+    }
     function onClick(e){ if (touched) return; fn(e); }
+    el.addEventListener('touchstart', onTouchStart, { passive:true });
+    el.addEventListener('touchmove', onTouchMove, { passive:true });
     el.addEventListener('touchend', onTouchEnd, { passive:false });
     el.addEventListener('click', onClick);
-    return () => { el.removeEventListener('touchend', onTouchEnd); el.removeEventListener('click', onClick); };
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('click', onClick);
+    };
   }
   function addTapDelegate(container, selector, fn){
     let touched = false;
+    let startX = 0, startY = 0, moved = false;
     function run(e){ const b = e.target.closest(selector); if (!b) return; fn(b, e); }
-    container.addEventListener('touchend', (e) => { touched = true; e.preventDefault(); run(e); setTimeout(() => { touched = false; }, 500); }, { passive:false });
+    container.addEventListener('touchstart', (e) => {
+      moved = false;
+      if (e.touches && e.touches.length){ startX = e.touches[0].clientX; startY = e.touches[0].clientY; }
+    }, { passive:true });
+    container.addEventListener('touchmove', (e) => {
+      if (!e.touches || !e.touches.length) return;
+      const dx = e.touches[0].clientX - startX, dy = e.touches[0].clientY - startY;
+      if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD_PX) moved = true;
+    }, { passive:true });
+    container.addEventListener('touchend', (e) => {
+      touched = true;
+      if (!moved){ e.preventDefault(); run(e); }
+      setTimeout(() => { touched = false; }, 500);
+    }, { passive:false });
     container.addEventListener('click', (e) => { if (touched) return; run(e); });
   }
 
