@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import {
   validateProtocol, resolveParams, expandReps, prescribe, prescribeGroup,
   cleanMetrics, lineMeasures, checkConstraints, analyse, ANALYSERS,
-  buildHandoff, encodeHandoff, decodeHandoff,
+  buildHandoff, encodeHandoff, decodeHandoff, levelOption, paramValueLabel, LADDER_MIN_REST_SEC,
 } from './protocolFormat.js';
 
 let pass = 0, fail = 0;
@@ -40,7 +40,8 @@ async function loadSeeds() {
     create function public.org_grant(o uuid) returns uuid language sql as $$ select null::uuid $$;
     create function public.grant_ancestors(g uuid) returns table (grant_id uuid, org_id uuid)
       language sql as $$ select null::uuid, null::uuid where false $$;`);
-  for (const m of ['20260927120000_athlete_records.sql', '20260928120000_drop_import_dedup.sql', '20260929120000_test_protocols.sql'])
+  for (const m of ['20260927120000_athlete_records.sql', '20260928120000_drop_import_dedup.sql', '20260929120000_test_protocols.sql',
+                   '20261005130000_add_endurance_tests.sql', '20261006130000_ladder_100s.sql'])
     await db.exec(readFileSync('supabase/migrations/' + m, 'utf8'));
   const { rows } = await db.query(`select id, key, version, name, set_json, measures, params, analyser from public.test_protocols`);
   return Object.fromEntries(rows.map((r) => [r.key, {
@@ -171,6 +172,36 @@ async function run() {
   ok('step hand-off has targets as labels', stepH.reps[0].targetLabel === '2:40' && stepH.reps[0].targetTime === '2:40');
   let threw = false; try { await decodeHandoff('x.abc'); } catch (e) { threw = true; }
   ok('rejects a non-SwimZone string', threw);
+
+  console.log('\nLadder levels (100s ladder)');
+  const lad = P['ladder-100s'];
+  ok('ladder seed validates', lad && validateProtocol(lad) === null, lad && validateProtocol(lad));
+  const L2 = resolveParams(lad.set, lad.params, { level: 'L2' });
+  ok('level 2 sets 25 reps on 1:25', L2.set.blocks[0].lines[0].qty === 25 && L2.set.blocks[0].lines[0].interval.onTime === '1:25' && L2.params.level === 'L2', L2.set.blocks[0].lines[0]);
+  const L3 = resolveParams(lad.set, lad.params, { level: 'L3' });
+  ok('level 3 sets 30 reps on 1:20', L3.set.blocks[0].lines[0].qty === 30 && L3.set.blocks[0].lines[0].interval.onTime === '1:20');
+  ok('unknown level falls back to level 1', resolveParams(lad.set, lad.params, { level: 'L9' }).params.level === 'L1');
+  ok('stored ladder set not mutated', lad.set.blocks[0].lines[0].qty === 20);
+  ok('prescription at level 3 has 30 reps', prescribe(lad, { chosen: { level: 'L3' }, athlete }).athletes[0].reps.length === 30);
+  ok('level labels for the dropdown', paramValueLabel(lad.params.level, 'L2') === 'Level 2 — 25×100 on 1:25' && levelOption(lad.params.level, 'L3').qty === 30);
+  ok('level with no qty rejected', validateProtocol({ ...lad, params: { level: { kind: 'level', default: 'A', options: [{ value: 'A', onTime: '1:30' }] } } }) !== null);
+  ok('level default must be one of its levels', validateProtocol({ ...lad, params: { level: { ...lad.params.level, default: 'L7' } } }) !== null);
+  ok('level on a rest line needs restSec', validateProtocol({ ...lad, set: { ...lad.set, blocks: [{ repeats: 1, lines: [{ ...lad.set.blocks[0].lines[0], interval: { type: 'rest', restSec: 10, param: 'level' } }] }] } }) !== null);
+  const hand = buildHandoff(prescribe(lad, { chosen: { level: 'L2' }, athlete }), 'a1');
+  ok('Poolside hand-off carries 25 reps on 1:25', hand.reps.length === 25 && hand.reps[24].interval.onTime === '1:25' && hand.params.level === 'L2');
+
+  // swum ladders
+  const swim = (n, base, slope, sc0) => Array.from({ length: n }, (_, i) => ({ repNo: i + 1, distM: 100, stroke: 'FS', timeSec: base + slope * i, metrics: { sc: sc0 + Math.floor(i / 5) } }));
+  const a1 = analyse('ladder', swim(20, 75, 0.1, 40), { set: resolveParams(lad.set, lad.params, { level: 'L1' }).set, params: { level: 'L1' } });
+  ok('L1: all 20 swum, ≥5 s rest every rep → held', a1.level === 'L1' && a1.prescribed === 20 && a1.swum === 20 && a1.completed && a1.held === true, a1);
+  ok('L1: per-100 pace, first-5/last-5 fade', a1.per100Sec === 75.95 && a1.first5MeanSec === 75.2 && a1.last5MeanSec === 76.7 && a1.fadeSec === 1.5, a1);
+  ok('L1: rest gained on 1:30', a1.sendOffSec === 90 && a1.minRestSec === 13.1 && a1.repsInsideSendOff === 20, a1);
+  ok('L1: stroke count change first-5 vs last-5', a1.first5Sc === 40 && a1.last5Sc === 43 && a1.scFade === 3, a1);
+  const a3 = analyse('ladder', swim(30, 76, 0.2, 41), { set: L3.set, params: { level: 'L3' } });
+  ok('L3: last reps under 5 s rest → not held', a3.completed && a3.held === false && a3.minRestSec < LADDER_MIN_REST_SEC, a3);
+  ok('L3: fade uses the same 5-rep windows (comparable with L1)', a3.first5MeanSec === 76.4 && a3.last5MeanSec === 81.4 && a3.fadeSec === 5, a3);
+  const a2 = analyse('ladder', swim(18, 74, 0, 40), { set: L2.set, params: { level: 'L2' } });
+  ok('L2 stopped at 18 of 25 → not completed, not held', a2.completed === false && a2.held === false && a2.swum === 18 && a2.prescribed === 25, a2);
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail ? 1 : 0);

@@ -252,3 +252,31 @@ parents time their own swimmer on their phones) can reuse `prescribeGroup` /
 - HR capture: typed after (watch/strap) or counted at the wall — affects the
   Poolside prompt, not the schema.
 - Multi-athlete lanes: prescription payload is `athletes[]` from the start.
+
+## Levels — one test, several rungs (added 2026-10-06)
+
+A `level` param picks one rung of a ladder and sets BOTH the rep count and the
+send-off (or rest) of every line that opts in with `interval.param`:
+
+```jsonc
+"params": { "level": { "label":"Level", "kind":"level", "default":"L1", "options":[
+  { "value":"L1", "label":"Level 1 — 20×100 on 1:30", "qty":20, "onTime":"1:30" },
+  { "value":"L2", "label":"Level 2 — 25×100 on 1:25", "qty":25, "onTime":"1:25" },
+  { "value":"L3", "label":"Level 3 — 30×100 on 1:20", "qty":30, "onTime":"1:20" } ] } }
+```
+
+- Moving up a level is NOT a new version: it is the same test, and the level
+  chosen is stored with each run (`conditions.params.level`).
+- First test using it: **`ladder-100s`** (migration `20261006130000_ladder_100s.sql`),
+  straight 100 Free at AT, no recovery swim. Analyser **`ladder`** reports, per run:
+  `level`, `prescribed`/`swum`/`completed`, **`held`** (every rep swum and every
+  one ≥ `LADDER_MIN_REST_SEC` = 5 s inside the send-off), `per100Sec`,
+  `first5MeanSec`/`last5MeanSec`/`fadeSec` (fixed 5-rep windows, so 20 and 30 reps
+  compare), `driftSecPerRep`, `meanRestSec`/`minRestSec`, `repsInsideSendOff`,
+  `first5Sc`/`last5Sc`/`scFade`, `meanHr`.
+- Comparing across levels: pace on a tighter send-off is naturally slower, so trend
+  charts must mark the level on each point rather than join levels as if equal.
+- The analyser receives the run's params (`analyse(id, reps, { set, params })`),
+  both on save and in `reanalyseSetResults`.
+
+- `20261006140000_remove_endurance_100s.sql` removes `end-20x100` and `end-30x100` (superseded by the ladder) — only where no run has been saved against them; a used one is kept and reported.

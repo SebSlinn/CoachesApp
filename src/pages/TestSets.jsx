@@ -20,7 +20,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listProtocols, prescribeForAthletes } from '../services/protocols';
 import { getSetResultsByProtocol, ingestPoolsideSetResult } from '../services/results';
-import { prescribeGroup, buildHandoff, encodeHandoff } from '../session/protocolFormat';
+import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel } from '../session/protocolFormat';
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
@@ -51,7 +51,6 @@ const B = {
 
 const isDraft = (p) => /^DRAFT/i.test(p.description || '') || /DRAFT/i.test(p.set?.note || '');
 const fmtClock = (s) => { const m = Math.floor(s / 60); return `${m}:${String(Math.round(s - m * 60)).padStart(2, '0')}`; };
-const paramValueLabel = (def, v) => (def.kind === 'restSec' ? (v >= 60 && v % 60 === 0 ? `${v / 60} min` : `${v} s`) : v);
 
 // One line of heart-rate for a run (live sensor or typed HR), or null.
 function hrLine(reps) {
@@ -94,6 +93,13 @@ function headline(summary) {
       : `last step ${fmtClock(summary.lastStepSec || 0)} · peak HR ${summary.peakHr ?? '—'}`;
     case 'css': return `CSS ${fmtClock(summary.cssPer100Sec)}/100`;
     case 'double-distance': return `${fmtClock(summary.timeSec)}${summary.vsTargetSec != null ? ` (${summary.vsTargetSec > 0 ? '+' : ''}${summary.vsTargetSec} s)` : ''}${summary.fadeSec != null ? ` · fade ${summary.fadeSec} s` : ''}`;
+    case 'ladder': {
+      const lv = summary.level ? `${summary.level.replace(/^L/, 'Level ')} ` : '';
+      const held = summary.held === true ? '✓ held' : summary.held === false ? (summary.completed ? 'not held' : `${summary.swum}/${summary.prescribed} reps`) : '';
+      const pace = summary.per100Sec ? `${fmtRep(summary.per100Sec)}/100` : '';
+      const fade = summary.fadeSec != null ? `fade ${summary.fadeSec > 0 ? '+' : ''}${summary.fadeSec} s` : '';
+      return [lv + held, pace, fade].filter(Boolean).join(' · ') || '—';
+    }
     case 'blocks': return summary.dropOffSec != null ? `drop-off ${summary.dropOffSec > 0 ? '+' : ''}${summary.dropOffSec} s/rep` : '—';
     case 'swolf': return `best SWOLF ${summary.bestSwolf ?? '—'} · mean ${summary.meanSwolf ?? '—'}`;
     case 'maxhr': return `peak HR ${summary.peakHr ?? '—'}`;
@@ -285,9 +291,10 @@ export default function TestSets() {
                       <span style={C.label}>{def.label || k}</span>
                       <select style={C.select} value={String(chosen[k] ?? def.default)}
                         onChange={(e) => setChosen((c) => ({ ...c, [k]: def.kind === 'restSec' ? Number(e.target.value) : e.target.value }))}>
-                        {(def.options && def.options.length ? def.options : [def.default]).map((o) => (
-                          <option key={String(o)} value={String(o)}>{paramValueLabel(def, o)}{String(o) === String(def.default) ? ' (standard)' : ''}</option>
-                        ))}
+                        {(def.options && def.options.length ? def.options : [def.default]).map((o) => {
+                          const v = def.kind === 'level' ? o.value : o;   // a level option is { value, label, qty, onTime }
+                          return <option key={String(v)} value={String(v)}>{paramValueLabel(def, v)}{def.kind !== 'level' && String(v) === String(def.default) ? ' (standard)' : ''}</option>;
+                        })}
                       </select>
                     </label>
                   ))}

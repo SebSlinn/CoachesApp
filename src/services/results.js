@@ -349,7 +349,7 @@ export const addSetResult = async (pAthleteId, pSetResult) => {
   if (pSetResult.protocolId) {
     const { data: mProtocol, error } = await getProtocolsRepository().get(pSetResult.protocolId)
     if (error) return { data: null, error: { message: `Test not found in the library (${error.message})` } }
-    mSummary = analyse(mProtocol.analyser, withLinePositions(pSetResult.set, mReps), { set: pSetResult.set })
+    mSummary = analyse(mProtocol.analyser, withLinePositions(pSetResult.set, mReps), { set: pSetResult.set, params: pSetResult.params || (pSetResult.conditions && pSetResult.conditions.params) || {} })
   }
 
   const mId = pSetResult.id || pSetResult.clientUuid
@@ -390,7 +390,7 @@ export const reanalyseSetResults = async (pProtocolId, pAthleteId) => {
     const mReps = (mEff.reps || [])
       .map((r) => ({ ...r, targetTime: r.targetTime ?? mTargets.get(r.repNo) }))
       .sort((a, b) => a.repNo - b.repNo)
-    const mSummary = analyse(mProtocol.analyser, withLinePositions(mEff.set, mReps), { set: mEff.set })
+    const mSummary = analyse(mProtocol.analyser, withLinePositions(mEff.set, mReps), { set: mEff.set, params: (mEff.conditions && mEff.conditions.params) || {} })
     const { error } = await repo().updateSetEffortSummary(mEff.id, mSummary)
     if (error) return { data: null, error }
     mUpdated++

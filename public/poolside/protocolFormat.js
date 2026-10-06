@@ -30,7 +30,12 @@ export const METRIC_KEYS = ['sc', 'sr', 'hr', 'rpe', 'lactate'];
  */
 export const HR_SENSOR_KEYS = ['hrStart', 'hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
 const STORED_METRIC_KEYS = METRIC_KEYS.concat(HR_SENSOR_KEYS);
-export const PARAM_KINDS = ['onTime', 'restSec'];
+export const PARAM_KINDS = ['onTime', 'restSec', 'level'];
+// A 'level' param picks one rung of a ladder, which sets BOTH how many reps a
+// line has and its send-off (or rest), e.g.
+//   { kind:'level', label:'Level', default:'L1', options:[
+//       { value:'L1', label:'Level 1 — 20×100 on 1:30', qty:20, onTime:'1:30' }, … ] }
+// Lines opt in exactly like the other params: interval.param = "level".
 const KEY_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
 const round = (n, dp = 2) => (Number.isFinite(n) ? Math.round(n * 10 ** dp) / 10 ** dp : null);
@@ -77,10 +82,35 @@ export function lineMeasures(protocol, line) {
 // Validation
 // ---------------------------------------------------------------------------
 
-function validParamValue(kind, v) {
+function validParamValue(kind, v, def) {
   if (kind === 'onTime') return Number.isFinite(parseSetTime(v)) && parseSetTime(v) > 0;
   if (kind === 'restSec') return Number.isFinite(Number(v)) && Number(v) >= 0;
+  if (kind === 'level') return !!(def && Array.isArray(def.options) && def.options.some((o) => o && o.value === v));
   return false;
+}
+
+/** The option object a level param's value refers to (or null). */
+export function levelOption(def, value) {
+  return (def && def.kind === 'level' && Array.isArray(def.options) && def.options.find((o) => o && o.value === value)) || null;
+}
+
+/** Human label for one param value: "1 min", "30 s", "1:30", "Level 2 — 25×100 on 1:25". */
+export function paramValueLabel(def, v) {
+  if (!def) return String(v);
+  if (def.kind === 'level') { const o = levelOption(def, v); return o ? (o.label || o.value) : String(v); }
+  if (def.kind === 'restSec') { const n = Number(v); return n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n} s`; }
+  return String(v);
+}
+
+function validLevelOption(o) {
+  if (!o || typeof o !== 'object' || !String(o.value || '').trim()) return 'every level needs a value';
+  if (!(Number.isInteger(Number(o.qty)) && Number(o.qty) >= 1)) return `level "${o.value}": qty must be a whole number of reps`;
+  const hasOn = o.onTime != null && o.onTime !== '';
+  const hasRest = o.restSec != null && o.restSec !== '';
+  if (!hasOn && !hasRest) return `level "${o.value}": needs an onTime or a restSec`;
+  if (hasOn && !validParamValue('onTime', o.onTime)) return `level "${o.value}": onTime "${o.onTime}" is not a time`;
+  if (hasRest && !validParamValue('restSec', o.restSec)) return `level "${o.value}": restSec must be 0 or more`;
+  return null;
 }
 
 /** Structural check before save. Returns an error string, or null when well-formed. */
@@ -100,9 +130,14 @@ export function validateProtocol(p) {
   const params = p.params || {};
   if (typeof params !== 'object' || Array.isArray(params)) return 'params must be an object';
   for (const [name, def] of Object.entries(params)) {
-    if (!def || !PARAM_KINDS.includes(def.kind)) return `param "${name}": kind must be onTime or restSec`;
-    if (!validParamValue(def.kind, def.default)) return `param "${name}": default "${def.default}" is not a valid ${def.kind}`;
-    if (def.options && (!Array.isArray(def.options) || def.options.some((o) => !validParamValue(def.kind, o))))
+    if (!def || !PARAM_KINDS.includes(def.kind)) return `param "${name}": kind must be onTime, restSec or level`;
+    if (def.kind === 'level') {
+      if (!Array.isArray(def.options) || !def.options.length) return `param "${name}": a level param needs its levels as options`;
+      for (const o of def.options) { const e = validLevelOption(o); if (e) return `param "${name}": ${e}`; }
+      if (new Set(def.options.map((o) => o.value)).size !== def.options.length) return `param "${name}": level values must be unique`;
+    }
+    if (!validParamValue(def.kind, def.default, def)) return `param "${name}": default "${def.default}" is not a valid ${def.kind}`;
+    if (def.kind !== 'level' && def.options && (!Array.isArray(def.options) || def.options.some((o) => !validParamValue(def.kind, o))))
       return `param "${name}": every option must be a valid ${def.kind}`;
   }
 
@@ -117,7 +152,10 @@ export function validateProtocol(p) {
       if (pn) {
         if (!params[pn]) return `${where}: interval.param "${pn}" is not a protocol param`;
         const want = ln.interval.type === 'fixed' ? 'onTime' : 'restSec';
-        if (params[pn].kind !== want) return `${where}: param "${pn}" is ${params[pn].kind} but the line's interval needs ${want}`;
+        if (params[pn].kind === 'level') {
+          if (params[pn].options.some((o) => o[want] == null || o[want] === ''))
+            return `${where}: every level of "${pn}" needs a ${want} for this line's interval`;
+        } else if (params[pn].kind !== want) return `${where}: param "${pn}" is ${params[pn].kind} but the line's interval needs ${want}`;
       }
       if (ln.constraints && typeof ln.constraints !== 'object') return `${where}: constraints must be an object`;
     }
@@ -138,7 +176,7 @@ export function resolveParams(set, paramDefs = {}, chosen = {}) {
   const used = {};
   for (const [name, def] of Object.entries(paramDefs || {})) {
     const c = chosen ? chosen[name] : undefined;
-    used[name] = c !== undefined && validParamValue(def.kind, c)
+    used[name] = c !== undefined && validParamValue(def.kind, c, def)
       ? (def.kind === 'restSec' ? Number(c) : String(c))
       : (def.kind === 'restSec' ? Number(def.default) : String(def.default));
   }
@@ -147,7 +185,13 @@ export function resolveParams(set, paramDefs = {}, chosen = {}) {
     for (const ln of block.lines || []) {
       const pn = ln.interval && ln.interval.param;
       if (!pn || !(pn in used)) continue;
-      if (paramDefs[pn].kind === 'onTime') ln.interval.onTime = used[pn];
+      const def = paramDefs[pn];
+      if (def.kind === 'level') {
+        const o = levelOption(def, used[pn]);
+        ln.qty = Number(o.qty);
+        if (o.onTime != null && o.onTime !== '') ln.interval.onTime = String(o.onTime);
+        if (o.restSec != null && o.restSec !== '') ln.interval.restSec = Number(o.restSec);
+      } else if (def.kind === 'onTime') ln.interval.onTime = used[pn];
       else ln.interval.restSec = used[pn];
     }
   }
@@ -300,7 +344,53 @@ function splitAt(rep, distM) {
   return NaN;
 }
 
+// Ladder "held the level": every prescribed rep swum, and every one finished at
+// least this many seconds inside the send-off (time to turn round and go).
+// A coaching judgement — change here if the coach wants a different margin.
+export const LADDER_MIN_REST_SEC = 5;
+
 export const ANALYSERS = {
+  // A rep-count + send-off ladder (e.g. 20×100 @1:30 → 25 @1:25 → 30 @1:20).
+  // Everything here is comparable ACROSS levels: per-100 pace, slowing per rep,
+  // first-5 vs last-5 (a fixed window, not halves, so 20 and 30 reps compare),
+  // stroke-count change and rest gained. Within a level everything compares.
+  ladder: {
+    v: 1,
+    label: 'Ladder — level held, pace, fade',
+    run(reps, ctx = {}) {
+      const ts = timed(reps).slice().sort((a, b) => a.repNo - b.repNo);
+      const set = ctx.set || null;
+      const prescribed = set ? expandReps(set).length : null;
+      const swimLine = set && (set.blocks || []).flatMap((b) => b.lines || []).find((l) => (l.type || 'swim') === 'swim');
+      const iv = swimLine && swimLine.interval;
+      const sendOff = iv && iv.type === 'fixed' ? parseSetTime(iv.onTime) : NaN;
+      const times = ts.map(t);
+      const w = Math.min(5, Math.floor(times.length / 2));
+      const first = w ? times.slice(0, w) : [], last = w ? times.slice(-w) : [];
+      const scs = ts.map((r) => met(r, 'sc'));
+      const scFirst = w ? mean(scs.slice(0, w)) : NaN, scLast = w ? mean(scs.slice(-w)) : NaN;
+      const s = seriesStats(ts);
+      const minRest = Number.isFinite(sendOff) && times.length ? sendOff - Math.max(...times) : NaN;
+      const completed = prescribed != null ? ts.length >= prescribed : null;
+      return {
+        level: (ctx.params && ctx.params.level) || null,
+        prescribed, swum: ts.length, completed,
+        held: completed === false ? false : (completed === true && Number.isFinite(minRest) ? minRest >= LADDER_MIN_REST_SEC : null),
+        sendOffSec: round(sendOff),
+        meanSec: s.meanSec ?? null, fastestSec: s.fastestSec ?? null, slowestSec: s.slowestSec ?? null,
+        sdSec: s.sdSec ?? null, driftSecPerRep: s.driftSecPerRep ?? null,
+        per100Sec: round(mean(ts.map((r) => (t(r) / Number(r.distM)) * 100))),
+        first5MeanSec: round(mean(first)), last5MeanSec: round(mean(last)),
+        fadeSec: round(mean(last) - mean(first)),                       // + = slower at the end
+        meanRestSec: Number.isFinite(sendOff) && times.length ? round(sendOff - mean(times)) : null,
+        minRestSec: round(minRest),
+        repsInsideSendOff: Number.isFinite(sendOff) ? times.filter((x) => x < sendOff).length : null,
+        first5Sc: round(scFirst, 1), last5Sc: round(scLast, 1), scFade: round(scLast - scFirst, 1),
+        meanHr: meanMetric(ts, 'hr'),
+      };
+    },
+  },
+
   // Any repeated series (10×400, and the fallback for anything else).
   series: {
     v: 1,

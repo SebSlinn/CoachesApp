@@ -9,6 +9,8 @@ import SetPassword from './pages/SetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 import AthleteRecords from './pages/AthleteRecords'
 import TestSets from './pages/TestSets'
+import RecordsEvent from './pages/RecordsEvent'
+import RecordsSwim from './pages/RecordsSwim'
 
 export default function App() {
   return (
@@ -46,6 +48,16 @@ export default function App() {
             <AthleteRecords />
             </ProtectedRoute>
           } />
+        <Route path="/athlete-records/event/:event" element={
+          <ProtectedRoute>
+            <RecordsEvent />
+          </ProtectedRoute>
+        } />
+        <Route path="/athlete-records/swim/:swimId" element={
+          <ProtectedRoute>
+            <RecordsSwim />
+          </ProtectedRoute>
+        } />
         <Route path="/test-sets" element={
           <ProtectedRoute>
             <TestSets />

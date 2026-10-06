@@ -117,5 +117,26 @@ console.log('\nlive heart rate in a Poolside test file');
   ok('no stream → reps saved exactly as given', !store.reps.filter((r) => r.effortId === i1.data.effortId).some((r) => 'hrPeak' in r.metrics));
 }
 
+console.log('\nladder test: level chosen per run');
+{
+  const ladDef = { key: 'ladder-svc', name: 'Ladder', analyser: 'ladder', measures: ['time', 'sc'],
+    set: { fmt: 'swimzone.set/1', name: 'Ladder', poolType: '25SC', blocks: [{ repeats: 1, lines: [
+      { type: 'swim', stroke: 'FS', distM: 100, qty: 20, targetRule: { base: 'AT' }, interval: { type: 'fixed', onTime: '1:30', param: 'level' }, intensity: 'AT', measures: ['time', 'sc'] }] }] },
+    params: { level: { label: 'Level', kind: 'level', default: 'L1', options: [
+      { value: 'L1', label: 'Level 1', qty: 20, onTime: '1:30' }, { value: 'L2', label: 'Level 2', qty: 25, onTime: '1:25' }, { value: 'L3', label: 'Level 3', qty: 30, onTime: '1:20' }] } } };
+  const lc = await P.createProtocol(null, ladDef);
+  ok('a ladder protocol with levels saves', lc.data && !lc.error, lc.error);
+  const lp = (await P.prescribeForAthletes(lc.data.id, [{ id: 'sam', name: 'Sam' }], { chosen: { level: 'L2' } })).data;
+  ok('prescription at level 2: 25 reps on 1:25', lp.athletes[0].reps.length === 25 && lp.set.blocks[0].lines[0].interval.onTime === '1:25' && lp.params.level === 'L2');
+  const lreps = lp.athletes[0].reps.map((r, i) => ({ repNo: r.repNo, distM: 100, stroke: 'FS', timeSec: 74 + i * 0.1, metrics: { sc: 40 } }));
+  const ls = await R.addSetResult('sam', { protocolId: lc.data.id, swumOn: '2026-10-06', sessionId: 'lad-1', set: lp.set, params: lp.params, reps: lreps });
+  ok('ladder run saved with level + held in its summary', ls.data && ls.data.summary.level === 'L2' && ls.data.summary.prescribed === 25 && ls.data.summary.held === true, ls.data && ls.data.summary);
+  const eff = store.efforts.find((e) => e.id === ls.data.effortId);
+  ok('chosen level kept with the run', eff.conditions.params.level === 'L2');
+  eff.summary = null;
+  await R.reanalyseSetResults(lc.data.id, 'sam');
+  ok('recomputing keeps the level (read back from the run)', eff.summary && eff.summary.level === 'L2' && eff.summary.prescribed === 25, eff.summary);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

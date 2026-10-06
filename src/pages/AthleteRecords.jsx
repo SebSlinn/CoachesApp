@@ -9,9 +9,11 @@
 // Reached from Athlete Setup with { athleteId, name } in router state.
 
 import { Fragment, useEffect, useState, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { secToDisplay } from '../zones/helpers.js';
 import { getAthleteBests, getResultHistory, getSetResultsDetailed, setSignature } from '../services/results.js';
+import { useAthleteContext, recordsHref, recordsPaths } from '../records/athleteLink.js';
+import { eventSlug } from '../records/eventView.js';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
 const WINDOWS = [
@@ -106,9 +108,11 @@ const setLines = (set) => (set?.blocks || []).flatMap((b) => (b.lines || []).map
 
 export default function AthleteRecords() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const athleteId = location.state?.athleteId || null;
-  const name = location.state?.name || 'Athlete';
+  // From Athlete Setup's router state, or ?a=&n= when reached from a link.
+  const { athleteId: ctxId, name } = useAthleteContext();
+  const athleteId = ctxId || null;
+  const eventHref = (pStroke, pDistM) => recordsHref(recordsPaths.event(eventSlug(pStroke, pDistM)), athleteId, name);
+  const swimHref = (pId) => recordsHref(recordsPaths.swim(pId), athleteId, name);
 
   const [windowMonths, setWindowMonths] = useState(null);   // null = all-time — governs the whole page
   const [bests, setBests] = useState([]);
@@ -122,11 +126,6 @@ export default function AthleteRecords() {
   const [openSetId, setOpenSetId] = useState(null);         // set effort drilled into
   const [compareSig, setCompareSig] = useState(null);       // signature being compared
 
-  // open an event's drill-down (from the Progression list OR a Best-times row)
-  const openEvent = (k) => {
-    setFocusEvent(k);
-    setTimeout(() => { const el = document.getElementById('ev-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 60);
-  };
 
   const loadBests = useCallback(async () => {
     if (!athleteId) return;
@@ -212,9 +211,9 @@ export default function AthleteRecords() {
             <thead><tr><th style={C.th}>Event</th><th style={{ ...C.th, textAlign: 'right' }}>Best</th><th style={{ ...C.th, textAlign: 'right' }}>Type</th><th style={{ ...C.th, textAlign: 'right' }}>When</th></tr></thead>
             <tbody>
               {bests.map((b) => (
-                <tr key={b.stroke + b.distM} onClick={() => openEvent(b.stroke + b.distM)} title="Open this event's progression"
+                <tr key={b.stroke + b.distM} onClick={() => navigate(eventHref(b.stroke, b.distM))} title="Open this event's page"
                   style={{ borderTop: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
-                  <td style={{ padding: '5px 0' }}>{eventKeyToLabel(b.stroke, b.distM)}</td>
+                  <td style={{ padding: '5px 0' }}><Link to={eventHref(b.stroke, b.distM)} onClick={(e) => e.stopPropagation()} style={{ color: '#fff', textDecoration: 'none', borderBottom: '1px solid rgba(255,255,255,0.18)' }}>{eventKeyToLabel(b.stroke, b.distM)}</Link></td>
                   <td style={{ padding: '5px 0', textAlign: 'right', fontWeight: 700 }}>{secToDisplay(b.timeSec)}</td>
                   <td style={{ padding: '5px 0', textAlign: 'right' }}>
                     <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 4, background: b.official ? 'rgba(52,199,89,0.15)' : 'rgba(255,204,0,0.15)', color: b.official ? GOOD : '#FFCC00' }}>{b.official ? 'official' : 'trial'}</span>
@@ -244,6 +243,9 @@ export default function AthleteRecords() {
               </div>
               {open ? (
                 <div style={{ marginTop: 8 }}>
+                  <div style={{ textAlign: 'right', marginBottom: 4 }}>
+                    <Link to={eventHref(rowsNewest[0].stroke, rowsNewest[0].distM)} style={{ fontSize: 11, color: '#8fd6e4' }}>Open event page (SC/LC chart, splits)</Link>
+                  </div>
                   <Trend rows={rowsOldest} />
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 8 }}>
                     <thead><tr><th style={C.th}>Date</th><th style={{ ...C.th, textAlign: 'right' }}>Time</th><th style={{ ...C.th, textAlign: 'right' }}>Type</th><th style={{ ...C.th, textAlign: 'right' }}>Pool</th></tr></thead>
@@ -251,7 +253,7 @@ export default function AthleteRecords() {
                       {rowsNewest.map((r) => {
                         const p = r.provenance || {};
                         const swimOpen = openSwimId === r.id;
-                        const hasDetail = p.meetName || p.venue || p.importRef || r.poolType;
+                        const hasDetail = true;   // every swim has its own page
                         return (
                           <Fragment key={r.id}>
                             <tr onClick={() => hasDetail && setOpenSwimId(swimOpen ? null : r.id)}
@@ -269,6 +271,7 @@ export default function AthleteRecords() {
                                   <div>Pool: {r.poolType || '—'} · {p.sanctioned ? 'sanctioned' : (r.kind === 'time_trial' ? 'time trial (non-official)' : r.source || '')}</div>
                                   {p.importRef && <div style={{ color: INK_MUTED }}>Ref: {String(p.importRef).split(':')[2] || p.importRef}</div>}
                                   {r.note && <div style={{ color: INK_MUTED }}>{r.note}</div>}
+                                  <Link to={swimHref(r.id)} style={{ color: '#8fd6e4' }}>Full swim details</Link>
                                 </td>
                               </tr>
                             )}
