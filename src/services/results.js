@@ -9,11 +9,9 @@
 //
 // Athlete Records (Part A): append-only import, sets-as-swum, progression
 // history. Set snapshots use swimzone.set/1 (see session/setFormat).
-import { getResultsRepository, getProtocolsRepository } from '../repositories/RepositoryFactory'
+import { getResultsRepository } from '../repositories/RepositoryFactory'
 import { validateSetFormat } from '../session/setFormat'
-import { analyse, cleanMetrics, expandReps } from '../session/protocolFormat'
 import { recordsToResultRows } from '../athlete/swimmingResults'
-import { unpackStream, applyHrToReps } from '../hr/hrMetrics'
 
 const repo = () => getResultsRepository()
 
@@ -51,7 +49,23 @@ export const getResults = async (pAthleteId, pFilter = {}) => repo().list(pAthle
 
 // All single swims for one event, oldest→newest — for a progression graph that
 // shows improvement AND regression (every race kept, never overwritten).
-export const getResultHistory = async (pAthleteId, pFilter = {}) => repo().listHistory(pAthleteId, pFilter)
+// Deduped defensively on the swim's natural identity (stroke+dist+date+time):
+// the same physical swim imported from two pages (or saved across code versions
+// before the natural-key dedup) must never show twice. This keeps the DISPLAY
+// clean regardless of stray rows; run the SQL cleanup to drop them for good.
+export const getResultHistory = async (pAthleteId, pFilter = {}) => {
+  const { data, error } = await repo().listHistory(pAthleteId, pFilter)
+  if (error) return { data, error }
+  const mSeen = new Set()
+  const mOut = []
+  for (const r of data || []) {
+    const k = `${r.stroke}|${r.distM}|${r.swumOn}|${r.timeSec}`
+    if (mSeen.has(k)) continue
+    mSeen.add(k)
+    mOut.push(r)
+  }
+  return { data: mOut, error: null }
+}
 
 export const addResult = async (pAthleteId, pResult) => {
   const mProblem = validateResult(pResult)
@@ -253,137 +267,49 @@ export const ingestPoolsideExport = async (pAthleteId, pEnvelope) => {
     const mProblem = validateResult(mRow)
     if (mProblem) return invalid(`${mProblem} (record ${i + 1})`)
   }
-  // Poolside fills per-swim metrics (e.g. heart rate from a live sensor) — keep
-  // only the known numeric keys, like set reps.
-  const mClean = mRows.map((r) => (r.metrics ? { ...r, metrics: cleanMetrics(r.metrics) } : r))
-  return repo().addManyIdempotent(pAthleteId, mClean.map(withEffort))
-}
-
-// Ingest a Poolside TEST file (swimzone.setresult/1, from Poolside set mode)
-// into the athlete it was timed for. Idempotent: the file carries the Poolside
-// sessionId, so importing the same file twice saves once.
-// pFallbackAthleteId is used only when the file carries no athlete id; a file
-// for a DIFFERENT athlete than pExpectAthleteId is refused (wrong swimmer loaded).
-// Returns { effortId, reps, alreadyPresent, summary, athleteId, athleteName, missing }.
-export const ingestPoolsideSetResult = async (pEnvelope, pOpts = {}) => {
-  if (!pEnvelope || pEnvelope.fmt !== 'swimzone.setresult/1') return invalid('INVALID: not a Poolside test file')
-  const mFileId = pEnvelope.athleteId || null
-  if (pOpts.expectAthleteId && mFileId && mFileId !== pOpts.expectAthleteId) {
-    return invalid(`This file is for ${pEnvelope.athleteName || 'another swimmer'}, not the loaded athlete. Load them first, then import.`)
-  }
-  const mAthleteId = mFileId || pOpts.fallbackAthleteId || null
-  if (!mAthleteId) return invalid('No athlete to save to — open Poolside from a swimmer so the file carries their id.')
-  if (!Array.isArray(pEnvelope.reps) || pEnvelope.reps.length === 0) return invalid('This file has no timed reps.')
-  const r = await addSetResult(mAthleteId, {
-    protocolId: pEnvelope.protocolId || null,
-    swumOn: pEnvelope.swumOn,
-    sessionId: pEnvelope.sessionId,
-    set: pEnvelope.set,
-    params: pEnvelope.params,
-    conditions: pEnvelope.conditions || {},
-    reps: pEnvelope.reps,
-    hrStream: pEnvelope.hrStream || null,
-    source: 'stopwatch',
-  })
-  if (r.error) return r
-  return { data: { ...r.data, athleteId: mAthleteId, athleteName: pEnvelope.athleteName || '', missing: pEnvelope.missing || [] }, error: null }
+  return repo().addManyIdempotent(pAthleteId, mRows.map(withEffort))
 }
 
 // A set as swum: a swimzone.set/1 snapshot + an achieved time per rep. Persists
 // as one set_efforts parent + one child row per rep.
-//
-// Test Set Library (2026-09-30):
-//   • each rep may carry `metrics` { sc, sr, hr, rpe, lactate } — cleaned to
-//     known numeric keys and stored in performance_results.metrics;
-//   • when `protocolId` is set, the protocol's analyser runs over the reps and
-//     the headline numbers are stored in set_efforts.summary;
-//   • per-rep resolved targets are frozen in conditions.targets (the set
-//     snapshot stays generic), and chosen params in conditions.params;
-//   • idempotent: pass `id` (or `sessionId`) and saving the same run again is a
-//     no-op → { alreadyPresent: true }.
-//   • live heart rate (2026-10-05): `hrStream` { source, sensor, samples:[[t,bpm],…] }
-//     is the raw truth. Each rep's HR figures (hrAvg, hrPeak, hrEnd, hrRec10/30/60,
-//     hrDrop30, hrCoverage, and hr unless the coach typed one) are RE-DERIVED here
-//     from the stream, and the stream is kept in conditions.hrStream so they can be
-//     recomputed later. No stream → reps are saved exactly as given.
-// Returns { effortId, reps, alreadyPresent, summary }.
 export const addSetResult = async (pAthleteId, pSetResult) => {
   const mSetErr = pSetResult && pSetResult.set ? validateSetFormat(pSetResult.set) : 'set snapshot missing'
   if (mSetErr) return invalid(`INVALID set: ${mSetErr}`)
   if (!Array.isArray(pSetResult.reps)) return invalid('INVALID: reps missing')
-
-  const mStreamIn = pSetResult.hrStream || (pSetResult.conditions && pSetResult.conditions.hrStream) || null
-  const mSamples = unpackStream(mStreamIn)
-  const mRepsIn = mSamples.length ? applyHrToReps(pSetResult.reps, mSamples) : pSetResult.reps
-  const mReps = mRepsIn.map((r) => ({ ...r, metrics: cleanMetrics(r.metrics) }))
-  const mTargets = mReps.filter((r) => r.targetTime).map((r) => ({ repNo: r.repNo, targetTime: r.targetTime }))
-  const { hrStream: _ignored, ...mCondIn } = pSetResult.conditions || {}
-  const mConditions = {
-    ...mCondIn,
-    ...(pSetResult.params ? { params: pSetResult.params } : {}),
-    ...(mTargets.length ? { targets: mTargets } : {}),
-    ...(mSamples.length ? { hrStream: {
-      source: (mStreamIn && mStreamIn.source) || 'ble-poolside',
-      sensor: (mStreamIn && mStreamIn.sensor) || '',
-      samples: mSamples.map((x) => [x.t, x.bpm]),
-    } } : {}),
-  }
-
-  let mSummary = pSetResult.summary ?? null
-  if (pSetResult.protocolId) {
-    const { data: mProtocol, error } = await getProtocolsRepository().get(pSetResult.protocolId)
-    if (error) return { data: null, error: { message: `Test not found in the library (${error.message})` } }
-    mSummary = analyse(mProtocol.analyser, withLinePositions(pSetResult.set, mReps), { set: pSetResult.set })
-  }
-
-  const mId = pSetResult.id || pSetResult.clientUuid
-    || (pSetResult.sessionId
-      ? stableUuid(`set|${pAthleteId}|${pSetResult.protocolId || ''}|${pSetResult.swumOn}|${pSetResult.sessionId}`)
-      : undefined)
-
-  const { hrStream: _stream, ...mRest } = pSetResult
-  const { data, error } = await repo().addSetResult(pAthleteId, {
-    ...mRest, id: mId, reps: mReps, conditions: mConditions, summary: mSummary,
-  })
-  if (error) return { data: null, error }
-  return { data: { ...data, summary: mSummary }, error: null }
-}
-
-// Reps as stored only know their repNo; analysers that group by block/line
-// (e.g. 10 AT · 200 BK · 10 AT) need to know which line each rep came from.
-// Re-derive that from the set snapshot — the same expansion Poolside walked.
-function withLinePositions(pSet, pReps) {
-  const mPos = new Map(expandReps(pSet).map((e) => [e.repNo, e]))
-  return pReps.map((r) => {
-    const e = mPos.get(Number(r.repNo))
-    return e ? { blockIdx: e.blockIdx, blockRepeat: e.blockRepeat, lineIdx: e.lineIdx, ...r } : r
-  })
-}
-
-// Recompute the stored summaries for every run of a test by one athlete — use
-// after an analyser changes (summaries are derived; reps are the truth).
-// Returns { updated }.
-export const reanalyseSetResults = async (pProtocolId, pAthleteId) => {
-  const { data: mProtocol, error: e1 } = await getProtocolsRepository().get(pProtocolId)
-  if (e1) return { data: null, error: e1 }
-  const { data: mEfforts, error: e2 } = await repo().listSetEffortsByProtocol(pProtocolId, pAthleteId)
-  if (e2) return { data: null, error: e2 }
-  let mUpdated = 0
-  for (const mEff of mEfforts || []) {
-    const mTargets = new Map(((mEff.conditions && mEff.conditions.targets) || []).map((x) => [x.repNo, x.targetTime]))
-    const mReps = (mEff.reps || [])
-      .map((r) => ({ ...r, targetTime: r.targetTime ?? mTargets.get(r.repNo) }))
-      .sort((a, b) => a.repNo - b.repNo)
-    const mSummary = analyse(mProtocol.analyser, withLinePositions(mEff.set, mReps), { set: mEff.set })
-    const { error } = await repo().updateSetEffortSummary(mEff.id, mSummary)
-    if (error) return { data: null, error }
-    mUpdated++
-  }
-  return { data: { updated: mUpdated }, error: null }
+  return repo().addSetResult(pAthleteId, pSetResult)
 }
 
 // pFilter: { protocolId, from, to } — all optional.
 export const getSetResults = async (pAthleteId, pFilter = {}) => repo().listSetEfforts(pAthleteId, pFilter)
+
+// Same, but with each set's reps embedded — for the per-set drill-down and the
+// compare view (one call rather than per-click fetches).
+export const getSetResultsDetailed = async (pAthleteId, pFilter = {}) => repo().listSetEffortsWithReps(pAthleteId, pFilter)
+
+// A stable signature for "the same test set", used to group efforts for
+// comparison BEFORE a protocol library exists: the protocolId when present, else
+// a normalised shape of the set (per line: qty×distStroke@targetRule/interval).
+// Two efforts of the same set collapse to the same signature.
+export function setSignature(pSet) {
+  if (!pSet) return 'unknown'
+  if (pSet.protocolId) return 'protocol:' + pSet.protocolId
+  const mLines = []
+  for (const b of pSet.blocks || []) {
+    const mRepeats = b.repeats && b.repeats !== 1 ? b.repeats + '(' : ''
+    const mInner = (b.lines || []).map((l) => {
+      if ((l.type || 'swim') !== 'swim') return l.type
+      const tr = l.targetRule || {}
+      const rule = tr.base === 'PB' ? `PB+${tr.plusFrom}-${tr.plusTo}`
+        : tr.base === 'absolute' ? (tr.inTime || 'abs')
+        : tr.base || ''
+      const iv = l.interval || {}
+      const ivs = iv.type === 'rest' ? `r${iv.restSec}` : (iv.onTime || '')
+      return `${l.qty || 1}x${l.distM}${l.stroke}@${rule}/${ivs}`
+    }).join('+')
+    mLines.push(mRepeats + mInner + (mRepeats ? ')' : ''))
+  }
+  return mLines.join(' , ') || (pSet.name || 'set')
+}
 
 // Same recognised test across the season, efforts + reps, for side-by-side view.
 export const getSetResultsByProtocol = async (pProtocolId, pAthleteId) => repo().listSetEffortsByProtocol(pProtocolId, pAthleteId)
