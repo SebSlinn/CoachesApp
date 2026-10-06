@@ -14,6 +14,8 @@ import {
   importAthleteJson,
   loadAthlete,
   saveAthlete,
+  loadAthleteProfile,
+  saveAthleteProfile,
 } from '../services/athleteService.js';
 import { getAthleteBests, ingestPoolsideExport, ingestPoolsideSetResult, persistAthleteTimes, importOfficialRecords } from '../services/results.js';
 import { parsePaste } from '../athlete/swimmingResults.js';
@@ -61,6 +63,8 @@ export default function AthleteSetup() {
   const [poolsideMsg,    setPoolsideMsg]    = useState('');
   const [dbMsg,          setDbMsg]          = useState('');
   const [officialRecords, setOfficialRecords] = useState([]);   // parsed SwimmingResults rows w/ provenance (date/meet/venue/licence)
+  const [profileMsg,     setProfileMsg]     = useState('');      // result of Save Athlete
+  const [profileSavedAt, setProfileSavedAt] = useState(null);    // when this athlete's profile was last saved to their record
 
   // ── On mount: if we arrived via "load this athlete" (a member/child clicked
   //    on the Dashboard or Organisations), pre-fill from THEIR records — a shell
@@ -76,8 +80,24 @@ export default function AthleteSetup() {
       setSeNumber(''); setClubName('');
       setAthleteType('allround'); setPhvStatus('post');
       setAthleteTimes({}); setDerivedProfile(null);
+      setProfileMsg(''); setProfileSavedAt(null);
       setLoadedNote('Loaded ' + (mHandoff.name || 'athlete') + ' from records — review the profile below, then Save Athlete to make them active.');
       if (mHandoff.athleteId) {
+        // The coach's saved judgements (type, PHV) + SE number / club. If none
+        // are in the DB yet but this device's active slot holds this same
+        // athlete, use those — Save Athlete then moves them into the DB.
+        Promise.all([loadAthleteProfile(mHandoff.athleteId), loadAthlete()]).then(([mRes, mLocal]) => {
+          if (mCancelled) return;
+          const mLocalSame = mLocal && mLocal.athleteId === mHandoff.athleteId ? mLocal : null;
+          const mProf = mRes?.data || mLocalSame;
+          if (!mProf) return;
+          if (mProf.athleteType) setAthleteType(mProf.athleteType);
+          if (mProf.phvStatus)   setPhvStatus(mProf.phvStatus);
+          if (mProf.seNumber)    setSeNumber(mProf.seNumber);
+          if (mProf.club)        setClubName(mProf.club);
+          if (mRes?.data) setProfileSavedAt(mRes.data.updatedAt || null);
+          else setProfileMsg('Profile found on this device only — Save Athlete to store it on ' + (mHandoff.name || 'the athlete') + '’s record.');
+        });
         getAthleteBests(mHandoff.athleteId).then(({ data }) => {
           if (mCancelled || !data) return;
           const mTimes = bestsToTimes(data.bests || []);
@@ -101,6 +121,18 @@ export default function AthleteSetup() {
       setPhvStatus(mData.phvStatus     || 'post');
       setAthleteTimes(mTimes);
       setDerivedProfile(mData.derivedProfile || deriveAthleteType(mTimes) || null);
+      // The active athlete is a real member → their record is the source of truth.
+      if (mData.athleteId) {
+        setAthleteId(mData.athleteId);
+        loadAthleteProfile(mData.athleteId).then(({ data: mProf }) => {
+          if (mCancelled || !mProf) return;
+          if (mProf.athleteType) setAthleteType(mProf.athleteType);
+          if (mProf.phvStatus)   setPhvStatus(mProf.phvStatus);
+          if (mProf.seNumber)    setSeNumber(mProf.seNumber);
+          if (mProf.club)        setClubName(mProf.club);
+          setProfileSavedAt(mProf.updatedAt || null);
+        });
+      }
     });
     return () => { mCancelled = true; };
   }, [location.state]);
@@ -139,14 +171,30 @@ export default function AthleteSetup() {
       : '');
   }
 
+  // Save Athlete: (1) make them this device's active athlete (Classifier / Set
+  // Builder read that slot), and (2) when they're a real member, store the
+  // coach's judgements on THEIR record so they follow the athlete everywhere.
   async function handleSave() {
+    setProfileMsg('');
     const mAthlete = buildAthleteObject({
-      name: athleteName, seNumber, club: clubName,
+      athleteId, name: athleteName, seNumber, club: clubName,
       times: athleteTimes, athleteType, phvStatus, derivedProfile,
     });
     setDerivedProfile(mAthlete.derivedProfile);
     await saveAthlete(mAthlete);
-    alert('Athlete saved!');
+    if (!athleteId) {
+      setProfileMsg('Saved on this device as the active athlete. Load them from the Dashboard or Organisations to store the profile on their record.');
+      return;
+    }
+    const { data, error } = await saveAthleteProfile(athleteId, {
+      athleteType, phvStatus, derivedProfile: mAthlete.derivedProfile, seNumber, club: clubName,
+    });
+    if (error) {
+      setProfileMsg('Active on this device, but not saved to their record: ' + (error.message || 'save failed') + ' (you may need edit rights to this athlete’s log).');
+      return;
+    }
+    setProfileSavedAt(data?.updatedAt || new Date().toISOString());
+    setProfileMsg('Saved — ' + (athleteName || 'athlete') + ' is active on this device and their type / maturation are stored on their record.');
   }
 
   function handleExportJson() {
@@ -369,8 +417,8 @@ export default function AthleteSetup() {
             ))}
           </div>
           {derivedProfile?.type && (
-            <div style={{ marginTop: 8, fontSize: 10, color: 'rgba(52,199,89,0.7)' }}>
-              Auto-detected: {derivedProfile.label} ({derivedProfile.aiPct}% drop/doubling) — override above if needed
+            <div style={{ marginTop: 8, fontSize: 10, color: derivedProfile.type === athleteType ? 'rgba(52,199,89,0.7)' : 'rgba(255,204,0,0.8)' }}>
+              Auto-detected: {derivedProfile.label} ({derivedProfile.aiPct}% drop/doubling) — {derivedProfile.type === athleteType ? 'coach agrees' : 'coach override'}
             </div>
           )}
         </div>
@@ -434,7 +482,7 @@ export default function AthleteSetup() {
           </div>
           <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginBottom: 8 }}>Enter times as m:ss or ss.cc</div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            {Object.keys(athleteTimes).length > 0 && (
+            {(athleteName || Object.keys(athleteTimes).length > 0) && (
               <button onClick={handleSave} style={{ padding: '6px 16px', background: 'rgba(52,199,89,0.12)', border: '1px solid rgba(52,199,89,0.4)', borderRadius: 5, color: '#34C759', cursor: 'pointer', fontFamily: 'monospace', fontSize: 9, fontWeight: 700 }}>
                 SAVE ATHLETE
               </button>
@@ -453,8 +501,10 @@ export default function AthleteSetup() {
               </button>
             </>)}
           </div>
+          {profileMsg && <div style={{ fontSize: 10, color: 'rgba(52,199,89,0.85)', marginTop: 6 }}>{profileMsg}</div>}
+          {!profileMsg && profileSavedAt && <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>Profile on record · last saved {new Date(profileSavedAt).toLocaleString()}</div>}
           <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 6 }}>
-            Save Athlete keeps the coaching profile here. {athleteId ? 'Save Times To Records writes the times to ' + (athleteName || 'the athlete') + '’s log — dated (parsed) times as official, typed times as time trials.' : 'Load an athlete to save their times to records.'}
+            Save Athlete stores type, maturation, SE number and club{athleteId ? ' on ' + (athleteName || 'the athlete') + '’s record' : ' on this device'}. {athleteId ? 'Save Times To Records writes the times to ' + (athleteName || 'the athlete') + '’s log — dated (parsed) times as official, typed times as time trials.' : 'Load an athlete to save their times to records.'}
           </div>
           {dbMsg && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 6 }}>{dbMsg}</div>}
         </div>

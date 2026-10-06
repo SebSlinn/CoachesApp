@@ -296,6 +296,24 @@ export class SupabaseResultsRepository extends IResultsRepository {
     return { data: data ? data.map(effortFromRow) : data, error };
   }
 
+  // Every set effort for an athlete WITH its reps — the Records page's set
+  // drill-down and compare view (one call rather than a fetch per click).
+  async listSetEffortsWithReps(athleteId, { protocolId, from, to } = {}) {
+    if (!supabase) return UNAVAILABLE;
+    let query = supabase
+      .from('set_efforts')
+      .select(`${EFFORT_COLUMNS}, reps:performance_results!effort_id(${COLUMNS})`)
+      .eq('athlete_user_id', athleteId)
+      .order('swum_on', { ascending: true });
+    if (protocolId) query = query.eq('protocol_id', protocolId);
+    if (from) query = query.gte('swum_on', from);
+    if (to) query = query.lte('swum_on', to);
+    const { data, error } = await query;
+    const mEfforts = data ? data.map(effortFromRow) : data;
+    for (const e of mEfforts || []) if (e.reps) e.reps.sort((x, y) => (x.repNo || 0) - (y.repNo || 0));
+    return { data: mEfforts, error };
+  }
+
   // Efforts + their reps, for side-by-side test comparison across the season.
   // The embed names the FK (effort_id) because performance_results has >1 FK.
   async listSetEffortsByProtocol(protocolId, athleteId) {

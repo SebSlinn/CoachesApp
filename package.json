@@ -9,7 +9,7 @@
     "prebuild": "node scripts/copy-setformat.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/session/protocolFormat.test.mjs && node tests/services/run.mjs && node supabase/tests/athlete_records.test.mjs && node supabase/tests/test_protocols.test.mjs && node src/hr/hr.test.mjs && node tests/db/run.mjs"
+    "test": "node src/session/protocolFormat.test.mjs && node tests/services/run.mjs && node supabase/tests/athlete_records.test.mjs && node supabase/tests/athlete_profiles.test.mjs && node supabase/tests/test_protocols.test.mjs && node src/hr/hr.test.mjs && node tests/db/run.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",

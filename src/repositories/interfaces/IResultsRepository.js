@@ -37,6 +37,8 @@ export class IResultsRepository {
   async addSetResult(_athleteId, _setResult) { throw new Error('IResultsRepository.addSetResult not implemented'); }
   /** @param {{protocolId?, from?, to?}} _filter */
   async listSetEfforts(_athleteId, _filter) { throw new Error('IResultsRepository.listSetEfforts not implemented'); }
+  /** Every effort for an athlete with its reps embedded (Records drill-down / compare). */
+  async listSetEffortsWithReps(_athleteId, _filter) { throw new Error('IResultsRepository.listSetEffortsWithReps not implemented'); }
   /** Efforts + their reps for one recognised test (side-by-side comparison). */
   async listSetEffortsByProtocol(_protocolId, _athleteId) { throw new Error('IResultsRepository.listSetEffortsByProtocol not implemented'); }
 

@@ -1,8 +1,25 @@
 import { store } from './mockFactory.js';
 import * as P from '../../src/services/protocols.js';
 import * as R from '../../src/services/results.js';
+import * as A from '../../src/services/athleteService.js';
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : '  → ' + JSON.stringify(x))); };
+
+
+console.log('\nAthlete profile (per athlete, stored on their record)');
+{
+  ok('no profile yet → null, no error', (await A.loadAthleteProfile('sam')).data === null);
+  const s1 = await A.saveAthleteProfile('sam', { athleteType: 'endurance', phvStatus: 'developing', seNumber: '123', club: 'EPASC', derivedProfile: { type: 'allround' } });
+  ok('saves type + PHV + identity', !s1.error && s1.data.athleteType === 'endurance' && s1.data.phvStatus === 'developing' && s1.data.club === 'EPASC', s1);
+  await A.saveAthleteProfile('jo', { athleteType: 'sprint', phvStatus: 'pre' });
+  const back = (await A.loadAthleteProfile('sam')).data;
+  ok('loading another athlete does not overwrite the first', back.athleteType === 'endurance' && back.phvStatus === 'developing', back);
+  ok('derived suggestion snapshot kept beside the coach decision', back.derivedProfile.type === 'allround');
+  ok('rejects unknown type', !!(await A.saveAthleteProfile('sam', { athleteType: 'middle' })).error);
+  ok('rejects unknown PHV', !!(await A.saveAthleteProfile('sam', { phvStatus: 'late' })).error);
+  ok('needs an athlete id', (await A.saveAthleteProfile(null, { athleteType: 'sprint' })).error?.message.includes('No athlete'));
+  ok('active-athlete object remembers its id', A.buildAthleteObject({ athleteId: 'sam', name: 'Sam', times: {} }).athleteId === 'sam');
+}
 
 const set = (onTime) => ({ fmt: 'swimzone.set/1', name: 'step', blocks: [{ repeats: 1, lines: [
   { type: 'swim', stroke: 'FS', distM: 200, qty: 1, targetRule: { base: 'PB', plusFrom: 20, plusTo: 20 }, interval: { type: 'fixed', onTime, param: 'sendOff' } },

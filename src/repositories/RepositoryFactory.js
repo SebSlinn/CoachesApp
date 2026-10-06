@@ -11,6 +11,7 @@ import { SupabaseGroupRepository } from './supabase/SupabaseGroupRepository';
 import { SupabaseLogSharingRepository } from './supabase/SupabaseLogSharingRepository';
 import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository';
 import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
+import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
 
 let authRepository = null;
 let membershipRepository = null;
@@ -20,6 +21,7 @@ let groupRepository = null;
 let logSharingRepository = null;
 let resultsRepository = null;
 let protocolsRepository = null;
+let athleteProfileRepository = null;
 
 export function getAuthRepository() {
   if (!authRepository) authRepository = new SupabaseAuthRepository();
@@ -63,4 +65,12 @@ export function getResultsRepository() {
 export function getProtocolsRepository() {
   if (!protocolsRepository) protocolsRepository = new SupabaseProtocolsRepository();
   return protocolsRepository;
+}
+
+// ---- Athlete profiles (added 2026-10-06) — per-athlete coaching judgements
+// (type, PHV) keyed by athlete id; server-only so they follow the athlete
+// across coaches and devices. Access rules (has_log_access) live in the DB.
+export function getAthleteProfileRepository() {
+  if (!athleteProfileRepository) athleteProfileRepository = new SupabaseAthleteProfileRepository();
+  return athleteProfileRepository;
 }

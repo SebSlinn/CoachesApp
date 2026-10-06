@@ -1,5 +1,5 @@
 // In-memory stand-ins for the repositories the services use.
-export const store = { protocols: [], efforts: [], reps: [], bests: {} };
+export const store = { protocols: [], efforts: [], reps: [], bests: {}, profiles: {}, activeAthlete: null };
 let n = 0; const id = () => 'id-' + (++n);
 export function getProtocolsRepository() {
   return {
@@ -31,5 +31,17 @@ export function getResultsRepository() {
         .map((e) => ({ ...e, reps: store.reps.filter((r) => r.effortId === e.id) })), error: null };
     },
     async updateSetEffortSummary(eid, s) { const e = store.efforts.find((x) => x.id === eid); e.summary = s; return { data: { updated: 1 }, error: null }; },
+  };
+}
+export function getAthleteRepository() {
+  return {
+    async get() { return store.activeAthlete; },
+    async save(a) { store.activeAthlete = a; },
+  };
+}
+export function getAthleteProfileRepository() {
+  return {
+    async get(a) { return { data: store.profiles[a] || null, error: null }; },
+    async upsert(a, p) { store.profiles[a] = { ...(store.profiles[a] || {}), ...p, athleteId: a, updatedAt: new Date().toISOString() }; return { data: store.profiles[a], error: null }; },
   };
 }

@@ -311,7 +311,7 @@ export default function AthleteRecords() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' }}>
                     {group.slice().sort((a, b) => (a.swumOn < b.swumOn ? 1 : -1)).map((s) => (
                       <button key={s.id} onClick={() => setOpenSetId(openSetId === s.id ? null : s.id)} style={C.chip(openSetId === s.id)}>
-                        {s.swumOn}{s.protocolId ? ' ·test' : ''}
+                        {s.conditions?.hrStream?.samples?.length ? <span title="Live heart rate recorded" style={{ color: '#ff9a63', marginRight: 6 }}>♥</span> : null}{s.swumOn}{s.protocolId ? ' ·test' : ''}
                       </button>
                     ))}
                     {group.length >= 2 && (

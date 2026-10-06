@@ -12,7 +12,7 @@ import {
   STALE_MONTHS, VALID_DISTS, STROKE_NAMES,
   parseDateToAge, splitTimeToken, parseTimeToSec, deriveAthleteType,
 } from '../athlete/parse.js';
-import { getAthleteRepository } from '../repositories/RepositoryFactory.js';
+import { getAthleteRepository, getAthleteProfileRepository } from '../repositories/RepositoryFactory.js';
 
 // ─── Load / Save ──────────────────────────────────────────────────────────────
 
@@ -31,6 +31,46 @@ export async function loadAthlete() {
  */
 export async function saveAthlete(pAthlete) {
   return getAthleteRepository().save(pAthlete);
+}
+
+// ─── Per-athlete profile (DB) ─────────────────────────────────────────────────
+// The coach's judgements about a specific athlete — type and PHV status — plus
+// SE number and club, stored per athlete (athlete_profiles) so they survive
+// reloads, other athletes being loaded, and other coaches/devices. The local
+// slot above stays as the device's "active athlete" for Classifier/Set Builder.
+
+export const ATHLETE_TYPES = ['sprint', 'allround', 'endurance'];
+export const PHV_STATUSES  = ['pre', 'developing', 'post'];
+
+/**
+ * Load an athlete's saved profile. data is null when none has been saved yet.
+ * @param {string} pAthleteId
+ * @returns {Promise<{data: Object|null, error: Object|null}>}
+ */
+export async function loadAthleteProfile(pAthleteId) {
+  if (!pAthleteId) return { data: null, error: null };
+  return getAthleteProfileRepository().get(pAthleteId);
+}
+
+/**
+ * Save (insert or update) an athlete's profile.
+ * @param {string} pAthleteId
+ * @param {{ athleteType, phvStatus, derivedProfile, seNumber, club }} pFields
+ * @returns {Promise<{data: Object|null, error: Object|null}>}
+ */
+export async function saveAthleteProfile(pAthleteId, pFields) {
+  if (!pAthleteId) return { data: null, error: { message: 'No athlete loaded — load an athlete to save their profile.' } };
+  if (pFields.athleteType != null && !ATHLETE_TYPES.includes(pFields.athleteType))
+    return { data: null, error: { message: 'Unknown athlete type: ' + pFields.athleteType } };
+  if (pFields.phvStatus != null && !PHV_STATUSES.includes(pFields.phvStatus))
+    return { data: null, error: { message: 'Unknown PHV status: ' + pFields.phvStatus } };
+  return getAthleteProfileRepository().upsert(pAthleteId, {
+    athleteType:    pFields.athleteType ?? null,
+    phvStatus:      pFields.phvStatus ?? null,
+    derivedProfile: pFields.derivedProfile ?? null,
+    seNumber:       pFields.seNumber || null,
+    club:           pFields.club || null,
+  });
 }
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
@@ -167,12 +207,13 @@ export function parseSwimmingResultsText(pRawText) {
  * Build a complete athlete object ready for persistence.
  * Derives profile if not already provided.
  *
- * @param {{ name, seNumber, club, times, athleteType, phvStatus, derivedProfile }} pFields
+ * @param {{ athleteId, name, seNumber, club, times, athleteType, phvStatus, derivedProfile }} pFields
  * @returns {Object} athlete object
  */
 export function buildAthleteObject(pFields) {
   const mProfile = pFields.derivedProfile || deriveAthleteType(pFields.times) || null;
   return {
+    athleteId:      pFields.athleteId || null,
     name:           pFields.name,
     seNumber:       pFields.seNumber,
     club:           pFields.club,

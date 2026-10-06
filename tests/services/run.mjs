@@ -14,7 +14,7 @@ await build({
   entryPoints: [path.join(here, 'services.test.mjs')], bundle: true, platform: 'node', format: 'esm',
   outfile: out, logLevel: 'warning',
   plugins: [{ name: 'mock-repos', setup(b) {
-    b.onResolve({ filter: /RepositoryFactory$/ }, () => ({ path: path.join(here, 'mockFactory.js') }));
+    b.onResolve({ filter: /RepositoryFactory(\.js)?$/ }, () => ({ path: path.join(here, 'mockFactory.js') }));
     b.onResolve({ filter: /swimmingResults$/ }, () => ({ path: path.join(here, 'stub.js') }));
   } }],
 });
