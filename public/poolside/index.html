@@ -138,7 +138,7 @@
   .toolrow button.danger{ color:var(--warn); }
 
   /* ---- rep list — every set, in order, so scrolling reviews the whole session ---- */
-  .reps{ margin-top:14px; display:flex; flex-direction:column; gap:18px; padding-bottom:110px; }
+  .reps{ margin-top:14px; display:flex; flex-direction:column; gap:18px; padding-bottom:24px; }
   .reps > h2{ font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 -6px; }
   .set-group{ display:flex; flex-direction:column; gap:10px; }
   .set-group-heading{
@@ -164,17 +164,13 @@
   .tap-chip button{ border:none; background:none; color:var(--warn); font-weight:800; cursor:pointer; padding:0; font-size:13px; }
   .empty{ text-align:center; color:var(--muted); font-size:13.5px; padding:30px 10px; }
 
-  /* ---- footer ---- */
-  footer.bar{
-    position:fixed; left:0; right:0; bottom:0; z-index:20;
-    padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));
-    background:var(--paper); border-top:1px solid var(--line);
-    display:flex; justify-content:center;
-  }
-  footer.bar .inner{ max-width:640px; width:100%; display:flex; gap:10px; }
-  footer.bar button{ flex:1; border:none; border-radius:12px; padding:12px; font-family:inherit; font-weight:800; font-size:13.5px; cursor:pointer; }
-  footer.bar .primary{ background:var(--accent); color:var(--accent-ink); }
-  footer.bar .ghost{ background:var(--surface-2); color:var(--ink); }
+  /* ---- session actions (New session / Results) — sits inline in the page
+     flow just below Undo/Keep screen awake, not pinned to the bottom of the
+     screen (a fixed footer ate space and covered content as the page grew). ---- */
+  .session-actions{ display:flex; gap:10px; margin-top:10px; }
+  .session-actions button{ flex:1; border:none; border-radius:12px; padding:12px; font-family:inherit; font-weight:800; font-size:13.5px; cursor:pointer; }
+  .session-actions .primary{ background:var(--accent); color:var(--accent-ink); }
+  .session-actions .ghost{ background:var(--surface-2); color:var(--ink); }
 
   /* ---- overlay panels ---- */
   .overlay{ position:fixed; inset:0; background:rgba(4,15,22,.5); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
@@ -208,7 +204,7 @@
   .sheet .actions.grid3 button{ padding:12px 6px; font-size:12.5px; border-radius:11px; }
   .preview{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--muted); background:var(--surface-2); padding:8px 10px; border-radius:8px; margin-top:2px; }
   .toast{
-    position:fixed; left:50%; bottom:calc(84px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
+    position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom,0px)); transform:translateX(-50%);
     background:var(--ink); color:var(--paper); padding:10px 16px; border-radius:999px; font-size:13px; font-weight:700;
     z-index:50; display:flex; align-items:center; gap:12px; box-shadow:var(--shadow);
   }
@@ -323,18 +319,16 @@
     <button id="wakeBtn">Keep screen awake</button>
   </div>
 
+  <div class="session-actions">
+    <button class="ghost" id="newSessionBtn">New session</button>
+    <button class="primary" id="exportBtn">Results</button>
+  </div>
+
   <div class="reps">
     <h2>All reps this session</h2>
     <div id="repList"></div>
   </div>
 </div>
-
-<footer class="bar">
-  <div class="inner">
-    <button class="ghost" id="newSessionBtn">New session</button>
-    <button class="primary" id="exportBtn">Results</button>
-  </div>
-</footer>
 
 <!-- ============ event picker sheet ============ -->
 <div class="overlay" id="eventOverlay" hidden>
@@ -1522,7 +1516,16 @@ const SwimCore = (function(){
   function applySetChange(nextEvent, typedName){
     const set = activeSet();
     const changed = JSON.stringify(set.event || null) !== JSON.stringify(nextEvent || null);
-    if (set.events.length === 0 || !changed){
+    // A test-linked set (set.testRepNos) can never fork: its prescribed reps
+    // are tied to THIS set by rep number, and renderTestPanel keeps steering
+    // the active set back to whichever one still holds testRepNos for the
+    // next prescribed rep. Forking on any edit (e.g. correcting the pool
+    // length) would leave a plain set with no testRepNos that the test
+    // tracking doesn't know about — invisible to it — while it kept
+    // switching back to the original, unedited set. That's the "saves then
+    // reverts" bug: the edit was real, just stranded on a set nothing was
+    // looking at. So a test-linked set always edits in place instead.
+    if (set.events.length === 0 || !changed || set.testRepNos){
       set.name = typedName || set.name || ('Set '+(state.activeSetIndex+1));
       set.event = nextEvent;
       return false;
