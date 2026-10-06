@@ -139,13 +139,23 @@ export default function AthleteRecords() {
   useEffect(() => {
     if (!athleteId) { setLoading(false); return; }
     let mCancelled = false;
-    Promise.all([getResultHistory(athleteId, {}), getSetResultsDetailed(athleteId, {})]).then(([mHist, mSets]) => {
+    // allSettled, not all: if the sets fetch fails (e.g. a repo method not yet
+    // deployed), progression + drill-down must still load.
+    (async () => {
+      const [mHist, mSets] = await Promise.allSettled([
+        getResultHistory(athleteId, {}),
+        getSetResultsDetailed(athleteId, {}),
+      ]);
       if (mCancelled) return;
-      if (mHist.error) setError(mHist.error.message || 'Could not load history');
-      setHistory(mHist.data || []);
-      setSets(mSets.data || []);
+      if (mHist.status === 'fulfilled') {
+        if (mHist.value.error) setError(mHist.value.error.message || 'Could not load history');
+        setHistory(mHist.value.data || []);
+      } else {
+        setError('Could not load history');
+      }
+      if (mSets.status === 'fulfilled') setSets(mSets.value.data || []);
       setLoading(false);
-    });
+    })();
     return () => { mCancelled = true; };
   }, [athleteId]);
 
