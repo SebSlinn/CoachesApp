@@ -309,7 +309,9 @@ export default function AthleteRecords() {
                 <div key={sig} style={{ marginBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700 }}>{title}</span>
-                    <span style={{ ...C.muted, fontSize: 10 }}>{sig}</span>
+                    {group[0].protocolId
+                      ? <Link to={recordsHref(`/test-sets/results/${group[0].protocolId}`, athleteId, name)} style={{ fontSize: 11, color: '#8fd6e4' }}>Compare &amp; download</Link>
+                      : <span style={{ ...C.muted, fontSize: 10 }}>{sig}</span>}
                   </div>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6, alignItems: 'center' }}>
                     {group.slice().sort((a, b) => (a.swumOn < b.swumOn ? 1 : -1)).map((s) => (

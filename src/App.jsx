@@ -11,6 +11,7 @@ import AthleteRecords from './pages/AthleteRecords'
 import TestSets from './pages/TestSets'
 import RecordsEvent from './pages/RecordsEvent'
 import RecordsSwim from './pages/RecordsSwim'
+import TestResults from './pages/TestResults'
 
 export default function App() {
   return (
@@ -56,6 +57,11 @@ export default function App() {
         <Route path="/athlete-records/swim/:swimId" element={
           <ProtectedRoute>
             <RecordsSwim />
+          </ProtectedRoute>
+        } />
+        <Route path="/test-sets/results/:protocolId" element={
+          <ProtectedRoute>
+            <TestResults />
           </ProtectedRoute>
         } />
         <Route path="/test-sets" element={

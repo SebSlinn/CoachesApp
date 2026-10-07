@@ -22,6 +22,7 @@ import { listProtocols, prescribeForAthletes } from '../services/protocols';
 import { getSetResultsByProtocol, ingestPoolsideSetResult } from '../services/results';
 import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel } from '../session/protocolFormat';
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
+import { recordsHref } from '../records/athleteLink.js';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
 const MEASURE_LABEL = { time: 'time', splits: 'splits', sc: 'strokes', sr: 'rate', hr: 'HR', rpe: 'RPE', lactate: 'lactate' };
@@ -397,7 +398,14 @@ export default function TestSets() {
 
             {protocol && picked.length > 0 && (
               <div style={C.card}>
-                <span style={C.label}>Previous runs · {athletes.find((a) => a.id === picked[0])?.name?.replace(' (me)', '') || 'athlete'}</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={C.label}>Previous runs · {athletes.find((a) => a.id === picked[0])?.name?.replace(' (me)', '') || 'athlete'}</span>
+                  {runs.length > 0 && (
+                    <button style={{ ...C.btn, marginBottom: 8 }} onClick={() => navigate(recordsHref(`/test-sets/results/${protocol.id}`, handoff.id, handoff.name))}>
+                      Compare &amp; download
+                    </button>
+                  )}
+                </div>
                 {runs.length === 0
                   ? <div style={C.muted}>Not swum yet.</div>
                   : runs.map((r) => {

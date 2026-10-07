@@ -280,3 +280,33 @@ send-off (or rest) of every line that opts in with `interval.param`:
   both on save and in `reanalyseSetResults`.
 
 - `20261006140000_remove_endurance_100s.sql` removes `end-20x100` and `end-30x100` (superseded by the ladder) — only where no run has been saved against them; a used one is kept and reported.
+
+## Results, comparison and downloads (added 2026-10-07)
+
+**Test results page** — `/test-sets/results/:protocolId?a=<athleteId>&n=<name>`
+(`src/pages/TestResults.jsx`), opened from Test Sets → Previous runs → "Compare &
+download", or from Athlete Records → Sets & tests. Tick the runs to include, then:
+side by side (analyser results per run, best in green, change newest − oldest; a
+warning when runs are at different levels), rep-times chart (up to the newest 4
+ticked runs), rep by rep (fastest per rep in green), and any run opened in full
+(results, every rep, lengths on click).
+
+**One model, three outputs** — `src/records/testReport.js` (pure, tested):
+`buildRunView(protocol, effort)` → header, labelled analyser summary
+(`SUMMARY_FIELDS` per analyser, with units and which way is better), rep rows
+(target, time, vs target, rest = send-off − time on fixed intervals, pace/100,
+SC/SR, HR, lactate, RPE, note, per-length splits). `compareRuns(views)` → the
+side-by-side tables. `toCsv(meta, views)` → tidy CSV, one row per rep per run.
+
+- **CSV** — opens anywhere (Excel, Sheets, Numbers, R). Times in seconds plus a
+  readable copy. UTF-8 with BOM.
+- **Excel** — `src/records/testWorkbook.js` (ExcelJS, loaded only when the button is
+  pressed, its own ~270 KB gzipped chunk). Sheets: Summary · Reps compared · one per
+  run · Data (filterable table, same columns as the CSV). Times are real Excel
+  times shown 31.20 / 1:12.46; averages, fastest/slowest, spread, rest, vs target and
+  change are formulas; fastest-per-rep is a conditional-format rule; Excel
+  recalculates on open. Arial, print set to fit width.
+
+Tests: `src/records/testReport.test.mjs`, `src/records/testWorkbook.test.mjs`
+(pass a path to also write the sample workbook), sample data
+`tests/fixtures/ladderRuns.mjs`.

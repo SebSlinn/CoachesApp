@@ -40,7 +40,7 @@ export function Crumbs({ items }) {
       {items.map((it, i) => (
         <span key={i}>
           {i > 0 && <span aria-hidden="true" style={{ margin: '0 6px 0 0' }}>/</span>}
-          {it.to ? <Link to={it.to} style={S.crumbLink}>{it.label}</Link> : <span style={{ color: INK_2 }}>{it.label}</span>}
+          {it.to ? <Link to={it.to} state={it.state} style={S.crumbLink}>{it.label}</Link> : <span style={{ color: INK_2 }}>{it.label}</span>}
         </span>
       ))}
     </nav>
