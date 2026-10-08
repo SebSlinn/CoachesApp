@@ -7,3 +7,4 @@ dist
 
 tests/services/.out.mjs
 tests/db/.out.mjs
+claude-docs/
