@@ -265,6 +265,7 @@
   .test-panel .t-dots span{ width:9px; height:9px; border-radius:50%; background:var(--line); }
   .test-panel .t-dots span.done{ background:var(--good); }
   .test-panel .t-dots span.next{ background:var(--lane); }
+  .test-panel .t-dots span.skip{ background:var(--warn); opacity:.55; }
   .rep-test{ font-size:12px; font-weight:700; color:var(--accent); margin-top:4px; }
   .rep-test .readings{ color:var(--ink); font-weight:600; }
 </style>
@@ -667,10 +668,19 @@ const SwimCore = (function(){
     (session.sets || []).forEach((set, setIdx) => {
       const derived = derive(set.events, buildPlan(set.event));
       derived.reps.forEach((rep, repIdx) => {
+        const key = String(rep.startTime);
+        const notDone = (set.notDone||[]).includes(key);
+        const dnf = !notDone && (set.dnf||[]).includes(key);
+        // "Not done" never happened at all, so it has nothing worth a row —
+        // skip it entirely (it only exists to keep the reps after it
+        // numbered correctly). "Not finished" did happen, partially, so it
+        // keeps its row but is flagged and kept out of the rest-before chain,
+        // same as on screen (see renderAllReps).
+        if (notDone){ return; }
         const lengths = repLengthTimes(rep);
         const stats = perLengthStats(rep, lengths);
         const restBeforeMs = prevFinish == null ? 0 : Math.max(0, rep.startTime - prevFinish);
-        prevFinish = rep.finishTime;
+        if (!dnf) prevFinish = rep.finishTime;
         rows.push({
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
           set: set.name || ('Set ' + (setIdx+1)), rep: repIdx+1, stroke: set.event ? set.event.stroke : 'open',
@@ -679,7 +689,7 @@ const SwimCore = (function(){
           totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
           lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
-          status: rep.status, flags: rep.finishFlags, missingCount: rep.missingCount||0,
+          status: rep.status, flags: rep.finishFlags, missingCount: rep.missingCount||0, dnf,
           restBeforeMs, restBeforeFormatted: fmtClock(restBeforeMs),
         });
       });
@@ -691,6 +701,7 @@ const SwimCore = (function(){
   // never appear in the CSV or the on-screen summary.
   function flagNotes(rep){
     const notes = [];
+    if (rep.dnf) notes.push('Not finished — the swimmer started but didn\'t complete this rep');
     if (rep.flags.includes('missingSplits')) notes.push('Missing ' + (rep.missingCount||1) + ' split' + (rep.missingCount===1?'':'s') + ' — a time was estimated');
     if (rep.flags.includes('possibleDoubleTap')) notes.push('Possible accidental double-tap — worth checking');
     if (rep.flags.includes('inferredFinish')) notes.push('Finish time taken from the next start (Finish wasn\'t tapped)');
@@ -722,7 +733,7 @@ const SwimCore = (function(){
         lengthCells.push(l ? T(l.formatted) : '', l ? l.sc : '', l ? l.sr : '',
           l && l.hr && l.hr.hrFirst != null ? l.hr.hrFirst : '', l && l.hr && l.hr.hrLast != null ? l.hr.hrLast : '');
       }
-      const resultText = r.status==='complete' ? 'OK' : 'Check';
+      const resultText = (r.status==='complete' && !r.dnf) ? 'OK' : 'Check';
       const notesText = flagNotes(r).join('; ');
       const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,T(r.restBeforeFormatted),r.startType,r.startClock,T(r.totalFormatted),
         ...HR_COLS.map(c => r.hr && r.hr[c[1]] != null ? r.hr[c[1]] : ''),
@@ -749,7 +760,7 @@ const SwimCore = (function(){
         const label = r.stroke==='open' ? r.set : (r.set + ' — ' + r.stroke.charAt(0)+r.stroke.slice(1).toLowerCase()+' '+(r.distance||''));
         lines.push(label + ':');
       }
-      const resultText = r.status==='complete' ? '' : '  (check — ' + flagNotes(r).join('; ').toLowerCase() + ')';
+      const resultText = (r.status==='complete' && !r.dnf) ? '' : '  (check — ' + flagNotes(r).join('; ').toLowerCase() + ')';
       const hrText = r.hr && r.hr.hrAvg != null ? '  ♥ ' + r.hr.hrMin + '–' + r.hr.hrAvg + '–' + r.hr.hrPeak : '';
       lines.push('  Rep ' + r.rep + ': ' + r.totalFormatted + hrText + resultText);
     });
@@ -837,7 +848,13 @@ const SwimCore = (function(){
   // yet, if you don't know what it is until you've timed it). A session can
   // hold several sets, timed one after another and exported together.
   function makeSet(name, event){
-    return { id: 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), name, event: event || null, events: [], acked: [] };
+    // notDone / dnf: reps the coach has flagged by hand — "not done" (the
+    // swimmer never attempted it at all) or "not finished" (started but
+    // didn't complete it). Both are kept out of times, averages, the
+    // rest-before chain, and (for a test-linked set) the done/next tracking
+    // — but the rep itself stays in place so later reps keep their correct
+    // numbering. Keyed by rep.startTime, same as `acked`.
+    return { id: 's'+Date.now().toString(36)+Math.random().toString(36).slice(2,6), name, event: event || null, events: [], acked: [], notDone: [], dnf: [] };
   }
 
   function loadState(){
@@ -865,6 +882,9 @@ const SwimCore = (function(){
   function saveState(){ try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch(e){} }
 
   let state = loadState();
+  // A session saved before notDone/dnf existed won't have them on its sets —
+  // backfill so every later `set.notDone.includes(...)` etc. is safe.
+  (state.sets || []).forEach(s => { if (!s.notDone) s.notDone = []; if (!s.dnf) s.dnf = []; });
 
   // A SwimZone test hand-off arrives as #run=<encoded> (from Test Sets →
   // "Time in Poolside"). Read it now, before anything rewrites the URL; it is
@@ -962,20 +982,31 @@ const SwimCore = (function(){
     showToast('Loaded ' + run.protocol.name + (run.athlete && run.athlete.name ? ' for ' + run.athlete.name : '') + (anyTaps ? ' — previous session kept aside' : ''));
   }
 
-  // Timed reps matched to prescribed reps, in swim order.
+  // Timed reps matched to prescribed reps, in swim order. A rep flagged
+  // "not done" or "not finished" (see renderRepCard) still occupies its slot
+  // — set.testRepNos[i] is purely positional, so later reps would otherwise
+  // be relabelled with the wrong rep number — but it's left out of `done`
+  // and of `next`/`running`, so the test panel neither counts it as
+  // completed nor keeps waiting on it forever.
   function testProgress(){
     const t = state.test; if (!t) return null;
-    const done = []; let extra = 0; let running = null;
+    const done = []; const notDoneNos = new Set(); let extra = 0; let running = null;
     state.sets.forEach((set, setIdx) => {
       if (!set.testRepNos) return;
       const d = SwimCore.derive(set.events, SwimCore.buildPlan(set.event));
-      d.reps.forEach((rep, i) => { if (i < set.testRepNos.length) done.push({ repNo:set.testRepNos[i], rep, setIdx }); else extra++; });
+      d.reps.forEach((rep, i) => {
+        if (i >= set.testRepNos.length){ extra++; return; }
+        const repNo = set.testRepNos[i];
+        const key = String(rep.startTime);
+        if ((set.notDone||[]).includes(key) || (set.dnf||[]).includes(key)){ notDoneNos.add(repNo); return; }
+        done.push({ repNo, rep, setIdx });
+      });
       if (d.current && d.reps.length < set.testRepNos.length) running = { repNo:set.testRepNos[d.reps.length], rep:d.current, setIdx };
     });
     const doneNos = new Set(done.map(x => x.repNo));
-    const next = t.run.reps.find(r => !doneNos.has(r.repNo) && (!running || r.repNo !== running.repNo)) || null;
+    const next = t.run.reps.find(r => !doneNos.has(r.repNo) && !notDoneNos.has(r.repNo) && (!running || r.repNo !== running.repNo)) || null;
     const last = done.length ? done.reduce((a,b) => (b.rep.finishTime > a.rep.finishTime ? b : a)) : null;
-    return { done, doneNos, extra, running, next, last, total: t.run.reps.length };
+    return { done, doneNos, notDoneNos, extra, running, next, last, total: t.run.reps.length };
   }
   const repPlan = (repNo) => state.test && state.test.run.reps.find(r => r.repNo === repNo);
   function parseClock(v){ if (v==null || v==='') return NaN; const s=String(v); if (s.includes(':')){ const [m,x]=s.split(':'); return Number(m)*60+Number(x); } return Number(s); }
@@ -1019,7 +1050,7 @@ const SwimCore = (function(){
         else { go = 'Rep ' + cur.repNo + ' — ' + SwimCore.fmtClock(-left).replace(/\.\d\d$/,'') + ' past the send-off'; goCls = 'late'; }
       }
     }
-    const dots = run.reps.map(r => '<span class="'+(pg.doneNos.has(r.repNo)?'done':(cur && r.repNo===cur.repNo?'next':''))+'"></span>').join('');
+    const dots = run.reps.map(r => '<span class="'+(pg.doneNos.has(r.repNo)?'done':(pg.notDoneNos.has(r.repNo)?'skip':(cur && r.repNo===cur.repNo?'next':'')))+'"></span>').join('');
     // pool size is the one thing the orange event card showed that this
     // panel didn't — now that the event card is hidden while a test is
     // loaded (it only repeated what's here), this is its only home.
@@ -1412,6 +1443,15 @@ const SwimCore = (function(){
   }
   // Heart rate across all the swimming in a set (readings inside the reps only):
   // lowest, mean, highest. null when no rep has readings.
+  // A "not done" rep is a near-instant placeholder tap, not a real swim —
+  // any HR reading caught in that split second is noise, not data, so it's
+  // left out of a set's HR summary. A "not finished" (DNF) rep DID happen,
+  // just not to completion, so its heart rate up to that point is real and
+  // stays in.
+  function repsForHr(set, reps){
+    const skip = new Set(set.notDone || []);
+    return skip.size ? reps.filter(r => !skip.has(String(r.startTime))) : reps;
+  }
   function setHrSummary(reps){
     let mn = null, mx = null, sum = 0, n = 0;
     reps.forEach(r => { const m = HR.repMetrics(r, nextRepStart(r.startTime)); if (!m || m.hrAvg == null) return;
@@ -1596,6 +1636,24 @@ const SwimCore = (function(){
   // the strip up top still only changes which set the clock/buttons act on.
   function renderRepCard(rep, idx, setIdx, set, restBeforeMs){
     const testNo = set.testRepNos ? set.testRepNos[idx-1] : undefined;
+    const ackKeyEarly = String(rep.startTime);
+    const isNotDone = (set.notDone||[]).includes(ackKeyEarly);
+    const isDnf = (set.dnf||[]).includes(ackKeyEarly);
+    // A rep flagged "not done" is wiped back to a bare placeholder — no
+    // time, splits or readings — so it can't skew averages or be mistaken
+    // for a real swim; it only still exists to hold this rep's place in the
+    // numbering (see testProgress). "Not finished" keeps whatever was
+    // actually captured (useful — it shows how far the swimmer got) but is
+    // excluded from done/next tracking and the rest-before chain the same way.
+    if (isNotDone){
+      const label = testNo != null ? 'Test rep '+testNo : null;
+      return '<div class="rep-card" style="opacity:.6">'+
+        '<div class="rep-top"><span class="rep-num">Rep '+idx+'</span><span class="badge review" style="background:var(--surface-2);color:var(--muted)">Not done</span></div>'+
+        (label ? '<div class="rep-test" style="color:var(--muted)">'+label+'</div>' : '')+
+        '<div class="rep-meta">Not attempted — left out of times, averages and rest</div>'+
+        '<div class="rep-actions"><button data-setidx="'+setIdx+'" data-undoflag="'+ackKeyEarly+'">Undo</button><button data-setidx="'+setIdx+'" data-delrep="'+ackKeyEarly+'" style="color:var(--warn)">Delete rep</button></div>'+
+      '</div>';
+    }
     let testBit = '';
     if (set.testRepNos && state.test){
       if (testNo == null) testBit = '<div class="rep-test" style="color:var(--warn)">Extra rep — not part of the test</div>';
@@ -1628,7 +1686,8 @@ const SwimCore = (function(){
       : lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
     const ackKey = String(rep.startTime);
     const acked = set.acked.includes(ackKey);
-    const badge = rep.status === 'complete' ? '<span class="badge complete">Complete</span>' : (acked ? '<span class="badge complete">Reviewed</span>' : '<span class="badge review">Review</span>');
+    const badge = isDnf ? '<span class="badge review" style="background:var(--warn-bg);color:var(--warn)">Not finished</span>'
+      : rep.status === 'complete' ? '<span class="badge complete">Complete</span>' : (acked ? '<span class="badge complete">Reviewed</span>' : '<span class="badge review">Review</span>');
     const flagLines = (!acked && rep.status==='review') ? rep.finishFlags.filter(f=>FLAG_LABEL[f]).map(f => '• ' + FLAG_LABEL[f](rep)).join('<br>') : '';
     const srBit = rep.srResults.length ? rep.srResults.map(r=>r.strokeRate+' cyc/min').join(', ') : null;
     const meta = [
@@ -1640,7 +1699,15 @@ const SwimCore = (function(){
     // restBeforeMs is null for a rep with nothing before it to compare to
     const restBit = restBeforeMs == null ? null : (restBeforeMs > 0 ? 'Rest '+SwimCore.fmtClock(restBeforeMs) : 'No rest');
     const timeMeta = [ 'Started '+SwimCore.fmtWallClock(rep.startTime), restBit ].filter(Boolean).join(' &middot; ');
-    const actions = (rep.status === 'review' && !acked) ? '<div class="rep-actions"><button data-setidx="'+setIdx+'" data-ack="'+ackKey+'">Mark reviewed</button><button data-setidx="'+setIdx+'" data-delrep="'+ackKey+'" style="color:var(--warn)">Delete rep</button></div>' : '';
+    // Not done / Not finished sit on every rep card's action row, whatever
+    // state the rep is in (complete, review, already reviewed) — a coach
+    // may only realise a rep needs flagging well after it was timed.
+    const actions = '<div class="rep-actions">'+
+      (rep.status === 'review' && !acked ? '<button data-setidx="'+setIdx+'" data-ack="'+ackKey+'">Mark reviewed</button>' : '')+
+      '<button data-setidx="'+setIdx+'" data-notdone="'+ackKey+'">Not done</button>'+
+      '<button data-setidx="'+setIdx+'" data-dnf="'+ackKey+'">'+(isDnf?'Undo not finished':'Not finished')+'</button>'+
+      '<button data-setidx="'+setIdx+'" data-delrep="'+ackKey+'" style="color:var(--warn)">Delete rep</button>'+
+    '</div>';
     return '<div class="rep-card">'+
       '<div class="rep-top"><span class="rep-num">Rep '+idx+'</span>'+badge+'</div>'+
       '<div class="rep-total mono">'+total+'</div>'+
@@ -1664,12 +1731,19 @@ const SwimCore = (function(){
     // session (not just within one set) — same rule as the CSV's
     // "Rest before" column: null (shown as nothing) for the very first rep,
     // otherwise the gap between this rep's start and the previous rep's finish.
+    // A rep flagged "not done" or "not finished" never updates prevFinish —
+    // its start/finish aren't a real swim, so the NEXT real rep's rest is
+    // measured from the last real finish before it, not from the flagged
+    // rep's (e.g. missed rep 5's near-instant finish shouldn't make rep 6
+    // look like it had almost no rest when it actually rested from rep 4).
     let prevFinish = null;
     const restByStart = {};
-    groups.forEach(({ d }) => {
+    groups.forEach(({ set, d }) => {
       d.reps.forEach(rep => {
+        const key = String(rep.startTime);
+        const flagged = (set.notDone||[]).includes(key) || (set.dnf||[]).includes(key);
         restByStart[rep.startTime] = prevFinish == null ? null : Math.max(0, rep.startTime - prevFinish);
-        prevFinish = rep.finishTime;
+        if (!flagged) prevFinish = rep.finishTime;
       });
     });
     // every set gets a heading even with zero reps so far — a freshly
@@ -1680,7 +1754,7 @@ const SwimCore = (function(){
       const cards = d.reps.length
         ? d.reps.slice().reverse().map((rep, ri) => renderRepCard(rep, d.reps.length - ri, i, set, restByStart[rep.startTime])).join('')
         : '<div class="empty" style="padding:10px 2px;font-size:12.5px;">'+(d.current ? 'Timing in progress…' : 'No reps yet — tap Start Dive or Start Push.')+'</div>';
-      const sh = setHrSummary(d.reps);
+      const sh = setHrSummary(repsForHr(set, d.reps));
       return '<div class="set-group'+(i===state.activeSetIndex?' active':'')+'">'+
         '<div class="set-group-heading"><span>'+escapeHtml(set.name || ('Set '+(i+1)))+'</span><span class="sub">'+info.title+(info.sub?' · '+info.sub:'')+
           (sh ? ' · <span class="set-hr">&#9829; min '+sh.min+' · avg '+sh.avg+' · max '+sh.max+'</span>' : '')+'</span></div>'+
@@ -1703,6 +1777,37 @@ const SwimCore = (function(){
       const key = Number(b.dataset.delrep);
       const rep = SwimCore.derive(set.events, SwimCore.buildPlan(set.event)).reps.find(r => r.startTime === key);
       if (rep) { set.events = set.events.filter(e => !rep.eventIds.includes(e.id)); showToast('Rep deleted'); render(); }
+    }));
+    // Not done: wipes this rep back to a placeholder (no time/splits) but
+    // keeps its slot so later reps keep the right number — see testProgress
+    // and the rest-chain above. Not finished: keeps whatever was captured
+    // but excludes it the same way. Both are toggled off from their own
+    // "Undo"/"Undo not finished" button, or from the toast's Undo action.
+    repList.querySelectorAll('[data-notdone]').forEach(b => b.addEventListener('click', () => {
+      const set = state.sets[Number(b.dataset.setidx)];
+      const key = b.dataset.notdone;
+      if (!set.notDone) set.notDone = [];
+      set.dnf = (set.dnf||[]).filter(k => k !== key);   // the two flags are exclusive
+      if (!set.notDone.includes(key)) set.notDone.push(key);
+      showToast('Rep marked not done', 'Undo', () => { set.notDone = set.notDone.filter(k => k !== key); render(); });
+      render();
+    }));
+    repList.querySelectorAll('[data-dnf]').forEach(b => b.addEventListener('click', () => {
+      const set = state.sets[Number(b.dataset.setidx)];
+      const key = b.dataset.dnf;
+      if (!set.dnf) set.dnf = [];
+      const already = set.dnf.includes(key);
+      set.notDone = (set.notDone||[]).filter(k => k !== key);
+      if (already) set.dnf = set.dnf.filter(k => k !== key);
+      else { set.dnf.push(key); showToast('Rep marked not finished', 'Undo', () => { set.dnf = set.dnf.filter(k => k !== key); render(); }); }
+      render();
+    }));
+    repList.querySelectorAll('[data-undoflag]').forEach(b => b.addEventListener('click', () => {
+      const set = state.sets[Number(b.dataset.setidx)];
+      const key = b.dataset.undoflag;
+      set.notDone = (set.notDone||[]).filter(k => k !== key);
+      set.dnf = (set.dnf||[]).filter(k => k !== key);
+      render();
     }));
   }
 
@@ -2045,6 +2150,12 @@ const SwimCore = (function(){
       if (!d.reps.length) return;
       const info = eventLabel(set.event);
       const reps = d.reps.map((rep, ri) => {
+        // ri must stay the raw position in d.reps (not the filtered list
+        // below) so set.testRepNos[ri] still names the right prescribed
+        // rep — same positional rule as testProgress().
+        const key = String(rep.startTime);
+        const notDone = (set.notDone||[]).includes(key);
+        const dnf = !notDone && (set.dnf||[]).includes(key);
         const lens = SwimCore.repLengthTimes(rep), st = SwimCore.perLengthStats(rep, lens);
         const lhr = HR.lengths(SwimCore.repMarks(rep));
         const m = HR.repMetrics(rep, nextRepStart(rep.startTime));
@@ -2058,16 +2169,18 @@ const SwimCore = (function(){
               Object.keys(rd).map(k => ' · ' + ({hr:'HR',lactate:'Lactate',rpe:'RPE',sc:'SC',sr:'SR'})[k] + ' ' + rd[k]).join('');
           }
         }
+        if (notDone) return null;   // left out below — nothing happened, nothing to show
+        if (dnf) testLine = testLine ? testLine + ' · not finished' : 'Not finished';
         return {
-          no: ri + 1, total: SwimCore.fmtClock(rep.finishTime - rep.startTime), review: rep.status !== 'complete' && !set.acked.includes(String(rep.startTime)),
+          no: ri + 1, total: SwimCore.fmtClock(rep.finishTime - rep.startTime), review: (rep.status !== 'complete' || dnf) && !set.acked.includes(key),
           testLine,
           lengths: lens.map((l, i) => ({ label: l.to != null ? l.to + 'm' : '•', split: SwimCore.fmtClock(l.ms), sc: st.sc[i] || null, sr: st.sr[i] || null,
             first: lhr && lhr[i] ? lhr[i].hrFirst : null, last: lhr && lhr[i] ? lhr[i].hrLast : null, low: lhr && lhr[i] ? lhr[i].hrCoverage < minCov : false })),
           hasHr: !!lhr,
           hr: m && m.hrAvg != null ? { start: m.hrStart, end: m.hrEnd, min: m.hrMin, avg: m.hrAvg, max: m.hrPeak, rec30: m.hrRec30, cov: Math.round(m.hrCoverage*100), low: m.hrCoverage < minCov } : null,
         };
-      });
-      sets.push({ name: set.name || ('Set ' + (si+1)), info: info.title + (info.sub ? ' · ' + info.sub : ''), hr: setHrSummary(d.reps), reps });
+      }).filter(Boolean);
+      sets.push({ name: set.name || ('Set ' + (si+1)), info: info.title + (info.sub ? ' · ' + info.sub : ''), hr: setHrSummary(repsForHr(set, d.reps)), reps });
     });
     return sets;
   }
