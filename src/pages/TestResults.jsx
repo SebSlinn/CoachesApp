@@ -215,7 +215,7 @@ function RunDetail({ run, label, openRep, setOpenRep }) {
     ['Time', (r) => fmtTime(r.timeSec), true],
     has('targetSec') && ['Target', (r) => fmtTime(r.targetSec)],
     has('vsTargetSec') && ['vs target', (r) => fmtDelta(r.vsTargetSec)],
-    has('restSec') && ['Rest', (r) => (r.restSec == null ? '' : r.restSec.toFixed(1) + ' s')],
+    has('restSec') && ['Rest after', (r) => (r.restSec == null ? '' : r.restSec.toFixed(1) + ' s')],
     run.reps.some((r) => r.distM !== 100) && ['Pace /100', (r) => fmtTime(r.pace100Sec)],
     has('sc') && ['Strokes', (r) => r.sc ?? ''],
     has('sr') && ['Rate', (r) => (r.sr == null ? '' : Math.round(r.sr))],
@@ -282,7 +282,7 @@ function RunDetail({ run, label, openRep, setOpenRep }) {
         </table>
       </div>
       <p style={{ ...S.muted, fontSize: 10, marginTop: 6 }}>
-        {anyLengths ? 'Click a rep to see its lengths. ' : ''}Rest is the send-off minus the swim time.{has('hrCoverage') ? ' Amber HR cover means the sensor dropped out for part of the rep.' : ''}
+        {anyLengths ? 'Click a rep to see its lengths. ' : ''}Rest after is what was left of the send-off once the rep was finished (send-off minus swim time): the rest before the next rep.{has('hrCoverage') ? ' Amber HR cover means the sensor dropped out for part of the rep.' : ''}
       </p>
     </section>
   );

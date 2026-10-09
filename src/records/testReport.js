@@ -266,7 +266,7 @@ export const CSV_COLUMNS = [
   ['rep', (m, rv, r) => r.repNo], ['block', (m, rv, r) => r.block ?? ''], ['extra_rep', (m, rv, r) => (r.extra ? 'yes' : '')],
   ['distance_m', (m, rv, r) => r.distM], ['stroke', (m, rv, r) => r.stroke || ''], ['interval', (m, rv, r) => r.interval],
   ['target_sec', (m, rv, r) => r.targetSec], ['time_sec', (m, rv, r) => r.timeSec], ['time', (m, rv, r) => fmtTime(r.timeSec)],
-  ['vs_target_sec', (m, rv, r) => r.vsTargetSec], ['rest_sec', (m, rv, r) => r.restSec], ['pace_per_100_sec', (m, rv, r) => r.pace100Sec],
+  ['vs_target_sec', (m, rv, r) => r.vsTargetSec], ['rest_after_sec', (m, rv, r) => r.restSec], ['pace_per_100_sec', (m, rv, r) => r.pace100Sec],
   ['stroke_count', (m, rv, r) => r.sc], ['stroke_rate', (m, rv, r) => r.sr],
   ['hr_start', (m, rv, r) => r.hrStart], ['hr_min', (m, rv, r) => r.hrMin], ['hr_avg', (m, rv, r) => r.hrAvg], ['hr_peak', (m, rv, r) => r.hrPeak],
   ['hr_end', (m, rv, r) => r.hrEnd], ['hr_plus_30s', (m, rv, r) => r.hrRec30], ['hr_coverage', (m, rv, r) => r.hrCoverage],

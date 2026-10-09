@@ -264,7 +264,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
       { h: 'Time', w: 10, get: (x) => T(x.timeSec), fmt: TIME_FMT, bold: true },
       { h: 'vs target (s)', w: 11, fmt: DELTA_FMT, show: rv.has.includes('targetSec'),
         formula: (c, row) => c.Target && c.Time && row.timeSec != null && row.targetSec != null ? { formula: `ROUND((${c.Time}-${c.Target})*${DAY},2)`, result: row.vsTargetSec } : null },
-      { h: 'Rest (s)', w: 9, fmt: SEC_FMT, show: rv.reps.some((x) => x.sendOffSec != null),
+      { h: 'Rest after (s)', w: 10, fmt: SEC_FMT, show: rv.reps.some((x) => x.sendOffSec != null),
         formula: (c, row) => row.timeSec != null && row.sendOffSec != null ? { formula: `ROUND((${c['Send-off']}-${c.Time})*${DAY},2)`, result: row.restSec } : null },
       { h: 'Pace per 100', w: 11, fmt: TIME_FMT, show: rv.reps.some((x) => x.distM !== 100),
         formula: (c, row) => row.timeSec != null && row.distM ? { formula: `${c.Time}/${c['Distance (m)']}*100`, result: T(row.pace100Sec) } : null },
@@ -343,10 +343,13 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
         r++;
       }
     }
-    if (rv.has.includes('hrCoverage')) {
+    if (rv.has.includes('hrCoverage') || rv.reps.some((x) => x.sendOffSec != null)) {
       r++;
       ws.mergeCells(r, 1, r, Math.min(cols.length, 10));
-      ws.getCell(r, 1).value = 'Amber HR coverage: the sensor dropped out for part of that rep, so its heart-rate figures are less reliable. Rest is the send-off minus the swim time.';
+      ws.getCell(r, 1).value = [
+        rv.reps.some((x) => x.sendOffSec != null) ? 'Rest after is what was left of the send-off once the rep was finished (send-off minus swim time): the rest before the next rep.' : '',
+        rv.has.includes('hrCoverage') ? 'Amber HR coverage: the sensor dropped out for part of that rep, so its heart-rate figures are less reliable.' : '',
+      ].filter(Boolean).join(' ');
       style(ws.getCell(r, 1), { color: MUTED, italic: true, wrap: true });
       ws.getRow(r).height = 28;
     }
@@ -356,7 +359,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
   // ── Data ──────────────────────────────────────────────────────────────────
   {
     const ws = wb.addWorksheet(DATA);
-    const timeCols = new Set(['target_sec', 'time_sec', 'vs_target_sec', 'rest_sec', 'pace_per_100_sec']);
+    const timeCols = new Set(['target_sec', 'time_sec', 'vs_target_sec', 'rest_after_sec', 'pace_per_100_sec']);
     const rows = [];
     for (const rv of runs) for (const rep of rv.reps) rows.push(CSV_COLUMNS.map(([, f]) => { const v = f(pMeta, rv, rep); return v === '' ? null : v; }));
     ws.addTable({
