@@ -2,6 +2,7 @@ import { store } from './mockFactory.js';
 import * as P from '../../src/services/protocols.js';
 import * as R from '../../src/services/results.js';
 import * as A from '../../src/services/athleteService.js';
+import { ladderProtocol } from '../fixtures/ladderRuns.mjs';
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : '  → ' + JSON.stringify(x))); };
 
@@ -19,6 +20,26 @@ console.log('\nAthlete profile (per athlete, stored on their record)');
   ok('rejects unknown PHV', !!(await A.saveAthleteProfile('sam', { phvStatus: 'late' })).error);
   ok('needs an athlete id', (await A.saveAthleteProfile(null, { athleteType: 'sprint' })).error?.message.includes('No athlete'));
   ok('active-athlete object remembers its id', A.buildAthleteObject({ athleteId: 'sam', name: 'Sam', times: {} }).athleteId === 'sam');
+}
+
+
+console.log('\nTest history across ladder versions');
+{
+  const lv1 = { ...ladderProtocol, id: 'lad-1', version: 1, ownerOrgId: null, locked: true };
+  const lv2 = { ...lv1, id: 'lad-2', version: 2, locked: false, params: { level: { ...lv1.params.level, options: [
+    { value: 'J1', label: 'Junior 1 — 10×100 on 2:00', qty: 10, onTime: '2:00' }, ...lv1.params.level.options] } } };
+  const clubCopy = { ...lv1, id: 'lad-club', version: 1, ownerOrgId: 'club-9' };
+  store.protocols.push(lv1, lv2, clubCopy);
+  store.efforts.push({ id: 'e-old', athleteId: 'kim', protocolId: 'lad-1', swumOn: '2026-08-01', set: lv1.set, conditions: { params: { level: 'L1' } } },
+                     { id: 'e-new', athleteId: 'kim', protocolId: 'lad-2', swumOn: '2026-10-01', set: lv1.set, conditions: { params: { level: 'J1' } } },
+                     { id: 'e-club', athleteId: 'kim', protocolId: 'lad-club', swumOn: '2026-09-01', set: lv1.set, conditions: {} });
+  const h = await P.getTestHistory('lad-1', 'kim');
+  ok('asking for v1 returns the newest compatible version', !h.error && h.data.protocol.id === 'lad-2', h);
+  ok('runs from v1 and v2 together, oldest first', h.data.efforts.map((e) => e.id).join() === 'e-old,e-new', h.data.efforts.map((e) => e.id));
+  ok("a club's own copy is kept separate", !h.data.efforts.some((e) => e.id === 'e-club'));
+  // leave the shared in-memory store as the later tests expect it
+  store.protocols.splice(0, store.protocols.length, ...store.protocols.filter((p) => !String(p.id).startsWith('lad-')));
+  store.efforts.splice(0, store.efforts.length, ...store.efforts.filter((e) => !String(e.id).startsWith('e-')));
 }
 
 const set = (onTime) => ({ fmt: 'swimzone.set/1', name: 'step', blocks: [{ repeats: 1, lines: [

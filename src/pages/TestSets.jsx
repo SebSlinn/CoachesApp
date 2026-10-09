@@ -18,11 +18,12 @@
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { listProtocols, prescribeForAthletes } from '../services/protocols';
-import { getSetResultsByProtocol, ingestPoolsideSetResult } from '../services/results';
+import { listProtocols, prescribeForAthletes, getTestHistory } from '../services/protocols';
+import { ingestPoolsideSetResult } from '../services/results';
 import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel } from '../session/protocolFormat';
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
 import { recordsHref } from '../records/athleteLink.js';
+import { levelShortLabel } from '../records/testVersions.js';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
 const MEASURE_LABEL = { time: 'time', splits: 'splits', sc: 'strokes', sr: 'rate', hr: 'HR', rpe: 'RPE', lactate: 'lactate' };
@@ -84,8 +85,9 @@ function intervalLabel(iv) {
   return r > 0 ? `${r >= 60 && r % 60 === 0 ? `${r / 60} min` : `${r} s`} rest` : '—';
 }
 
-// One headline per analyser for the "previous runs" list.
-function headline(summary) {
+// One headline per analyser for the "previous runs" list. pProtocol (optional)
+// names ladder levels ("Club 2") from its level options.
+function headline(summary, pProtocol) {
   if (!summary) return '—';
   if (summary.error) return summary.error;
   switch (summary.analyser) {
@@ -95,7 +97,7 @@ function headline(summary) {
     case 'css': return `CSS ${fmtClock(summary.cssPer100Sec)}/100`;
     case 'double-distance': return `${fmtClock(summary.timeSec)}${summary.vsTargetSec != null ? ` (${summary.vsTargetSec > 0 ? '+' : ''}${summary.vsTargetSec} s)` : ''}${summary.fadeSec != null ? ` · fade ${summary.fadeSec} s` : ''}`;
     case 'ladder': {
-      const lv = summary.level ? `${summary.level.replace(/^L/, 'Level ')} ` : '';
+      const lv = summary.level ? `${pProtocol ? levelShortLabel(pProtocol, summary.level) : summary.level.replace(/^L/, 'Level ')} ` : '';
       const held = summary.held === true ? '✓ held' : summary.held === false ? (summary.completed ? 'not held' : `${summary.swum}/${summary.prescribed} reps`) : '';
       const pace = summary.per100Sec ? `${fmtRep(summary.per100Sec)}/100` : '';
       const fade = summary.fadeSec != null ? `fade ${summary.fadeSec > 0 ? '+' : ''}${summary.fadeSec} s` : '';
@@ -187,7 +189,8 @@ export default function TestSets() {
   useEffect(() => {
     setRuns([]);
     if (!protocol || !picked.length) return;
-    getSetResultsByProtocol(protocol.id, picked[0]).then(({ data }) => setRuns((data || []).slice().reverse()));
+    // runs from every version that is still this test (a ladder that only gained levels)
+    getTestHistory(protocol.id, picked[0]).then(({ data }) => setRuns(((data && data.efforts) || []).slice().reverse()));
   }, [protocol, picked, runsTick]);
 
   // Open Poolside in set mode for one swimmer. The window is opened first,
@@ -222,7 +225,7 @@ export default function TestSets() {
       ? `Already saved — this ${mEnv.protocolName || 'test'} for ${mWho} is on record.`
       : `Saved ${data.reps} rep${data.reps === 1 ? '' : 's'} of ${mEnv.protocolName || 'the test'} for ${mWho}` +
         (data.missing && data.missing.length ? ` (rep${data.missing.length > 1 ? 's' : ''} ${data.missing.join(', ')} not timed)` : '') +
-        (data.summary ? ` — ${headline(data.summary)}` : '') + '.' });
+        (data.summary ? ` — ${headline(data.summary, protocols.find((p) => p.key === mEnv.protocolKey) || protocol)}` : '') + '.' });
     if (mEnv.protocolId && protocols.some((p) => p.id === mEnv.protocolId)) setSelectedId(mEnv.protocolId);
     setRunsTick((n) => n + 1);
   }
@@ -417,7 +420,7 @@ export default function TestSets() {
                         <div onClick={() => reps.length && setOpenRun(isOpen ? null : r.id)}
                           style={{ display: 'flex', gap: 12, flexWrap: 'wrap', cursor: reps.length ? 'pointer' : 'default' }}>
                           <span style={{ color: 'rgba(255,255,255,0.5)', minWidth: 90 }}>{r.swumOn}</span>
-                          <span style={{ flex: 1 }}>{headline(r.summary)}</span>
+                          <span style={{ flex: 1 }}>{headline(r.summary, protocol)}</span>
                           {hr && <span style={{ color: hr.low ? '#f2b654' : '#ff9a63' }}>{hr.text}</span>}
                           {reps.length > 0 && <span style={{ color: 'rgba(255,255,255,0.4)' }}>{isOpen ? 'hide reps ▴' : 'reps ▾'}</span>}
                         </div>

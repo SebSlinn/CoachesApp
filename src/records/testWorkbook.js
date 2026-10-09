@@ -98,6 +98,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
       ['Athlete', pMeta.athleteName],
       ['Test', `${pMeta.testKey} · version ${pMeta.testVersion}`],
       ['Runs', `${runs.length} (${cmp.labels[0]} to ${cmp.labels[runs.length - 1]})`],
+      ...(pMeta.highestHeld ? [['Highest level held', pMeta.highestHeld]] : []),
       ['Exported', `${exported} from SwimZone`],
     ]);
     const nRuns = runs.length;

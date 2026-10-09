@@ -167,10 +167,12 @@ export function buildRunView(pProtocol, pEffort) {
     return def?.kind === 'level' ? paramValueLabel(def, v) : `${def?.label || k}: ${paramValueLabel(def, v)}`;
   }).join(', ');
 
+  const levelDef = Object.values(pProtocol?.params || {}).find((d) => d && d.kind === 'level');
   return {
     id: pEffort.id,
     swumOn: pEffort.swumOn,
     level: params.level || null,
+    levelLabel: params.level ? (levelDef ? String(paramValueLabel(levelDef, params.level)).split(' — ')[0] : params.level) : null,
     paramText,
     poolType: cond.poolType || set.poolType || null,
     location: cond.location || '',
@@ -194,7 +196,7 @@ export function runLabels(pRuns) {
   const seen = {};
   return pRuns.map((r) => {
     const d = fmtDay(r.swumOn);
-    const base = d + (r.level ? ` · ${r.level}` : '');
+    const base = d + (r.level ? ` · ${r.levelLabel || r.level}` : '');
     seen[base] = (seen[base] || 0) + 1;
     return seen[base] > 1 ? `${base} #${seen[base]}` : base;
   });

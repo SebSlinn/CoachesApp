@@ -30,7 +30,7 @@ ok('blocks list each block', summaryRows({ analyser: 'blocks', dropOffSec: 0.8, 
 console.log('\nside by side');
 const cmp = compareRuns(ladderRuns.map((r) => buildRunView(ladderProtocol, r)).reverse());
 ok('runs oldest → newest regardless of input order', cmp.runs.map((r) => r.id).join() === 'run-1,run-2,run-3');
-ok('labels carry level', cmp.labels[2] === '3 Oct 2026 · L2', cmp.labels);
+ok('labels carry the level name', cmp.labels[2] === '3 Oct 2026 · Level 2', cmp.labels);
 ok('levels differ flagged', cmp.levelsDiffer === true);
 ok('rep rows to the longest prescribed set (25)', cmp.reps.length === 25 && cmp.reps[24].swim === '100 Free' && cmp.reps[24].times.every((t) => t == null), cmp.reps[24]);
 const r21 = cmp.reps[20];

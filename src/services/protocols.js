@@ -8,7 +8,8 @@
 // session/protocolFormat.js so Poolside can share it.
 import { getProtocolsRepository } from '../repositories/RepositoryFactory'
 import { validateProtocol, prescribe, prescribeGroup } from '../session/protocolFormat'
-import { getAthleteBests } from './results'
+import { getAthleteBests, getSetResultsByProtocol } from './results'
+import { compatibleSet } from '../records/testVersions.js'
 
 const repo = () => getProtocolsRepository()
 const invalid = (pMessage) => ({ data: null, error: { message: pMessage } })
@@ -118,3 +119,24 @@ export const prescribeForAthletes = async (pProtocolId, pAthletes = [], pOpts = 
 // athlete in Athlete Setup) — no fetch.
 export const prescribeForLoadedAthlete = (pProtocol, pAthlete, pChosen = {}) =>
   prescribe(pProtocol, { chosen: pChosen, athlete: pAthlete })
+
+// One athlete's runs of a test across every version that is still the same
+// test (e.g. a ladder version that only added levels — see records/testVersions.js).
+// Returns { protocol: newest compatible version, versions, efforts } where each
+// effort is from any of those versions, oldest → newest. Labels and level order
+// come from the newest version.
+export const getTestHistory = async (pProtocolId, pAthleteId) => {
+  const { data: mAsked, error } = await repo().get(pProtocolId)
+  if (error) return { data: null, error }
+  const { data: mAll, error: e2 } = await repo().list({ key: mAsked.key })
+  if (e2) return { data: null, error: e2 }
+  const mSameOwner = (mAll || []).filter((p) => (p.ownerOrgId || null) === (mAsked.ownerOrgId || null))
+  const { newest, versions } = compatibleSet(mSameOwner.length ? mSameOwner : [mAsked])
+  const mUse = versions.some((p) => p.id === mAsked.id) ? versions : [mAsked]
+  const mProtocol = mUse.includes(newest) ? newest : mAsked
+  const mResults = await Promise.all(mUse.map((p) => getSetResultsByProtocol(p.id, pAthleteId)))
+  const mFailed = mResults.find((r) => r.error)
+  if (mFailed) return { data: null, error: mFailed.error }
+  const mEfforts = mResults.flatMap((r) => r.data || []).sort((a, b) => (a.swumOn < b.swumOn ? -1 : a.swumOn > b.swumOn ? 1 : 0))
+  return { data: { protocol: mProtocol, versions: mUse, efforts: mEfforts }, error: null }
+}

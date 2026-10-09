@@ -5,8 +5,8 @@
 // Everything on screen and in both downloads comes from records/testReport.js.
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { getProtocol } from '../services/protocols';
-import { getSetResultsByProtocol } from '../services/results';
+import { getTestHistory } from '../services/protocols';
+import { highestHeld } from '../records/testVersions.js';
 import { useAthleteContext } from '../records/athleteLink.js';
 import { buildRunView, compareRuns, runLabels, toCsv, fmtTime, fmtDelta, exportFileName, fmtDay } from '../records/testReport.js';
 import { S, INK, INK_2, INK_3, RULE, GOOD, Crumbs } from '../records/recordsUi.jsx';
@@ -40,11 +40,12 @@ export default function TestResults() {
   useEffect(() => {
     if (!athleteId || !protocolId) return;
     let cancelled = false;
-    Promise.all([getProtocol(protocolId), getSetResultsByProtocol(protocolId, athleteId)]).then(([p, e]) => {
+    // every version that is still the same test (e.g. a ladder that only gained levels)
+    getTestHistory(protocolId, athleteId).then(({ data, error: e }) => {
       if (cancelled) return;
-      if (p.error || e.error) setError((p.error || e.error).message || 'Could not load this test.');
-      setProtocol(p.data || null);
-      setEfforts(e.data || []);
+      if (e) { setError(e.message || 'Could not load this test.'); setEfforts([]); return; }
+      setProtocol(data.protocol);
+      setEfforts(data.efforts);
     });
     return () => { cancelled = true; };
   }, [athleteId, protocolId]);
@@ -59,7 +60,9 @@ export default function TestResults() {
   const chartRuns = cmp ? cmp.runs.slice(-MAX_CHART) : [];
   const chartLabels = cmp ? cmp.labels.slice(-MAX_CHART) : [];
 
-  const meta = { athleteName: name, testName: protocol?.name || 'Test', testKey: protocol?.key || 'test', testVersion: protocol?.version || 1 };
+  const held = protocol ? highestHeld(protocol, views) : null;
+  const heldText = held ? `${held.label}, first held ${fmtDay(held.swumOn)}` : null;
+  const meta = { athleteName: name, testName: protocol?.name || 'Test', testKey: protocol?.key || 'test', testVersion: protocol?.version || 1, highestHeld: heldText };
   const toggle = (id) => {
     const next = new Set(ticked || views.map((v) => v.id));
     next.has(id) ? next.delete(id) : next.add(id);
@@ -92,6 +95,7 @@ export default function TestResults() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>{protocol?.name || 'Test results'}</h1>
           <p style={{ ...S.muted, margin: '6px 0 0' }}>{name}{views.length ? ` · ${views.length} run${views.length === 1 ? '' : 's'}` : ''}{protocol ? ` · ${protocol.key} v${protocol.version}` : ''}</p>
+          {held && <p style={{ margin: '8px 0 0', fontSize: 13 }}>Highest level held: <b style={{ color: GOOD }}>{held.label}</b> <span style={{ color: INK_3 }}>(first held {fmtDay(held.swumOn)})</span></p>}
         </div>
         {chosen.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

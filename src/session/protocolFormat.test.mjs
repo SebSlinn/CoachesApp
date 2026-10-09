@@ -41,7 +41,8 @@ async function loadSeeds() {
     create function public.grant_ancestors(g uuid) returns table (grant_id uuid, org_id uuid)
       language sql as $$ select null::uuid, null::uuid where false $$;`);
   for (const m of ['20260927120000_athlete_records.sql', '20260928120000_drop_import_dedup.sql', '20260929120000_test_protocols.sql',
-                   '20261005130000_add_endurance_tests.sql', '20261006130000_ladder_100s.sql'])
+                   '20261005130000_add_endurance_tests.sql', '20261006130000_ladder_100s.sql',
+                   '20261009120000_ladder_bands.sql'])
     await db.exec(readFileSync('supabase/migrations/' + m, 'utf8'));
   const { rows } = await db.query(`select id, key, version, name, set_json, measures, params, analyser from public.test_protocols`);
   return Object.fromEntries(rows.map((r) => [r.key, {
@@ -182,8 +183,13 @@ async function run() {
   ok('level 3 sets 30 reps on 1:20', L3.set.blocks[0].lines[0].qty === 30 && L3.set.blocks[0].lines[0].interval.onTime === '1:20');
   ok('unknown level falls back to level 1', resolveParams(lad.set, lad.params, { level: 'L9' }).params.level === 'L1');
   ok('stored ladder set not mutated', lad.set.blocks[0].lines[0].qty === 20);
+  const J1 = resolveParams(lad.set, lad.params, { level: 'J1' }).set.blocks[0].lines[0];
+  ok('junior 1 sets 10 reps on 2:00', J1.qty === 10 && J1.interval.onTime === '2:00', J1);
+  const N2 = resolveParams(lad.set, lad.params, { level: 'N2' }).set.blocks[0].lines[0];
+  ok('national 2 sets 40 reps on 1:10', N2.qty === 40 && N2.interval.onTime === '1:10', N2);
+  ok('levels run junior → club → national', lad.params.level.options.map((o) => o.value).join() === 'J1,J2,J3,L1,L2,L3,N1,N2');
   ok('prescription at level 3 has 30 reps', prescribe(lad, { chosen: { level: 'L3' }, athlete }).athletes[0].reps.length === 30);
-  ok('level labels for the dropdown', paramValueLabel(lad.params.level, 'L2') === 'Level 2 — 25×100 on 1:25' && levelOption(lad.params.level, 'L3').qty === 30);
+  ok('level labels for the dropdown', paramValueLabel(lad.params.level, 'L2') === 'Club 2 — 25×100 on 1:25' && levelOption(lad.params.level, 'L3').qty === 30);
   ok('level with no qty rejected', validateProtocol({ ...lad, params: { level: { kind: 'level', default: 'A', options: [{ value: 'A', onTime: '1:30' }] } } }) !== null);
   ok('level default must be one of its levels', validateProtocol({ ...lad, params: { level: { ...lad.params.level, default: 'L7' } } }) !== null);
   ok('level on a rest line needs restSec', validateProtocol({ ...lad, set: { ...lad.set, blocks: [{ repeats: 1, lines: [{ ...lad.set.blocks[0].lines[0], interval: { type: 'rest', restSec: 10, param: 'level' } }] }] } }) !== null);
