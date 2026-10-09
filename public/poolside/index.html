@@ -578,6 +578,13 @@ const SwimCore = (function(){
       const taps = rep.srTaps || [];
       const results = [];
       for (let i=1;i<taps.length;i++){
+        // A reading is only real stroking when BOTH taps fall on the same
+        // length. A pair straddling a turn (one tap on length 1, the next on
+        // length 2) measures the turn + glide — no strokes — and reads absurdly
+        // low (~20), yet gets filed under the earlier length. That was the
+        // first-length SR bug. Skip cross-boundary pairs: the start/turn time
+        // is never part of an SR reading.
+        if (taps[i].legIndex !== taps[i-1].legIndex) continue;
         const elapsedMs = taps[i].t - taps[i-1].t;
         const cyclesPerMin = elapsedMs > 0 ? (3*60000)/elapsedMs : null;
         results.push({ startT:taps[i-1].t, endT:taps[i].t, elapsedMs, strokeRate: cyclesPerMin ? Math.round(cyclesPerMin) : null /* whole cycles/min */, flags: [], legIndex: taps[i-1].legIndex });
@@ -624,8 +631,16 @@ const SwimCore = (function(){
   function perLengthStats(rep, lengths){
     const nLengths = lengths.length;
     const sc = new Array(nLengths).fill(0);
+    const scFirst = new Array(nLengths).fill(null);
+    const scLast = new Array(nLengths).fill(null);
     const srBuckets = Array.from({length:nLengths}, () => []);
-    rep.scEvents.forEach(e => { if (e.legIndex < nLengths) sc[e.legIndex] += 1; });
+    rep.scEvents.forEach(e => {
+      if (e.legIndex < nLengths){
+        sc[e.legIndex] += 1;
+        if (scFirst[e.legIndex] == null) scFirst[e.legIndex] = e.t;
+        scLast[e.legIndex] = e.t;   // first & last SC tap bound the stroking window
+      }
+    });
     rep.srResults.forEach(r => { if (r.legIndex < nLengths && r.strokeRate != null) srBuckets[r.legIndex].push(r.strokeRate); });
     const sr = srBuckets.map((readings, i) => {
       if (readings.length){
@@ -634,11 +649,15 @@ const SwimCore = (function(){
         const avg = readings.reduce((a,b)=>a+b,0) / readings.length;
         return Math.round(avg);
       }
-      // no explicit SR reading for this length, but if every stroke was
-      // counted (SC), the rate can be worked out directly: strokes taken
-      // over however long the length took, e.g. 10 strokes in 15s = 40/min.
-      const lengthSeconds = lengths[i].ms / 1000;
-      if (sc[i] > 0 && lengthSeconds > 0) return Math.round((sc[i]/lengthSeconds)*60);
+      // No explicit SR reading — derive from the SC taps, but measure ONLY the
+      // stroking window: first SC tap to last SC tap, never the whole length
+      // (which includes the push/turn and glide, when no strokes are taken).
+      // N taps span N-1 stroke intervals, so rate = (N-1)/(lastTap-firstTap).
+      // Needs at least two taps to have a window.
+      if (sc[i] > 1 && scLast[i] > scFirst[i]){
+        const windowSec = (scLast[i] - scFirst[i]) / 1000;
+        return Math.round(((sc[i]-1)/windowSec)*60);
+      }
       return 0;
     });
     return { sc, sr };
@@ -1143,14 +1162,23 @@ const SwimCore = (function(){
                startedAt: new Date(rep.startTime).toISOString(), targetTime: pr.targetTime || null, pbAtSwim: pr.pbAtSwim ?? null,
                splits, metrics: m, note: rep.status === 'complete' ? '' : 'check timing: ' + rep.finishFlags.join(', ') };
     });
+    // Pool the coach actually used on deck. Each rep's splits are already
+    // derived from the live set's poolLength (via buildPlan), but run.set.poolType
+    // is the ORIGINAL value SwimZone handed over — if the coach corrected the pool
+    // mid-set, that edit has to win here too, or the record keeps the wrong pool.
+    const liveSet = state.sets.find(s => s.event) || null;
+    const livePoolLen = liveSet && liveSet.event ? Number(liveSet.event.poolLength) : null;
+    const livePoolType = livePoolLen === 50 ? '50LC'
+                       : livePoolLen === 25 ? '25SC'
+                       : (run.set && run.set.poolType) || null;
     return {
       fmt: 'swimzone.setresult/1', sessionId: run.sessionId,
       athleteId: (run.athlete && run.athlete.id) || state.session.szAthleteId || null,
       athleteName: state.session.athlete || (run.athlete && run.athlete.name) || '',
       swumOn: state.session.date || todayISO(),
       protocolId: run.protocol.id, protocolKey: run.protocol.key, protocolVersion: run.protocol.version, protocolName: run.protocol.name,
-      set: run.set, params: run.params,
-      conditions: { poolType: run.set && run.set.poolType, location: state.session.location || '' },
+      set: run.set ? { ...run.set, poolType: livePoolType } : run.set, params: run.params,
+      conditions: { poolType: livePoolType, location: state.session.location || '' },
       reps, missing: run.reps.filter(r => !pg.doneNos.has(r.repNo)).map(r => r.repNo), extraReps: pg.extra,
       ...(function(){
         if (!pg.done.length) return {};
