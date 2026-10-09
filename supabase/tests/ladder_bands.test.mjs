@@ -11,6 +11,8 @@ import { validateProtocol } from '../../src/session/protocolFormat.js';
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : '  → ' + JSON.stringify(x))); };
 const BANDS = 'supabase/migrations/20261009120000_ladder_bands.sql';
+const NAMES = 'supabase/migrations/20261009140000_ladder_level_names.sql';
+const label = (row, v) => row.params.level.options.find((o) => o.value === v)?.label;
 const CHAIN = ['20260927120000_athlete_records.sql', '20260928120000_drop_import_dedup.sql', '20260929120000_test_protocols.sql',
   '20261006130000_ladder_100s.sql'];
 
@@ -57,6 +59,14 @@ async function run() {
     ok('valid protocol for the app', validateProtocol(asProtocol(rows[0])) === null, validateProtocol(asProtocol(rows[0])));
     await db.exec(readFileSync(BANDS, 'utf8'));
     ok('re-running is a no-op', (await ladders(db)).length === 1);
+    await db.exec(readFileSync(NAMES, 'utf8'));
+    const named = (await ladders(db))[0];
+    ok('names: 2 junior, 3 club, 3 national', ['J1', 'J2', 'J3', 'L1', 'L2', 'L3', 'N1', 'N2'].map((v) => label(named, v).split(' — ')[0]).join() ===
+      'Junior 1,Junior 2,Club 1,Club 2,Club 3,National 1,National 2,National 3', named.params.level.options.map((o) => o.label));
+    ok('L3 is National 1 — 30×100 on 1:20', label(named, 'L3') === 'National 1 — 30×100 on 1:20');
+    ok('codes, reps and send-offs unchanged', levels(named) === EIGHT && JSON.stringify(named.params.level.options.map((o) => [o.qty, o.onTime])) ===
+      JSON.stringify([[10, '2:00'], [15, '1:50'], [20, '1:40'], [20, '1:30'], [25, '1:25'], [30, '1:20'], [35, '1:15'], [40, '1:10']]));
+    ok('still valid for the app', validateProtocol(asProtocol(named)) === null, validateProtocol(asProtocol(named)));
   }
 
   console.log('\nB. already used → version 2');
@@ -78,6 +88,19 @@ async function run() {
     ok('v2 valid protocol for the app', validateProtocol(asProtocol(rows[1])) === null, validateProtocol(asProtocol(rows[1])));
     await db.exec(readFileSync(BANDS, 'utf8'));
     ok('re-running is a no-op (no v3)', (await ladders(db)).length === 2);
+
+    console.log('\nB2. names on a locked ladder');
+    let err = null; try { await db.exec(readFileSync(NAMES, 'utf8')); } catch (e) { err = e.message; }
+    ok('renaming levels on a locked version is allowed', err === null, err);
+    const [n1, n2] = await ladders(db);
+    ok('v1 (locked) renamed: L3 is National 1', n1.locked && label(n1, 'L3') === 'National 1 — 30×100 on 1:20', label(n1, 'L3'));
+    ok('v2 renamed too, still no v3', label(n2, 'J3') === 'Club 1 — 20×100 on 1:40' && (await ladders(db)).length === 2);
+    const changeReps = await db.query(`update public.test_protocols set params = jsonb_set(params, '{level,options,0,qty}', '31') where id = $1`, [n1.id]).then(() => null, (e) => e.message);
+    ok('a locked version still refuses a change to reps', changeReps && /LOCKED/.test(changeReps), changeReps);
+    const changeSend = await db.query(`update public.test_protocols set params = jsonb_set(params, '{level,options,2,onTime}', '"1:19"') where id = $1`, [n1.id]).then(() => null, (e) => e.message);
+    ok('…and to a send-off', changeSend && /LOCKED/.test(changeSend), changeSend);
+    await db.exec(readFileSync(NAMES, 'utf8'));
+    ok('names migration re-runs cleanly', (await ladders(db)).length === 2);
   }
 
   console.log('\nC. ladder missing → no error');

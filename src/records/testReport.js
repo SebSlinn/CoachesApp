@@ -158,8 +158,11 @@ export function buildRunView(pProtocol, pEffort) {
     };
   });
 
-  const summary = pEffort.summary && !pEffort.summary.error && Object.keys(pEffort.summary).length > 2
-    ? pEffort.summary
+  // Use the stored summary only if THIS test's analyser wrote it; otherwise (none
+  // saved, an error, or a run moved over from another test) recalculate from the reps.
+  const stored = pEffort.summary;
+  const summary = stored && !stored.error && Object.keys(stored).length > 2 && (!pProtocol?.analyser || stored.analyser === pProtocol.analyser)
+    ? stored
     : analyse(pProtocol?.analyser, (pEffort.reps || []).map((r) => ({ ...r, ...(plan.get(Number(r.repNo)) ? { blockIdx: plan.get(Number(r.repNo)).blockIdx, lineIdx: plan.get(Number(r.repNo)).lineIdx, blockRepeat: plan.get(Number(r.repNo)).blockRepeat } : {}) })), { set, params });
 
   const paramText = Object.entries(params).map(([k, v]) => {
@@ -258,7 +261,7 @@ export function compareRuns(pRunViews) {
 // Numbers, R or a pivot table. UTF-8 with BOM so Excel reads the dashes.
 export const CSV_COLUMNS = [
   ['athlete', (m) => m.athleteName], ['test', (m) => m.testName], ['test_key', (m) => m.testKey], ['test_version', (m) => m.testVersion],
-  ['run_date', (m, rv) => rv.swumOn], ['level', (m, rv) => rv.level || ''], ['settings', (m, rv) => rv.paramText],
+  ['run_date', (m, rv) => rv.swumOn], ['level', (m, rv) => rv.levelLabel || rv.level || ''], ['settings', (m, rv) => rv.paramText],
   ['pool', (m, rv) => rv.poolType || ''], ['location', (m, rv) => rv.location],
   ['rep', (m, rv, r) => r.repNo], ['block', (m, rv, r) => r.block ?? ''], ['extra_rep', (m, rv, r) => (r.extra ? 'yes' : '')],
   ['distance_m', (m, rv, r) => r.distM], ['stroke', (m, rv, r) => r.stroke || ''], ['interval', (m, rv, r) => r.interval],

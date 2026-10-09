@@ -24,6 +24,7 @@ import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel } from '..
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
 import { recordsHref } from '../records/athleteLink.js';
 import { levelShortLabel } from '../records/testVersions.js';
+import { buildRunView } from '../records/testReport.js';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
 const MEASURE_LABEL = { time: 'time', splits: 'splits', sc: 'strokes', sr: 'rate', hr: 'HR', rpe: 'RPE', lactate: 'lactate' };
@@ -420,7 +421,7 @@ export default function TestSets() {
                         <div onClick={() => reps.length && setOpenRun(isOpen ? null : r.id)}
                           style={{ display: 'flex', gap: 12, flexWrap: 'wrap', cursor: reps.length ? 'pointer' : 'default' }}>
                           <span style={{ color: 'rgba(255,255,255,0.5)', minWidth: 90 }}>{r.swumOn}</span>
-                          <span style={{ flex: 1 }}>{headline(r.summary, protocol)}</span>
+                          <span style={{ flex: 1 }}>{headline(buildRunView(protocol, r).summary, protocol)}</span>
                           {hr && <span style={{ color: hr.low ? '#f2b654' : '#ff9a63' }}>{hr.text}</span>}
                           {reps.length > 0 && <span style={{ color: 'rgba(255,255,255,0.4)' }}>{isOpen ? 'hide reps ▴' : 'reps ▾'}</span>}
                         </div>

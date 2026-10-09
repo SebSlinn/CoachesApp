@@ -24,6 +24,8 @@ ok('settings for L2', v3.paramText === 'Level 2 — 25×100 on 1:25');
 console.log('\nsummary recomputed when missing');
 const bare = buildRunView(ladderProtocol, { ...ladderRuns[0], summary: null });
 ok('analyser re-run from reps', bare.summary.analyser === 'ladder' && bare.summary.swum === 20, bare.summary);
+const moved = buildRunView(ladderProtocol, { ...ladderRuns[0], summary: { analyser: 'series', v: 1, n: 20, meanSec: 74.8 } });
+ok('a summary from another test (moved run) is recalculated by the ladder', moved.summary.analyser === 'ladder' && moved.summary.held === true, moved.summary);
 ok('error summary shown as text', summaryRows({ analyser: 'css', error: 'needs one 400 and one 200' })[0].value === 'needs one 400 and one 200');
 ok('blocks list each block', summaryRows({ analyser: 'blocks', dropOffSec: 0.8, blocks: [{ n: 10, distM: 100, stroke: 'FS', meanSec: 75 }, { n: 10, distM: 100, stroke: 'FS', meanSec: 75.8 }] }).length === 3);
 
@@ -53,7 +55,7 @@ const lines = csv.replace(/^﻿/, '').trim().split('\r\n');
 ok('BOM for Excel', csv.charCodeAt(0) === 0xfeff);
 ok('one row per rep per run + header', lines.length === 1 + 20 + 20 + 24, lines.length);
 ok('header names', lines[0].split(',').length === CSV_COLUMNS.length && lines[0].startsWith('athlete,test,test_key'));
-ok('row starts with athlete, test, run', lines[1].startsWith('Esme Slinn,100s Ladder (20 · 25 · 30),ladder-100s,1,2026-07-04,L1,'), lines[1]);
+ok('row starts with athlete, test, run', lines[1].startsWith('Esme Slinn,100s Ladder (20 · 25 · 30),ladder-100s,1,2026-07-04,Level 1,'), lines[1]);
 ok('settings column', /,Level 1 — 20×100 on 1:30,/.test(lines[1]));
 ok('note with comma is quoted', toCsv({}, [{ ...cmp.runs[0], reps: [{ ...cmp.runs[0].reps[0], note: 'tired, slow turn' }] }]).includes('"tired, slow turn"'));
 
