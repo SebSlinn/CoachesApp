@@ -163,7 +163,24 @@ class Query {
   }
 }
 
+async function rpc(name, args = {}) {
+  const keys = Object.keys(args);
+  const params = keys.map((k) => (args[k] !== null && typeof args[k] === 'object' ? JSON.stringify(args[k]) : args[k]));
+  const call = keys.map((k, i) => `${k} => $${i + 1}${args[k] !== null && typeof args[k] === 'object' ? '::jsonb' : ''}`).join(', ');
+  try {
+    await DB.exec(`reset role; select set_config('request.jwt.claim.sub', '${UID || ''}', false);`);
+    if (UID) await DB.exec('set role authenticated');
+    const r = await DB.query(`select public.${q(name).slice(1, -1)}(${call}) as result`, params);
+    return { data: r.rows[0] ? r.rows[0].result : null, error: null };
+  } catch (e) {
+    return { data: null, error: { code: e.code, message: e.message, details: e.detail || null } };
+  } finally {
+    await DB.exec('reset role');
+  }
+}
+
 export const supabase = {
   from: (table) => new Query(table),
+  rpc,
   auth: { getSession: async () => ({ data: { session: UID ? { user: { id: UID } } : null }, error: null }) },
 };

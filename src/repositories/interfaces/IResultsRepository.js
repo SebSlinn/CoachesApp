@@ -45,4 +45,6 @@ export class IResultsRepository {
   // --- Test Set Library -----------------------------------------------------
   /** Rewrite one run's derived summary (analyser output). → { updated } */
   async updateSetEffortSummary(_effortId, _summary) { throw new Error('IResultsRepository.updateSetEffortSummary not implemented'); }
+  /** Remove a whole set-as-swum: the parent effort + its reps (via FK cascade). → { deleted } */
+  async deleteSetResult(_effortId) { throw new Error('IResultsRepository.deleteSetResult not implemented'); }
 }

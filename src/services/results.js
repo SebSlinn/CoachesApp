@@ -439,3 +439,14 @@ export const updateResult = async (pResultId, pChanges) => {
 }
 
 export const deleteResult = async (pResultId) => repo().remove(pResultId)
+
+// Remove a whole set-as-swum (one test run) by its effort id: the set_efforts
+// parent and, via the DB's FK cascade, all its rep rows. Use when a run was
+// imported wrong — e.g. a missed rep not noticed at the time. Returns { deleted }
+// (1 = removed, 0 = nothing matched / not permitted). Deleting then re-importing
+// the corrected Poolside file is safe: addSetResult is idempotent on the run's id,
+// so with the old row gone the fresh import saves rather than being a no-op.
+export const deleteSetResult = async (pEffortId) => {
+  if (!pEffortId) return invalid('INVALID: no set to remove')
+  return repo().deleteSetResult(pEffortId)
+}

@@ -223,7 +223,9 @@ export default function TestSets() {
     if (error) { setImportMsg({ ok: false, text: error.message || 'Save failed' }); return; }
     const mWho = data.athleteName || 'the swimmer';
     setImportMsg({ ok: true, text: data.alreadyPresent
-      ? `Already saved — this ${mEnv.protocolName || 'test'} for ${mWho} is on record.`
+      ? (data.startsFilled
+        ? `Already saved — added the start times for ${data.startsFilled} rep${data.startsFilled === 1 ? '' : 's'}, so rest for this ${mEnv.protocolName || 'test'} is now measured.`
+        : `Already saved — this ${mEnv.protocolName || 'test'} for ${mWho} is on record.`)
       : `Saved ${data.reps} rep${data.reps === 1 ? '' : 's'} of ${mEnv.protocolName || 'the test'} for ${mWho}` +
         (data.missing && data.missing.length ? ` (rep${data.missing.length > 1 ? 's' : ''} ${data.missing.join(', ')} not timed)` : '') +
         (data.summary ? ` — ${headline(data.summary, protocols.find((p) => p.key === mEnv.protocolKey) || protocol)}` : '') + '.' });

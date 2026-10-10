@@ -25,6 +25,16 @@ const UNAVAILABLE = { data: null, error: { message: 'Supabase is not configured'
 
 const COLUMNS = 'id, athlete_user_id, client_uuid, swum_on, kind, effort, stroke, dist_m, pool_type, time_sec, splits, location, notes, source, effort_id, rep_no, pb_at_swim_sec, sanctioned, awarding_body, country, meet_name, import_ref, metrics, created_by, updated_by, created_at, updated_at';
 
+// Set reps also carry when they started (20261009150000_rep_start_times.sql), so
+// rest can be measured. Until that migration has run, the column doesn't exist:
+// queries and inserts then retry without it rather than fail.
+const REP_COLUMNS = COLUMNS + ', started_at';
+const missingStartCol = (e) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /started_at/.test(`${e.message || ''} ${e.details || ''}`));
+async function withRepStarts(run) {
+  const r = await run(REP_COLUMNS);
+  return missingStartCol(r.error) ? run(COLUMNS) : r;
+}
+
 const EFFORT_COLUMNS = 'id, athlete_user_id, client_uuid, swum_on, protocol_id, set_json, conditions, summary, source, created_by, created_at';
 
 // app field  → column   (scalars mapped 1:1)
@@ -92,6 +102,7 @@ function fromRow(row) {
     source: row.source,
     effortId: row.effort_id,
     repNo: row.rep_no,
+    startedAt: row.started_at ?? null,
     pbAtSwim: row.pb_at_swim_sec != null ? Number(row.pb_at_swim_sec) : null,
     metrics: row.metrics || {},
     provenance: (row.meet_name != null || row.import_ref != null || row.sanctioned != null)
@@ -237,7 +248,15 @@ export class SupabaseResultsRepository extends IResultsRepository {
     if (e1) {
       // 23505 = unique violation; on client_uuid it means this run is already saved.
       if (e1.code === '23505' && parent.client_uuid && /client_uuid/.test(`${e1.message} ${e1.details || ''}`)) {
-        return { data: { effortId: null, reps: 0, alreadyPresent: true }, error: null };
+        // Already saved. If this copy carries start times the saved one lacks
+        // (saved before they were kept), fill them in — nothing else changes.
+        let startsFilled = 0;
+        const starts = (sr.reps || []).filter((r) => r.startedAt).map((r) => ({ repNo: r.repNo, startedAt: r.startedAt }));
+        if (starts.length) {
+          const { data: n, error: eF } = await supabase.rpc('fill_rep_start_times', { p_client_uuid: parent.client_uuid, p_starts: starts });
+          if (!eF) startsFilled = Number(n) || 0;
+        }
+        return { data: { effortId: null, reps: 0, alreadyPresent: true, startsFilled }, error: null };
       }
       return { data: null, error: e1 };
     }
@@ -258,10 +277,12 @@ export class SupabaseResultsRepository extends IResultsRepository {
       splits: rep.splits ?? null,
       source: parent.source,
       notes: rep.note ?? null,
+      started_at: rep.startedAt ?? null,
     }));
 
     if (reps.length) {
-      const { error: e2 } = await supabase.from('performance_results').insert(reps);
+      let { error: e2 } = await supabase.from('performance_results').insert(reps);
+      if (missingStartCol(e2)) ({ error: e2 } = await supabase.from('performance_results').insert(reps.map(({ started_at: _s, ...r }) => r)));
       if (e2) {
         await supabase.from('set_efforts').delete().eq('id', eff.id);
         return { data: null, error: e2 };
@@ -300,15 +321,17 @@ export class SupabaseResultsRepository extends IResultsRepository {
   // drill-down and compare view (one call rather than a fetch per click).
   async listSetEffortsWithReps(athleteId, { protocolId, from, to } = {}) {
     if (!supabase) return UNAVAILABLE;
-    let query = supabase
-      .from('set_efforts')
-      .select(`${EFFORT_COLUMNS}, reps:performance_results!effort_id(${COLUMNS})`)
-      .eq('athlete_user_id', athleteId)
-      .order('swum_on', { ascending: true });
-    if (protocolId) query = query.eq('protocol_id', protocolId);
-    if (from) query = query.gte('swum_on', from);
-    if (to) query = query.lte('swum_on', to);
-    const { data, error } = await query;
+    const { data, error } = await withRepStarts((cols) => {
+      let query = supabase
+        .from('set_efforts')
+        .select(`${EFFORT_COLUMNS}, reps:performance_results!effort_id(${cols})`)
+        .eq('athlete_user_id', athleteId)
+        .order('swum_on', { ascending: true });
+      if (protocolId) query = query.eq('protocol_id', protocolId);
+      if (from) query = query.gte('swum_on', from);
+      if (to) query = query.lte('swum_on', to);
+      return query;
+    });
     const mEfforts = data ? data.map(effortFromRow) : data;
     for (const e of mEfforts || []) if (e.reps) e.reps.sort((x, y) => (x.repNo || 0) - (y.repNo || 0));
     return { data: mEfforts, error };
@@ -318,12 +341,12 @@ export class SupabaseResultsRepository extends IResultsRepository {
   // The embed names the FK (effort_id) because performance_results has >1 FK.
   async listSetEffortsByProtocol(protocolId, athleteId) {
     if (!supabase) return UNAVAILABLE;
-    const { data, error } = await supabase
+    const { data, error } = await withRepStarts((cols) => supabase
       .from('set_efforts')
-      .select(`${EFFORT_COLUMNS}, reps:performance_results!effort_id(${COLUMNS})`)
+      .select(`${EFFORT_COLUMNS}, reps:performance_results!effort_id(${cols})`)
       .eq('protocol_id', protocolId)
       .eq('athlete_user_id', athleteId)
-      .order('swum_on', { ascending: true });
+      .order('swum_on', { ascending: true }));
     return { data: data ? data.map(effortFromRow) : data, error };
   }
 
@@ -341,5 +364,22 @@ export class SupabaseResultsRepository extends IResultsRepository {
     if (!supabase) return UNAVAILABLE;
     const { error } = await supabase.from('performance_results').delete().eq('id', resultId);
     return { data: null, error };
+  }
+
+  // Remove a whole set-as-swum (one test run): delete the set_efforts parent.
+  // Its FK cascade removes every rep row (performance_results with this
+  // effort_id) — the same cascade addSetResult relies on. RLS still applies, so
+  // only the owner or an edit-grantee can delete. .select() returns the deleted
+  // parent so the caller can tell a real delete (deleted:1) from a no-op the
+  // policy or a stale id silently allowed (deleted:0).
+  async deleteSetResult(effortId) {
+    if (!supabase) return UNAVAILABLE;
+    const { data, error } = await supabase
+      .from('set_efforts')
+      .delete()
+      .eq('id', effortId)
+      .select('id');
+    if (error) return { data: null, error };
+    return { data: { deleted: (data || []).length }, error: null };
   }
 }

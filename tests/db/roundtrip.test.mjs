@@ -100,6 +100,22 @@ ok('stored HR matches the stream, re-derived on save', rep.metrics?.hrEnd === wa
   [rep.metrics, want.metrics]);
 ok('protocol locked after first use', (await P.getProtocol(proto.data.id)).data?.locked === true);
 
+console.log('\nRep start times (for measured rest)');
+ok('rep start time saved and read back', rep.startedAt && Date.parse(rep.startedAt) === Date.parse(want.startedAt), [rep.startedAt, want.startedAt]);
+// a run saved before start times were kept: clear them, then re-import the same file
+await db.query(`update performance_results set started_at = null where effort_id = $1`, [run.id]);
+signIn(U.stranger);
+const notMine = await R.ingestPoolsideSetResult(file, {});
+ok("a stranger's re-import fills nothing", !notMine.data?.startsFilled, notMine);
+signIn(U.coach);
+const refill = await R.ingestPoolsideSetResult(file, { expectAthleteId: U.esmee });
+ok('re-importing the file fills the missing start times', refill.data?.alreadyPresent === true && refill.data?.startsFilled === file.reps.length, refill.data);
+const back = ((await R.getSetResultsByProtocol(proto.data.id, U.esmee)).data || [])[0]?.reps?.[0] || {};
+ok('…and they read back', Date.parse(back.startedAt) === Date.parse(want.startedAt), back.startedAt);
+ok('…without changing the time', Number(back.timeSec) === want.timeSec);
+const third = await R.ingestPoolsideSetResult(file, { expectAthleteId: U.esmee });
+ok('a third import fills nothing (only empty start times are set)', third.data?.startsFilled === 0, third.data);
+
 // ---------------------------------------------------------------------------
 console.log('\nIN: coach imports two FREE Poolside sessions (with and without a sensor)');
 const freeHr = fx('poolside-free-hr.json');

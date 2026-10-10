@@ -265,7 +265,10 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
       { h: 'vs target (s)', w: 11, fmt: DELTA_FMT, show: rv.has.includes('targetSec'),
         formula: (c, row) => c.Target && c.Time && row.timeSec != null && row.targetSec != null ? { formula: `ROUND((${c.Time}-${c.Target})*${DAY},2)`, result: row.vsTargetSec } : null },
       { h: 'Rest after (s)', w: 10, fmt: SEC_FMT, show: rv.reps.some((x) => x.sendOffSec != null),
-        formula: (c, row) => row.timeSec != null && row.sendOffSec != null ? { formula: `ROUND((${c['Send-off']}-${c.Time})*${DAY},2)`, result: row.restSec } : null },
+        // measured from Poolside start times → the value; estimated → send-off − time as a
+        // formula; none after the last rep
+        formula: (c, row) => (row.restFrom === 'measured' ? row.restSec
+          : row.restFrom === 'send-off' ? { formula: `ROUND((${c['Send-off']}-${c.Time})*${DAY},2)`, result: row.restSec } : null) },
       { h: 'Pace per 100', w: 11, fmt: TIME_FMT, show: rv.reps.some((x) => x.distM !== 100),
         formula: (c, row) => row.timeSec != null && row.distM ? { formula: `${c.Time}/${c['Distance (m)']}*100`, result: T(row.pace100Sec) } : null },
       { h: 'Strokes', w: 8, get: (x) => x.sc, show: rv.has.includes('sc') },
@@ -347,7 +350,10 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
       r++;
       ws.mergeCells(r, 1, r, Math.min(cols.length, 10));
       ws.getCell(r, 1).value = [
-        rv.reps.some((x) => x.sendOffSec != null) ? 'Rest after is what was left of the send-off once the rep was finished (send-off minus swim time): the rest before the next rep.' : '',
+        rv.reps.some((x) => x.restFrom === 'measured')
+          ? 'Rest after is the time from finishing a rep to starting the next, from the Poolside start times. None after the last rep.'
+          : rv.reps.some((x) => x.sendOffSec != null)
+            ? 'Rest after is estimated as the send-off minus the swim time (this run was saved without start times; re-import its Poolside file to measure it). None after the last rep.' : '',
         rv.has.includes('hrCoverage') ? 'Amber HR coverage: the sensor dropped out for part of that rep, so its heart-rate figures are less reliable.' : '',
       ].filter(Boolean).join(' ');
       style(ws.getCell(r, 1), { color: MUTED, italic: true, wrap: true });

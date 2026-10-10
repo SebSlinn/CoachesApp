@@ -6,6 +6,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getTestHistory } from '../services/protocols';
+import { deleteSetResult } from '../services/results';
 import { highestHeld } from '../records/testVersions.js';
 import { useAthleteContext } from '../records/athleteLink.js';
 import { buildRunView, compareRuns, runLabels, toCsv, fmtTime, fmtDelta, exportFileName, fmtDay } from '../records/testReport.js';
@@ -36,6 +37,9 @@ export default function TestResults() {
   const [openId, setOpenId] = useState(null);       // run shown in full
   const [openRep, setOpenRep] = useState(null);     // rep whose lengths are shown
   const [busy, setBusy] = useState('');
+  const [confirmId, setConfirmId] = useState(null);   // run awaiting delete confirm
+  const [removing, setRemoving] = useState(false);
+  const [removeErr, setRemoveErr] = useState(null);
 
   useEffect(() => {
     if (!athleteId || !protocolId) return;
@@ -85,6 +89,20 @@ export default function TestResults() {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
 
+  // Remove a whole run (set_efforts parent + its reps via FK cascade). Drops it
+  // from the list in place; no refetch. Clears it from the open/ticked state too.
+  async function removeRun(id) {
+    setRemoving(true); setRemoveErr(null);
+    const { data, error: e } = await deleteSetResult(id);
+    setRemoving(false);
+    if (e) { setRemoveErr(e.message || 'Could not remove this run.'); return; }
+    if (!data || data.deleted === 0) { setRemoveErr('Nothing was removed — it may already be gone, or you may not have permission.'); return; }
+    setConfirmId(null);
+    setEfforts((prev) => (prev || []).filter((x) => x.id !== id));
+    if (openId === id) setOpenId(null);
+    setTicked((prev) => { if (!prev) return prev; const n = new Set(prev); n.delete(id); return n; });
+  }
+
   const back = { label: 'Test Sets', to: '/test-sets', state: { athleteId, name } };
   if (!athleteId) return <Shell><p style={S.muted}>No athlete selected. Open this from Test Sets with a swimmer loaded.</p></Shell>;
 
@@ -129,8 +147,23 @@ export default function TestResults() {
                   {v.summaryRows.filter((r) => r.kind === 'time').slice(0, 1).map((r) => <span key={r.key}>{r.label.toLowerCase()} {fmtTime(r.value)}</span>)}
                   <span style={{ color: INK_3 }}> · {v.swum} of {v.prescribed} timed</span>
                 </span>
-                <button onClick={() => { setOpenId(v.id); setOpenRep(null); setTimeout(() => document.getElementById('run-h')?.scrollIntoView({ behavior: 'smooth' }), 30); }}
-                  style={{ ...btn(false), padding: '4px 10px', fontSize: 11 }}>Open run</button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button onClick={() => { setOpenId(v.id); setOpenRep(null); setTimeout(() => document.getElementById('run-h')?.scrollIntoView({ behavior: 'smooth' }), 30); }}
+                    style={{ ...btn(false), padding: '4px 10px', fontSize: 11 }}>Open run</button>
+                  {confirmId === v.id ? (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, flexWrap: 'wrap' }}>
+                      <span style={{ color: '#f2b654' }}>Remove {labels[i]} ({v.swum}/{v.prescribed} timed)?</span>
+                      <button disabled={removing} onClick={() => removeRun(v.id)}
+                        style={{ ...btn(false), padding: '4px 10px', fontSize: 11, borderColor: 'rgba(255,120,120,0.6)', color: '#f88' }}>{removing ? 'Removing…' : 'Yes, remove'}</button>
+                      <button disabled={removing} onClick={() => { setConfirmId(null); setRemoveErr(null); }}
+                        style={{ ...btn(false), padding: '4px 10px', fontSize: 11 }}>Cancel</button>
+                      {removeErr && <span style={{ color: '#f88' }}>{removeErr}</span>}
+                    </span>
+                  ) : (
+                    <button onClick={() => { setConfirmId(v.id); setRemoveErr(null); }}
+                      style={{ ...btn(false), padding: '4px 10px', fontSize: 11, color: INK_3 }}>Remove</button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -215,7 +248,7 @@ function RunDetail({ run, label, openRep, setOpenRep }) {
     ['Time', (r) => fmtTime(r.timeSec), true],
     has('targetSec') && ['Target', (r) => fmtTime(r.targetSec)],
     has('vsTargetSec') && ['vs target', (r) => fmtDelta(r.vsTargetSec)],
-    has('restSec') && ['Rest after', (r) => (r.restSec == null ? '' : r.restSec.toFixed(1) + ' s')],
+    has('restSec') && ['Rest after', (r) => (r.restSec == null ? '' : (r.restFrom === 'send-off' ? '≈' : '') + r.restSec.toFixed(1) + ' s')],
     run.reps.some((r) => r.distM !== 100) && ['Pace /100', (r) => fmtTime(r.pace100Sec)],
     has('sc') && ['Strokes', (r) => r.sc ?? ''],
     has('sr') && ['Rate', (r) => (r.sr == null ? '' : Math.round(r.sr))],
@@ -282,7 +315,7 @@ function RunDetail({ run, label, openRep, setOpenRep }) {
         </table>
       </div>
       <p style={{ ...S.muted, fontSize: 10, marginTop: 6 }}>
-        {anyLengths ? 'Click a rep to see its lengths. ' : ''}Rest after is what was left of the send-off once the rep was finished (send-off minus swim time): the rest before the next rep.{has('hrCoverage') ? ' Amber HR cover means the sensor dropped out for part of the rep.' : ''}
+        {anyLengths ? 'Click a rep to see its lengths. ' : ''}{!has('restSec') ? '' : run.reps.some((r) => r.restFrom === 'measured') ? 'Rest after is from finishing a rep to starting the next, from the Poolside start times. ' : run.reps.some((r) => r.restFrom === 'send-off') ? 'Rest after (≈) is estimated as send-off minus swim time: this run was saved without start times; re-import its Poolside file in Test Sets to measure it. ' : ''}{has('restSec') ? 'None after the last rep.' : ''}{has('hrCoverage') ? ' Amber HR cover means the sensor dropped out for part of the rep.' : ''}
       </p>
     </section>
   );

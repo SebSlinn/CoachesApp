@@ -38,8 +38,8 @@ export const SUMMARY_FIELDS = {
     F('last5MeanSec', 'Last 5 average', 'time', { better: 'low' }),
     F('fadeSec', 'Fade, last 5 vs first 5', 'delta', { better: 'low' }),
     F('driftSecPerRep', 'Slowing per rep', 'delta', { better: 'low' }),
-    F('meanRestSec', 'Average rest', 'sec', { better: 'high' }),
-    F('minRestSec', 'Shortest rest', 'sec', { better: 'high' }),
+    F('meanRestSec', 'Average time inside the send-off', 'sec', { better: 'high' }),
+    F('minRestSec', 'Least time inside the send-off', 'sec', { better: 'high' }),
     F('repsInsideSendOff', 'Reps inside the send-off', 'num'),
     F('first5Sc', 'Strokes, first 5', 'num', { unit: 'per length', better: 'low' }),
     F('last5Sc', 'Strokes, last 5', 'num', { unit: 'per length', better: 'low' }),
@@ -146,7 +146,9 @@ export function buildRunView(pProtocol, pEffort) {
       targetSec: Number.isFinite(target) ? target : null,
       timeSec: time,
       vsTargetSec: time != null && Number.isFinite(target) ? r2(time - target) : null,
-      restSec: time != null && Number.isFinite(sendOff) ? r2(sendOff - time) : null,
+      restSec: null, restFrom: null,              // filled below: needs the NEXT rep
+      sendOffRestSec: time != null && Number.isFinite(sendOff) ? r2(sendOff - time) : null,
+      startedAt: r.startedAt || null,
       pace100Sec: time != null && distM ? r2((time / distM) * 100) : null,
       pbAtSwimSec: num(r.pbAtSwim),
       sc: num(m.sc), sr: num(m.sr),
@@ -157,6 +159,24 @@ export function buildRunView(pProtocol, pEffort) {
       lengths,
     };
   });
+
+  // Rest AFTER each rep — there is never one after the last rep.
+  //   measured: next rep's start − (this rep's start + time), from Poolside's start times
+  //   estimate: send-off − time, when start times weren't saved (older runs)
+  const lastRepNo = Math.max(plan.size, ...reps.map((x) => x.repNo));
+  const byNo = new Map(reps.map((x) => [x.repNo, x]));
+  for (const x of reps) {
+    if (x.repNo >= lastRepNo || x.timeSec == null) continue;
+    const next = byNo.get(x.repNo + 1);
+    const t0 = Date.parse(x.startedAt), t1 = next ? Date.parse(next.startedAt) : NaN;
+    if (Number.isFinite(t0) && Number.isFinite(t1) && t1 > t0) {
+      x.restSec = r2(Math.max(0, (t1 - t0) / 1000 - x.timeSec));
+      x.restFrom = 'measured';
+    } else if (x.sendOffRestSec != null && next) {
+      x.restSec = x.sendOffRestSec;
+      x.restFrom = 'send-off';
+    }
+  }
 
   // Use the stored summary only if THIS test's analyser wrote it; otherwise (none
   // saved, an error, or a run moved over from another test) recalculate from the reps.
@@ -266,7 +286,8 @@ export const CSV_COLUMNS = [
   ['rep', (m, rv, r) => r.repNo], ['block', (m, rv, r) => r.block ?? ''], ['extra_rep', (m, rv, r) => (r.extra ? 'yes' : '')],
   ['distance_m', (m, rv, r) => r.distM], ['stroke', (m, rv, r) => r.stroke || ''], ['interval', (m, rv, r) => r.interval],
   ['target_sec', (m, rv, r) => r.targetSec], ['time_sec', (m, rv, r) => r.timeSec], ['time', (m, rv, r) => fmtTime(r.timeSec)],
-  ['vs_target_sec', (m, rv, r) => r.vsTargetSec], ['rest_after_sec', (m, rv, r) => r.restSec], ['pace_per_100_sec', (m, rv, r) => r.pace100Sec],
+  ['vs_target_sec', (m, rv, r) => r.vsTargetSec], ['rest_after_sec', (m, rv, r) => r.restSec], ['rest_from', (m, rv, r) => r.restFrom || ''],
+  ['started_at', (m, rv, r) => r.startedAt || ''], ['pace_per_100_sec', (m, rv, r) => r.pace100Sec],
   ['stroke_count', (m, rv, r) => r.sc], ['stroke_rate', (m, rv, r) => r.sr],
   ['hr_start', (m, rv, r) => r.hrStart], ['hr_min', (m, rv, r) => r.hrMin], ['hr_avg', (m, rv, r) => r.hrAvg], ['hr_peak', (m, rv, r) => r.hrPeak],
   ['hr_end', (m, rv, r) => r.hrEnd], ['hr_plus_30s', (m, rv, r) => r.hrRec30], ['hr_coverage', (m, rv, r) => r.hrCoverage],

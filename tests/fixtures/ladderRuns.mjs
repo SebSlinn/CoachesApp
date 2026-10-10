@@ -18,7 +18,7 @@ export const ladderProtocol = {
 };
 
 // A swimmer who starts at ~1:13 and fades a little; later runs are quicker.
-function run(id, swumOn, level, base, fade, n, { hr = false, splits = false, skip = [] } = {}) {
+function run(id, swumOn, level, base, fade, n, { hr = false, splits = false, skip = [], starts = false } = {}) {
   const { set, params } = resolveParams(ladderProtocol.set, ladderProtocol.params, { level });
   const reps = [];
   for (let i = 1; i <= n; i++) {
@@ -38,6 +38,8 @@ function run(id, swumOn, level, base, fade, n, { hr = false, splits = false, ski
         { dist: 100, sec: time, sc: sc + 1 },
       ] : null,
       note: i === 12 && hr ? 'Missed the wall on the turn' : '',
+      // Poolside "go" presses: on the send-off, give or take a late push-off
+      startedAt: starts ? new Date(Date.parse(swumOn + 'T07:00:00Z') + ((i - 1) * 90 + [0, 0.4, -0.2, 0.6, 0.1][i % 5]) * 1000).toISOString() : undefined,
     });
   }
   const summary = analyse('ladder', reps, { set, params });
@@ -47,6 +49,6 @@ function run(id, swumOn, level, base, fade, n, { hr = false, splits = false, ski
 
 export const ladderRuns = [
   run('run-1', '2026-07-04', 'L1', 73.6, 0.12, 20, { skip: [] }),
-  run('run-2', '2026-08-29', 'L1', 72.4, 0.07, 20, { hr: true, splits: true }),
+  run('run-2', '2026-08-29', 'L1', 72.4, 0.07, 20, { hr: true, splits: true, starts: true }),
   run('run-3', '2026-10-03', 'L2', 72.0, 0.06, 25, { hr: true, splits: true, skip: [25] }),
 ];
