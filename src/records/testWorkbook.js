@@ -55,16 +55,17 @@ function headerRow(ws, pRow, pLabels, { from = 1, aligns = [] } = {}) {
   row.height = 30;
 }
 
-function titleBlock(ws, pTitle, pLines, { valueCol = 2 } = {}) {
+// Two compact lines at the top of every sheet: a title and one line of details.
+// The column headings go straight underneath (row 3), and only rows 1–3 are
+// frozen, so the scrolling data gets the rest of the screen.
+function topLines(ws, pTitle, pDetails) {
   ws.getCell('A1').value = pTitle;
-  style(ws.getCell('A1'), { bold: true, size: 15 });
-  ws.getRow(1).height = 24;
-  pLines.forEach(([k, v], i) => {
-    const r = 2 + i;
-    ws.getCell(r, 1).value = k; style(ws.getCell(r, 1), { color: MUTED });
-    ws.getCell(r, valueCol).value = v; style(ws.getCell(r, valueCol));
-  });
-  return 2 + pLines.length + 1;   // next free row, after a gap
+  style(ws.getCell('A1'), { bold: true, size: 13 });
+  ws.getRow(1).height = 20;
+  ws.getCell('A2').value = pDetails;
+  style(ws.getCell('A2'), { color: MUTED });
+  ws.getRow(2).height = 15;
+  return 3;
 }
 
 // value + format for a summary-row value of a given kind
@@ -94,20 +95,19 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
   // ── Summary ────────────────────────────────────────────────────────────────
   {
     const ws = wb.addWorksheet(SUMMARY, { views: [{ showGridLines: false }] });
-    let r = titleBlock(ws, pMeta.testName, [
-      ['Athlete', pMeta.athleteName],
-      ['Test', `${pMeta.testKey} · version ${pMeta.testVersion}`],
-      ['Runs', `${runs.length} (${cmp.labels[0]} to ${cmp.labels[runs.length - 1]})`],
-      ...(pMeta.highestHeld ? [['Highest level held', pMeta.highestHeld]] : []),
-      ['Exported', `${exported} from SwimZone`],
-    ]);
+    let r = topLines(ws, `${pMeta.testName}: ${pMeta.athleteName}`, [
+      `${runs.length} run${runs.length === 1 ? '' : 's'}, ${fmtDay(runs[0].swumOn)} to ${fmtDay(runs[runs.length - 1].swumOn)}`,
+      pMeta.highestHeld ? `highest level held ${pMeta.highestHeld}` : null,
+      `${pMeta.testKey} v${pMeta.testVersion}`,
+      `exported ${exported} from SwimZone`,
+    ].filter(Boolean).join('; '));
     const nRuns = runs.length;
     const changeCol = 2 + nRuns;
     headerRow(ws, r, ['Measure', ...cmp.labels, ...(nRuns > 1 ? ['Change, newest vs oldest'] : [])]);
+    ws.getRow(r).height = 28;
     ws.views = [{ state: 'frozen', xSplit: 1, ySplit: r, showGridLines: false }];
     r++;
     const info = [
-      ['Date', runs.map((rv) => fmtDay(rv.swumOn))],
       ['Settings', runs.map((rv) => rv.paramText || '—')],
       ['Pool', runs.map((rv) => rv.poolType || '—')],
       ['Location', runs.map((rv) => rv.location || '—')],
@@ -170,7 +170,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
   // ── Reps compared ─────────────────────────────────────────────────────────
   {
     const ws = wb.addWorksheet(REPS, { views: [{ showGridLines: false }] });
-    let r = titleBlock(ws, `${pMeta.testName}: rep by rep`, [['Athlete', pMeta.athleteName]], { valueCol: 3 });
+    let r = topLines(ws, `${pMeta.testName}: rep by rep`, `${pMeta.athleteName}; green is the fastest run for each rep`);
     const nRuns = runs.length;
     headerRow(ws, r, ['Rep', 'Swim', ...cmp.labels], { aligns: ['left', 'left'] });
     const head = r;
@@ -233,26 +233,24 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
   // ── One sheet per run ─────────────────────────────────────────────────────
   runs.forEach((rv, ri) => {
     const ws = wb.addWorksheet(names[ri], { views: [{ showGridLines: false }] });
-    let r = titleBlock(ws, `${pMeta.testName}: ${fmtDay(rv.swumOn)}`, [
-      ['Athlete', pMeta.athleteName],
-      ['Settings', rv.paramText || '—'],
-      ['Pool', rv.poolType || '—'],
-      ['Location', rv.location || '—'],
-      ['Reps timed', `${rv.swum} of ${rv.prescribed}`],
-      ...(rv.hasHrStream ? [['Heart rate', 'Recorded by a sensor during the set']] : []),
-    ], { valueCol: 4 });
+    let r = topLines(ws, `${pMeta.testName}: ${fmtDay(rv.swumOn)}, ${pMeta.athleteName}`, [
+      rv.paramText, rv.poolType, rv.location, `${rv.swum} of ${rv.prescribed} reps timed`,
+      rv.hasHrStream ? 'heart rate from a sensor' : null,
+    ].filter(Boolean).join('; '));
 
-    // results block
-    ws.getCell(r, 1).value = 'Results'; style(ws.getCell(r, 1), { bold: true, size: 11 });
-    r++;
-    for (const row of rv.summaryRows) {
-      ws.getCell(r, 1).value = row.unit ? `${row.label} (${row.unit})` : row.label;
-      for (let k = 1; k <= 4; k++) style(ws.getCell(r, k), { color: k === 1 ? MUTED : INK, border: true });
-      const k = kindCell(row.kind, row.value);
-      const c = ws.getCell(r, 4); c.value = k.value; style(c, { fmt: k.fmt, align: 'right', bold: true, border: true });
+    // results — after the reps, so the rep table sits right under its headings
+    const writeResults = () => {
       r++;
-    }
-    r++;
+      ws.getCell(r, 1).value = 'Results'; style(ws.getCell(r, 1), { bold: true, size: 11 });
+      r++;
+      for (const row of rv.summaryRows) {
+        ws.getCell(r, 1).value = row.unit ? `${row.label} (${row.unit})` : row.label;
+        for (let k = 1; k <= 4; k++) style(ws.getCell(r, k), { color: k === 1 ? MUTED : INK, border: true });
+        const k = kindCell(row.kind, row.value);
+        const c = ws.getCell(r, 4); c.value = k.value; style(c, { fmt: k.fmt, align: 'right', bold: true, border: true });
+        r++;
+      }
+    };
 
     // rep table — columns this run actually has
     const cols = [
@@ -286,8 +284,6 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
       { h: 'Note', w: 30, get: (x) => x.note || null, align: 'left', show: rv.has.includes('note') },
     ].filter((c) => c.show !== false);
 
-    ws.getCell(r, 1).value = 'Every rep'; style(ws.getCell(r, 1), { bold: true, size: 11 });
-    r++;
     headerRow(ws, r, cols.map((c) => c.h), { aligns: cols.map((c) => c.align || 'right') });
     const head = r;
     r++;
@@ -320,6 +316,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
     });
     ws.views = [{ state: 'frozen', xSplit: 1, ySplit: head, showGridLines: false }];
     cols.forEach((c, i) => { ws.getColumn(i + 1).width = c.w; });
+    writeResults();
 
     // per-length splits
     const lens = rv.reps.flatMap((x) => x.lengths.map((l) => ({ rep: x.repNo, ...l })));
