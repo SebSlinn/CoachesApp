@@ -81,32 +81,39 @@ export default function AthleteSetup() {
       setAthleteType('allround'); setPhvStatus('post');
       setAthleteTimes({}); setDerivedProfile(null);
       setProfileMsg(''); setProfileSavedAt(null);
-      setLoadedNote('Loaded ' + (mHandoff.name || 'athlete') + ' from records — review the profile below, then Save Athlete to make them active.');
+      setLoadedNote('Loading ' + (mHandoff.name || 'athlete') + '…');
       if (mHandoff.athleteId) {
-        // The coach's saved judgements (type, PHV) + SE number / club. If none
-        // are in the DB yet but this device's active slot holds this same
-        // athlete, use those — Save Athlete then moves them into the DB.
-        Promise.all([loadAthleteProfile(mHandoff.athleteId), loadAthlete()]).then(([mRes, mLocal]) => {
-          if (mCancelled) return;
-          const mLocalSame = mLocal && mLocal.athleteId === mHandoff.athleteId ? mLocal : null;
-          const mProf = mRes?.data || mLocalSame;
-          if (!mProf) return;
-          if (mProf.athleteType) setAthleteType(mProf.athleteType);
-          if (mProf.phvStatus)   setPhvStatus(mProf.phvStatus);
-          if (mProf.seNumber)    setSeNumber(mProf.seNumber);
-          if (mProf.club)        setClubName(mProf.club);
-          if (mRes?.data) setProfileSavedAt(mRes.data.updatedAt || null);
-          else setProfileMsg('Profile found on this device only — Save Athlete to store it on ' + (mHandoff.name || 'the athlete') + '’s record.');
-        });
-        getAthleteBests(mHandoff.athleteId).then(({ data }) => {
-          if (mCancelled || !data) return;
-          const mTimes = bestsToTimes(data.bests || []);
-          setAthleteTimes(mTimes);
-          setDerivedProfile(deriveAthleteType(mTimes) || null);
-          if (Object.keys(mTimes).length === 0) {
-            setLoadedNote('Loaded ' + (mHandoff.name || 'athlete') + ' — no race/trial times on record yet. Add times below or import from SwimmingResults.org, then Save Athlete.');
-          }
-        });
+        // Their record: best times, plus the coach's saved judgements (type, PHV)
+        // and SE number / club. If no profile is in the DB yet but this device's
+        // active slot holds this same athlete, use those.
+        Promise.all([getAthleteBests(mHandoff.athleteId), loadAthleteProfile(mHandoff.athleteId), loadAthlete()])
+          .then(async ([mBests, mRes, mLocal]) => {
+            if (mCancelled) return;
+            const mTimes = bestsToTimes(mBests?.data?.bests || []);
+            const mLocalSame = mLocal && mLocal.athleteId === mHandoff.athleteId ? mLocal : null;
+            const mProf = mRes?.data || mLocalSame || {};
+            const mFields = {
+              athleteId: mHandoff.athleteId, name: mHandoff.name || '',
+              seNumber: mProf.seNumber || '', club: mProf.club || '', times: mTimes,
+              athleteType: mProf.athleteType || 'allround', phvStatus: mProf.phvStatus || 'post',
+              derivedProfile: deriveAthleteType(mTimes) || null,
+            };
+            setAthleteTimes(mTimes);
+            setDerivedProfile(mFields.derivedProfile);
+            setAthleteType(mFields.athleteType);
+            setPhvStatus(mFields.phvStatus);
+            setSeNumber(mFields.seNumber);
+            setClubName(mFields.club);
+            if (mRes?.data) setProfileSavedAt(mRes.data.updatedAt || null);
+            else if (mLocalSame) setProfileMsg('Profile found on this device only — Save Athlete to store it on ' + (mHandoff.name || 'the athlete') + '’s record.');
+            // Loading an athlete SWITCHES to them: the Classifier and Set Builder read
+            // this device's active athlete, so update it now — not only on Save.
+            await saveAthlete(buildAthleteObject(mFields));
+            if (mCancelled) return;
+            setLoadedNote(Object.keys(mTimes).length
+              ? (mHandoff.name || 'Athlete') + ' is now the active athlete — the Classifier and Set Builder use their times. Change anything below and Save Athlete to keep it on their record.'
+              : (mHandoff.name || 'Athlete') + ' is now the active athlete, but has no race/trial times on record yet. Add times below or import from SwimmingResults.org, then Save Athlete.');
+          });
       }
       return () => { mCancelled = true; };
     }

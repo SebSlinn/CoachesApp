@@ -37,6 +37,7 @@ export default function Classifier() {
   const [poolDisplay,     setPoolDisplay]     = useState(savedState?.poolDisplay || '25SC');
   const [seqResult,       setSeqResult]       = useState(null);
   const [activeAthlete,   setActiveAthlete]   = useState(null);
+  const [athleteKey,      setAthleteKey]      = useState(savedState?.athleteKey || '');
   const [derivedProfile,  setDerivedProfile]  = useState(null);
   const [inputs,          setInputs]          = useState(savedState?.inputs || {
     distM: '100', qty: '10', targetTime: '1:10', onTime: '',
@@ -56,12 +57,21 @@ export default function Classifier() {
     loadAthlete().then(mData => {
       if (mCancelled || !mData) return;
       const mProfile = mData.derivedProfile || null;
-      setInputs(i => ({
-        ...i,
-        athleteType: mData.athleteType || 'allround',
-        phvStatus:   mData.phvStatus   || 'post',
-        pace200:     mData.pace200     || i.pace200,
-      }));
+      // A DIFFERENT athlete from last time → take their 200 time for the chosen
+      // stroke (blank if they have none), never the previous swimmer's pace.
+      // The same athlete → keep any pace the coach typed here.
+      const mKey = mData.athleteId || mData.name || '';
+      const mNewAthlete = mKey !== (savedState?.athleteKey || '');
+      setAthleteKey(mKey);
+      setInputs(i => {
+        const m200 = (mData.times || {})['200_' + (i.stroke || 'FS')]?.display || mData.pace200 || '';
+        return {
+          ...i,
+          athleteType: mData.athleteType || 'allround',
+          phvStatus:   mData.phvStatus   || 'post',
+          pace200:     mNewAthlete ? m200 : (m200 || i.pace200),
+        };
+      });
       setDerivedProfile(mProfile);
       setActiveAthlete({
         name:           mData.name          || '',
@@ -182,9 +192,9 @@ export default function Classifier() {
   // ── Persist classifier inputs ─────────────────────────────────────────────
   useEffect(() => {
     storage.set(KEYS.CLASSIFIER_STATE, {
-      inputs, selectedZone, classifierDrill, resultView, poolDisplay,
+      inputs, selectedZone, classifierDrill, resultView, poolDisplay, athleteKey,
     });
-  }, [inputs, selectedZone, classifierDrill, resultView, poolDisplay]);
+  }, [inputs, selectedZone, classifierDrill, resultView, poolDisplay, athleteKey]);
 
   // ── Props bundle ──────────────────────────────────────────────────────────
   const sharedClassifierProps = {
