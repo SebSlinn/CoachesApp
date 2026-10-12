@@ -10,6 +10,7 @@ import { deleteSetResult } from '../services/results';
 import { getDisplayNames } from '../services/users';
 import { useAuth } from '../hooks/useAuth';
 import { highestHeld } from '../records/testVersions.js';
+import { isStaleBuildError, reloadForNewVersion } from '../lib/staleBuild.js';
 import { useAthleteContext } from '../records/athleteLink.js';
 import { buildRunView, compareRuns, runLabels, toCsv, fmtTime, fmtDelta, exportFileName, fmtDay } from '../records/testReport.js';
 import { S, INK, INK_2, INK_3, RULE, GOOD, Crumbs } from '../records/recordsUi.jsx';
@@ -94,7 +95,14 @@ export default function TestResults() {
       const { downloadWorkbook } = await import('../records/testWorkbook.js');
       await downloadWorkbook(meta, chosen, exportFileName(meta, 'xlsx'));
       setBusy('');
-    } catch (e) { setBusy('Could not build the spreadsheet: ' + (e.message || e)); }
+    } catch (e) {
+      if (isStaleBuildError(e)) {
+        setBusy('SwimZone has been updated since this page was opened. Reloading, then press Download Excel again.');
+        if (!reloadForNewVersion()) setBusy('SwimZone has been updated. Please reload the page (Ctrl+F5) and try again.');
+        return;
+      }
+      setBusy('Could not build the spreadsheet: ' + (e.message || e));
+    }
   }
   function downloadCsv() {
     const blob = new Blob([toCsv(meta, chosen)], { type: 'text/csv;charset=utf-8' });
