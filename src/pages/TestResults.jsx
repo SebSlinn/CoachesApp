@@ -17,6 +17,22 @@ import { S, INK, INK_2, INK_3, RULE, GOOD, Crumbs } from '../records/recordsUi.j
 import RepTimesChart, { RUN_COLORS } from '../records/RepTimesChart.jsx';
 
 const MAX_CHART = RUN_COLORS.length;
+// Tables scroll inside a box as tall as the screen, headings stuck to the top —
+// so the data gets the space, like a spreadsheet.
+const GRID_BOX = { overflow: 'auto', maxHeight: 'calc(100vh - 96px)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6 };
+const DENSE = { paddingTop: 4, paddingBottom: 4 };   // tighter rows in the rep grid
+const STICKY_TH = { position: 'sticky', top: 0, background: '#20203a', zIndex: 1 };
+// The results worth seeing at a glance, per analyser; the rest sit behind "All results".
+const KEY_RESULTS = {
+  ladder: ['held', 'per100Sec', 'fadeSec', 'minRestSec', 'repsInsideSendOff'],
+  series: ['meanSec', 'fastestSec', 'spreadSec', 'driftSecPerRep'],
+  step: ['pace100At4mmolSec', 'peakHr', 'lastStepSec'],
+  css: ['cssPer100Sec', 't400Sec', 't200Sec'],
+  'double-distance': ['timeSec', 'vsTargetSec', 'fadeSec'],
+  blocks: ['dropOffSec', 'dropOffSc'],
+  swolf: ['bestSwolf', 'meanSwolf', 'meanSec'],
+  maxhr: ['peakHr', 'peakRepNo'],
+};
 const btn = (primary) => ({ padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
   border: '1px solid ' + (primary ? 'rgba(48,176,199,0.8)' : 'rgba(255,255,255,0.22)'),
   background: primary ? 'rgba(48,176,199,0.28)' : 'transparent', color: INK });
@@ -241,9 +257,9 @@ export default function TestResults() {
 
           <section style={S.section} aria-labelledby="reps-h">
             <h2 id="reps-h" style={S.h2}>Rep by rep</h2>
-            <div style={{ overflowX: 'auto', maxHeight: 520, overflowY: 'auto' }}>
+            <div style={GRID_BOX}>
               <table style={{ borderCollapse: 'collapse', minWidth: 360, width: '100%' }}>
-                <thead style={{ position: 'sticky', top: 0, background: '#1a1a2e' }}><tr>
+                <thead style={STICKY_TH}><tr>
                   <th style={S.th}>Rep</th><th style={S.th}>Swim</th>
                   {cmp.labels.map((l) => <th key={l} style={{ ...S.th, textAlign: 'right', whiteSpace: 'nowrap' }}>{l}</th>)}
                 </tr></thead>
@@ -279,6 +295,10 @@ export default function TestResults() {
 // One run in full: what was set, the results, every rep (click a rep for its lengths).
 function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
   const has = (k) => run.has.includes(k);
+  const [showAll, setShowAll] = useState(false);
+  const keys = KEY_RESULTS[run.summary?.analyser] || run.summaryRows.slice(0, 4).map((r) => r.key);
+  const keyRows = keys.map((k) => run.summaryRows.find((r) => r.key === k)).filter(Boolean);
+  const valueStyle = (r) => ({ fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.kind === 'bool' ? (r.value ? GOOD : '#f2b654') : INK });
   const cols = [
     ['Time', (r) => fmtTime(r.timeSec), true],
     has('targetSec') && ['Target', (r) => fmtTime(r.targetSec)],
@@ -298,23 +318,40 @@ function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
   const anyLengths = run.reps.some((r) => r.lengths.length);
   return (
     <section style={S.section} aria-labelledby="run-h">
-      <h2 id="run-h" style={S.h2}>Run: {label}</h2>
-      <p style={{ ...S.muted, margin: '0 0 12px', lineHeight: 1.6 }}>
-        {fmtDay(run.swumOn)}{run.paramText ? `, ${run.paramText}` : ''}{run.poolType ? `, ${run.poolType}` : ''}{run.location ? `, ${run.location}` : ''}.
-        {' '}{run.swum} of {run.prescribed} reps timed{run.hasHrStream ? ', heart rate from a sensor' : ''}.
-      </p>
-      {addedByText && <p style={{ ...S.muted, fontSize: 11, margin: '-6px 0 12px' }}>{addedByText}</p>}
-      <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '12px 18px', margin: '0 0 16px' }}>
-        {run.summaryRows.map((r) => (
-          <div key={r.key}>
-            <dt style={{ fontSize: 11, color: INK_3 }}>{r.label}{r.unit ? ` (${r.unit})` : ''}</dt>
-            <dd style={{ margin: 0, fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: r.kind === 'bool' ? (r.value ? GOOD : '#f2b654') : INK }}>{cellText(r.kind, r.value)}</dd>
-          </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '2px 10px', marginBottom: 8 }}>
+        <h2 id="run-h" style={{ ...S.h2, margin: 0 }}>Run: {label}</h2>
+        <span style={{ ...S.muted, fontSize: 11 }}>
+          {[run.paramText, run.poolType, run.location, `${run.swum} of ${run.prescribed} timed`, run.hasHrStream ? 'HR sensor' : null, addedByText].filter(Boolean).join(' · ')}
+        </span>
+      </div>
+      {/* key results in one row; the full list on demand */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 22px', alignItems: 'baseline', fontSize: 12, marginBottom: 10 }}>
+        {keyRows.map((r) => (
+          <span key={r.key} style={{ whiteSpace: 'nowrap' }}>
+            <span style={{ color: INK_3 }}>{r.label}{r.unit ? ` (${r.unit})` : ''} </span>
+            <span style={valueStyle(r)}>{cellText(r.kind, r.value)}</span>
+          </span>
         ))}
-      </dl>
-      <div style={{ overflowX: 'auto' }}>
+        {run.summaryRows.length > keyRows.length && (
+          <button onClick={() => setShowAll((x) => !x)} aria-expanded={showAll}
+            style={{ background: 'none', border: 'none', color: '#8fd6e4', cursor: 'pointer', fontFamily: 'monospace', fontSize: 11, padding: 0 }}>
+            {showAll ? 'Hide results' : `All results (${run.summaryRows.length})`}
+          </button>
+        )}
+      </div>
+      {showAll && (
+        <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '4px 18px', margin: '0 0 12px', fontSize: 12 }}>
+          {run.summaryRows.map((r) => (
+            <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, borderBottom: '1px solid rgba(255,255,255,0.05)', padding: '3px 0' }}>
+              <dt style={{ color: INK_3 }}>{r.label}{r.unit ? ` (${r.unit})` : ''}</dt>
+              <dd style={{ margin: 0, ...valueStyle(r) }}>{cellText(r.kind, r.value)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      <div style={GRID_BOX}>
         <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 420 }}>
-          <thead><tr>
+          <thead style={STICKY_TH}><tr>
             <th style={S.th}>Rep</th>
             {cols.map(([h]) => <th key={h} style={{ ...S.th, textAlign: 'right', whiteSpace: 'nowrap' }}>{h}</th>)}
             {has('note') && <th style={S.th}>Note</th>}
@@ -326,16 +363,16 @@ function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
               return (
                 <Fragment key={r.repNo}>
                   <tr onClick={() => r.lengths.length && setOpenRep(isOpen ? null : r.repNo)} style={{ cursor: r.lengths.length ? 'pointer' : 'default' }}>
-                    <td style={{ ...S.td, color: INK_3, whiteSpace: 'nowrap' }}>{r.lengths.length ? (isOpen ? '▾ ' : '▸ ') : ''}{r.repNo}{r.extra ? ' extra' : ''}</td>
+                    <td style={{ ...S.td, ...DENSE, color: INK_3, whiteSpace: 'nowrap' }}>{r.lengths.length ? (isOpen ? '▾ ' : '▸ ') : ''}{r.repNo}{r.extra ? ' extra' : ''}</td>
                     {cols.map(([h, get, bold]) => (
-                      <td key={h} style={{ ...S.td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: bold ? 700 : 400,
+                      <td key={h} style={{ ...S.td, ...DENSE, textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: bold ? 700 : 400,
                         color: h === 'HR cover' && lowHr ? '#f2b654' : (h === 'vs target' && r.vsTargetSec != null ? (r.vsTargetSec <= 0 ? GOOD : INK_2) : INK) }}>{get(r)}</td>
                     ))}
-                    {has('note') && <td style={{ ...S.td, color: INK_2 }}>{r.note}</td>}
+                    {has('note') && <td style={{ ...S.td, ...DENSE, color: INK_2, minWidth: 220, maxWidth: 420, fontSize: 11 }}>{r.note}</td>}
                   </tr>
                   {isOpen ? (
                     <tr><td />
-                      <td colSpan={cols.length + (has('note') ? 1 : 0)} style={{ ...S.td, color: INK_2, fontSize: 11 }}>
+                      <td colSpan={cols.length + (has('note') ? 1 : 0)} style={{ ...S.td, ...DENSE, color: INK_2, fontSize: 11 }}>
                         {r.lengths.map((l) => (
                           <span key={l.dist} style={{ display: 'inline-block', marginRight: 14, whiteSpace: 'nowrap' }}>
                             {l.dist}m <b style={{ color: INK }}>{fmtTime(l.lapSec)}</b>{l.sc != null ? ` · ${l.sc} strokes` : ''}{l.sr != null ? ` · rate ${Math.round(l.sr)}` : ''}{l.hrFirst != null ? ` · HR ${l.hrFirst}→${l.hrLast}` : ''}
