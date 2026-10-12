@@ -21,3 +21,9 @@ export const getMemberships = async (userId) => {
 export const getDisplayNames = async (ids) => {
   return getMembershipRepository().displayNames(ids)
 }
+
+// Update the signed-in user's own profile — { publicName, fullName }. RLS limits
+// this to the caller's own row.
+export const updateProfile = async (userId, changes) => {
+  return getMembershipRepository().updateProfile(userId, changes)
+}

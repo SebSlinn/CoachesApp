@@ -36,7 +36,10 @@ export default function Dashboard() {
     <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 800, margin: '0 auto' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
         <h2 style={{ margin: 0 }}>SwimZone</h2>
-        <button onClick={handleSignOut}>Sign Out</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => navigate('/account')}>Account</button>
+          <button onClick={handleSignOut}>Sign Out</button>
+        </div>
       </div>
 
       <p>Welcome back, <strong>{profile?.full_name || user?.email}</strong></p>

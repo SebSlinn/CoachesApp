@@ -12,6 +12,7 @@ import TestSets from './pages/TestSets'
 import RecordsEvent from './pages/RecordsEvent'
 import RecordsSwim from './pages/RecordsSwim'
 import TestResults from './pages/TestResults'
+import Account from './pages/Account'
 
 export default function App() {
   return (
@@ -67,6 +68,11 @@ export default function App() {
         <Route path="/test-sets" element={
           <ProtectedRoute>
             <TestSets />
+          </ProtectedRoute>
+        } />
+        <Route path="/account" element={
+          <ProtectedRoute>
+            <Account />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/login" replace />} />

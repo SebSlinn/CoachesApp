@@ -54,4 +54,21 @@ export class SupabaseMembershipRepository extends IMembershipRepository {
     for (const row of data || []) map[row.user_id] = row.name;
     return { data: map, error: null };
   }
+
+  // Update the caller's own profile. Only public_name / full_name are writable
+  // here; RLS (sz_users_self_update) restricts the row to id = auth.uid(), and a
+  // trigger locks date_of_birth, so nothing sensitive can be changed via this.
+  async updateProfile(userId, changes) {
+    const patch = {};
+    if (changes.publicName !== undefined) patch.public_name = changes.publicName || null;
+    if (changes.fullName !== undefined) patch.full_name = changes.fullName;
+    if (!Object.keys(patch).length) return { data: null, error: { message: 'Nothing to update' } };
+    const { data, error } = await supabase
+      .from('users')
+      .update(patch)
+      .eq('id', userId)
+      .select()
+      .single();
+    return { data, error };
+  }
 }

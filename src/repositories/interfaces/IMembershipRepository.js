@@ -18,4 +18,8 @@ export class IMembershipRepository {
   async displayNames(_ids) {
     throw new Error('IMembershipRepository.displayNames not implemented');
   }
+  /** Update the caller's own profile (public_name / full_name). RLS enforces self. */
+  async updateProfile(_userId, _changes) {
+    throw new Error('IMembershipRepository.updateProfile not implemented');
+  }
 }
