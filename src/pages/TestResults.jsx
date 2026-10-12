@@ -7,6 +7,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { getTestHistory } from '../services/protocols';
 import { deleteSetResult } from '../services/results';
+import { getDisplayNames } from '../services/users';
+import { useAuth } from '../hooks/useAuth';
 import { highestHeld } from '../records/testVersions.js';
 import { useAthleteContext } from '../records/athleteLink.js';
 import { buildRunView, compareRuns, runLabels, toCsv, fmtTime, fmtDelta, exportFileName, fmtDay } from '../records/testReport.js';
@@ -30,6 +32,7 @@ function cellText(kind, v) {
 export default function TestResults() {
   const { protocolId } = useParams();
   const { athleteId, name } = useAthleteContext();
+  const { user } = useAuth();
   const [protocol, setProtocol] = useState(null);
   const [efforts, setEfforts] = useState(null);
   const [error, setError] = useState(null);
@@ -40,6 +43,7 @@ export default function TestResults() {
   const [confirmId, setConfirmId] = useState(null);   // run awaiting delete confirm
   const [removing, setRemoving] = useState(false);
   const [removeErr, setRemoveErr] = useState(null);
+  const [names, setNames] = useState({});            // { userId: public display name }
 
   useEffect(() => {
     if (!athleteId || !protocolId) return;
@@ -53,6 +57,17 @@ export default function TestResults() {
     });
     return () => { cancelled = true; };
   }, [athleteId, protocolId]);
+
+  // Resolve the public name of whoever imported each run ("Added by") — any user,
+  // not just coaches. Names only — never email; an id with no name set shows as
+  // "a user".
+  useEffect(() => {
+    const ids = [...new Set((efforts || []).map((e) => e.createdBy).filter(Boolean))];
+    if (!ids.length) return;
+    let cancelled = false;
+    getDisplayNames(ids).then(({ data }) => { if (!cancelled && data) setNames((prev) => ({ ...prev, ...data })); });
+    return () => { cancelled = true; };
+  }, [efforts]);
 
   const views = useMemo(() => (protocol && efforts ? efforts.map((e) => buildRunView(protocol, e))
     .sort((a, b) => (a.swumOn < b.swumOn ? -1 : 1)) : []), [protocol, efforts]);
@@ -103,6 +118,17 @@ export default function TestResults() {
     setTicked((prev) => { if (!prev) return prev; const n = new Set(prev); n.delete(id); return n; });
   }
 
+  // "Added by {who} · {date}" for a run — who is 'you' for the current user,
+  // else their public name, else "a user" (whoever imported it — coach, parent
+  // or the athlete). Never shows an email.
+  const addedBy = (v) => {
+    if (!v) return null;
+    const who = v.createdBy ? (user && v.createdBy === user.id ? 'you' : (names[v.createdBy] || 'a user')) : null;
+    const when = v.createdAt ? fmtDay(String(v.createdAt).slice(0, 10)) : null;
+    if (!who && !when) return null;
+    return `Added${who ? ' by ' + who : ''}${when ? ' · ' + when : ''}`;
+  };
+
   const back = { label: 'Test Sets', to: '/test-sets', state: { athleteId, name } };
   if (!athleteId) return <Shell><p style={S.muted}>No athlete selected. Open this from Test Sets with a swimmer loaded.</p></Shell>;
 
@@ -146,6 +172,7 @@ export default function TestResults() {
                   {v.summary?.held === false && <span style={{ color: '#f2b654', marginRight: 8 }}>Not held</span>}
                   {v.summaryRows.filter((r) => r.kind === 'time').slice(0, 1).map((r) => <span key={r.key}>{r.label.toLowerCase()} {fmtTime(r.value)}</span>)}
                   <span style={{ color: INK_3 }}> · {v.swum} of {v.prescribed} timed</span>
+                  {addedBy(v) && <span style={{ color: INK_3 }}> · {addedBy(v)}</span>}
                 </span>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   <button onClick={() => { setOpenId(v.id); setOpenRep(null); setTimeout(() => document.getElementById('run-h')?.scrollIntoView({ behavior: 'smooth' }), 30); }}
@@ -232,7 +259,7 @@ export default function TestResults() {
         </>
       )}
 
-      {open && <RunDetail run={open} label={labels[views.indexOf(open)]} openRep={openRep} setOpenRep={setOpenRep} />}
+      {open && <RunDetail run={open} label={labels[views.indexOf(open)]} openRep={openRep} setOpenRep={setOpenRep} addedByText={addedBy(open)} />}
 
       <p style={{ ...S.muted, fontSize: 11, marginTop: 28 }}>
         <Link to="/test-sets" state={{ athleteId, name }} style={S.crumbLink}>Back to Test Sets</Link>
@@ -242,7 +269,7 @@ export default function TestResults() {
 }
 
 // One run in full: what was set, the results, every rep (click a rep for its lengths).
-function RunDetail({ run, label, openRep, setOpenRep }) {
+function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
   const has = (k) => run.has.includes(k);
   const cols = [
     ['Time', (r) => fmtTime(r.timeSec), true],
@@ -268,6 +295,7 @@ function RunDetail({ run, label, openRep, setOpenRep }) {
         {fmtDay(run.swumOn)}{run.paramText ? `, ${run.paramText}` : ''}{run.poolType ? `, ${run.poolType}` : ''}{run.location ? `, ${run.location}` : ''}.
         {' '}{run.swum} of {run.prescribed} reps timed{run.hasHrStream ? ', heart rate from a sensor' : ''}.
       </p>
+      {addedByText && <p style={{ ...S.muted, fontSize: 11, margin: '-6px 0 12px' }}>{addedByText}</p>}
       <dl style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: '12px 18px', margin: '0 0 16px' }}>
         {run.summaryRows.map((r) => (
           <div key={r.key}>

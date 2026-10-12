@@ -15,3 +15,9 @@ export const createProfile = async (userId, email, fullName) => {
 export const getMemberships = async (userId) => {
   return getMembershipRepository().getMemberships(userId)
 }
+
+// Display names for a list of user ids → { data: { [userId]: name } }.
+// For "Added by" on set results: resolve created_by to a readable coach name.
+export const getDisplayNames = async (ids) => {
+  return getMembershipRepository().displayNames(ids)
+}

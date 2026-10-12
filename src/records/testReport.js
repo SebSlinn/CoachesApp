@@ -193,6 +193,8 @@ export function buildRunView(pProtocol, pEffort) {
   const levelDef = Object.values(pProtocol?.params || {}).find((d) => d && d.kind === 'level');
   return {
     id: pEffort.id,
+    createdBy: pEffort.createdBy || null,
+    createdAt: pEffort.createdAt || null,
     swumOn: pEffort.swumOn,
     level: params.level || null,
     levelLabel: params.level ? (levelDef ? String(paramValueLabel(levelDef, params.level)).split(' — ')[0] : params.level) : null,

@@ -41,4 +41,17 @@ export class SupabaseMembershipRepository extends IMembershipRepository {
       .eq('status', 'active');
     return { data, error };
   }
+
+  // Display names for a set of user ids, via the SECURITY DEFINER function
+  // user_display_names (so we can read a name without broad access to `users`).
+  // Returns a { [userId]: name } map. Used by "Added by" on set results.
+  async displayNames(ids) {
+    const unique = [...new Set((ids || []).filter(Boolean))];
+    if (!unique.length) return { data: {}, error: null };
+    const { data, error } = await supabase.rpc('user_display_names', { p_ids: unique });
+    if (error) return { data: null, error };
+    const map = {};
+    for (const row of data || []) map[row.user_id] = row.name;
+    return { data: map, error: null };
+  }
 }

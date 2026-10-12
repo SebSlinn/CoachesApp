@@ -14,4 +14,8 @@ export class IMembershipRepository {
   async getMemberships(_userId) {
     throw new Error('IMembershipRepository.getMemberships not implemented');
   }
+  /** Display names for a list of user ids → { data: { [userId]: name } }. */
+  async displayNames(_ids) {
+    throw new Error('IMembershipRepository.displayNames not implemented');
+  }
 }
