@@ -560,7 +560,11 @@ export function analyse(analyserId, reps, ctx = {}) {
 export const HANDOFF_FMT = 'swimzone.testrun/1';
 
 /** Slim a prescription to what Poolside times against, for one swimmer. */
-export function buildHandoff(prescription, athleteId, { sessionId, location } = {}) {
+// Optional (2026-10-14, no fmt bump — older Poolside ignores them):
+//   hr:         { maxHr, source, estimated } — the max HR in use for this swimmer
+//               (athlete/maxHr.js); Poolside colours live and per-rep HR by zone band.
+//   zoneScheme: { id } for a built-in scheme, or a custom scheme object (zones/schemes.js).
+export function buildHandoff(prescription, athleteId, { sessionId, location, hr, zoneScheme } = {}) {
   const who = (prescription.athletes || []).find((a) => a.athleteId === athleteId) || (prescription.athletes || [])[0] || null;
   const reps = (who ? who.reps : prescription.reps || []).map((r) => ({
     repNo: r.repNo, blockIdx: r.blockIdx, blockRepeat: r.blockRepeat, lineIdx: r.lineIdx,
@@ -580,6 +584,8 @@ export function buildHandoff(prescription, athleteId, { sessionId, location } = 
     set: prescription.set,
     location: location || '',
     reps,
+    ...(hr && hr.maxHr ? { hr: { maxHr: hr.maxHr, source: hr.source || '', estimated: !!hr.estimated } } : {}),
+    ...(zoneScheme ? { zoneScheme } : {}),
   };
 }
 

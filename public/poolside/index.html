@@ -243,6 +243,14 @@
   .rep-hr{ margin-top:6px; font-size:12px; font-weight:600; color:var(--ink); display:flex; gap:10px; flex-wrap:wrap; }
   .rep-hr .heart{ color:var(--lane); }
   .rep-hr .low{ color:var(--warn); }
+  /* ---- heart-rate zones (max HR + the coach's zone colours from SwimZone) ---- */
+  .zone-tag{ display:inline-block; padding:1px 7px; border-radius:6px; font-weight:800; font-size:11.5px; line-height:1.5; letter-spacing:.02em; }
+  .hr-chip .zone-tag{ font-size:11px; padding:0 6px; }
+  #hrChipZone:empty{ display:none; }
+  .hr-zone{ text-align:center; font-size:13px; font-weight:700; min-height:18px; margin-top:4px; color:var(--muted); }
+  .test-panel .t-hr{ margin-top:6px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; font-weight:700; }
+  .test-panel .t-hr .live{ font-family:'JetBrains Mono',monospace; }
+  .zone-in{ color:var(--good); } .zone-low{ color:var(--accent); } .zone-high{ color:var(--warn); }
   .field .from-sensor{ display:block; margin-top:5px; font-size:11.5px; color:var(--good); font-weight:600; text-transform:none; letter-spacing:0; }
   .field .from-sensor.low{ color:var(--warn); }
 
@@ -282,7 +290,7 @@
     <header class="bar">
       <div class="word">Pool<b>side</b><span id="athleteTag" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-left:10px;letter-spacing:0;"></span></div>
       <div class="bar-right">
-        <button class="hr-chip" id="hrChip" type="button" aria-label="Heart rate sensor" title="Heart rate sensor"><span class="heart">&#9829;</span><span class="bpm" id="hrChipBpm"></span><span class="age" id="hrChipAge"></span></button>
+        <button class="hr-chip" id="hrChip" type="button" aria-label="Heart rate sensor" title="Heart rate sensor"><span class="heart">&#9829;</span><span class="bpm" id="hrChipBpm"></span><span id="hrChipZone"></span><span class="age" id="hrChipAge"></span></button>
         <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
       </div>
     </header>
@@ -442,6 +450,7 @@
   <div class="sheet">
     <h3 id="hrTitle">Heart rate</h3>
     <div class="hr-big" id="hrBig">--</div>
+    <div class="hr-zone" id="hrZone"></div>
     <div class="hr-status" id="hrStatus"></div>
     <div class="hr-tiles" id="hrTiles">
       <div class="hr-tile"><b id="hrFresh">–</b><span>seconds with a new reading</span></div>
@@ -921,6 +930,9 @@ const SwimCore = (function(){
       const aid = params.get('aid'), name = params.get('name'), se = params.get('se');
       if (!aid && !name) return;
       const incoming = { szAthleteId: aid || '', seNumber: se || '', athlete: name || '' };
+      // optional (2026-10-14): &mhr=<max HR>&mhre=1 (estimated)&zs=<scheme id> → HR zone colours
+      const mhr = Number(params.get('mhr'));
+      if (mhr >= 120 && mhr <= 240) incoming.hrProfile = { maxHr: mhr, estimated: params.get('mhre') === '1', source: params.get('mhre') === '1' ? 'age' : '', scheme: params.get('zs') || null };
       const anyTaps = state.sets.some(s => s.events.length);
       if (anyTaps && state.session.szAthleteId && state.session.szAthleteId !== incoming.szAthleteId){
         state = { session: { ...incoming, date: todayISO(), location: state.session.location || '' },
@@ -993,7 +1005,10 @@ const SwimCore = (function(){
     if (anyTaps){ try { localStorage.setItem(STORE_KEY + '-before-test', JSON.stringify(state)); } catch(e){} }
     state = {
       session: { athlete: (run.athlete && run.athlete.name) || '', szAthleteId: (run.athlete && run.athlete.id) || '', seNumber:'',
-                 date: todayISO(), location: run.location || (state.session && state.session.location) || '' },
+                 date: todayISO(), location: run.location || (state.session && state.session.location) || '',
+                 // optional (2026-10-14): max HR in use + the coach's zone scheme → HR zone colours
+                 hrProfile: run.hr && run.hr.maxHr ? { maxHr: Number(run.hr.maxHr), source: run.hr.source || '', estimated: !!run.hr.estimated,
+                                                      scheme: run.zoneScheme || null } : null },
       sets: setsFromRun(run), activeSetIndex: 0,
       test: { run, readings: {} },
     };
@@ -1078,7 +1093,8 @@ const SwimCore = (function(){
       '<div class="t-head"><b>'+escapeHtml(run.protocol.name)+(run.protocol.version>1?' v'+run.protocol.version:'')+'</b><span>'+poolLength+'m pool</span></div>'+
       (cur ? '<div class="t-row"><div class="t-rep">Rep '+cur.repNo+' of '+pg.total+
         '<span class="sub">'+cur.distM+' '+(PS_STROKE_NAME[cur.stroke]||cur.stroke)+(cur.intensity?' · '+escapeHtml(cur.intensity):'')+' · '+goLabel(cur.interval)+
-        (cur.targetLabel ? ' · target '+escapeHtml(cur.targetLabel) : '')+(cur.note?' · '+escapeHtml(cur.note):'')+'</span></div></div>' : '')+
+        (cur.targetLabel ? ' · target '+escapeHtml(cur.targetLabel) : '')+(cur.note?' · '+escapeHtml(cur.note):'')+'</span>'+
+        HRZONES.targetLine(cur.intensity)+'</div></div>' : '')+
       '<div class="t-go '+goCls+'">'+go+'</div>'+
       '<div class="t-dots">'+dots+'</div>'+
       (pg.extra ? '<div class="rep-meta">'+pg.extra+' extra rep'+(pg.extra===1?'':'s')+' beyond the test — left out of the SwimZone file</div>' : '');
@@ -1367,6 +1383,8 @@ const SwimCore = (function(){
       chip.className = 'hr-chip ' + c.cls;
       $('hrChipBpm').textContent = c.bpm;
       $('hrChipAge').textContent = c.age;
+      const cz = HRZONES && /^\d+$/.test(c.bpm) ? HRZONES.forHr(Number(c.bpm)) : null;
+      $('hrChipZone').innerHTML = cz ? HRZONES.tag(cz) : '';
       if (!$('hrOverlay').hidden) paintSheet();
     }
     setInterval(() => { if (mon) paint(); }, 1000);
@@ -1379,6 +1397,9 @@ const SwimCore = (function(){
       const last = lastReading(), st = mon ? mon.status : 'idle';
       const live = last && Date.now() - last.t < 60000 && (st === 'connected' || st === 'reconnecting');
       $('hrBig').textContent = live ? last.bpm : '--';
+      const zLive = live && HRZONES ? HRZONES.forHr(last.bpm) : null;
+      $('hrBig').style.color = zLive ? zLive.color : '';
+      $('hrZone').innerHTML = HRZONES ? HRZONES.sheetLine(zLive) : '';
       $('hrBig').style.opacity = live && Date.now() - last.t <= 4000 ? 1 : .45;
       const f = mon && mon.samples.length ? lib.freshness(mon.samples) : null;
       let status = '', scls = '';
@@ -1449,7 +1470,80 @@ const SwimCore = (function(){
     // sensor and redraw so stored readings show on the rep cards.
     window.addEventListener('poolside-hr-ready', () => { lib = window.PoolsideHR; key = null; sync().then(() => render()); });
     return { sync, paint, repMetrics, lengths, packFor, openSheet, onChip, pair, connect, disconnect, hasData: () => stream.length > 0,
+             last: () => { const l = lastReading(); return l && mon && (mon.status === 'connected' || mon.status === 'reconnecting') && Date.now() - l.t < 10000 ? l : null; },
              get lib(){ return lib; } };
+  })();
+
+  /* ============================================================
+     HEART-RATE ZONES — which training zone a heart rate falls in.
+     Needs two things from SwimZone: the athlete's max HR (state.session.hrProfile,
+     from a test hand-off or the Athlete Setup link) and the zone modules
+     (types.js / schemes.js). Bands are "beats below max" per zone type, in the
+     coach's colour scheme. Without either, every function returns null/'' and
+     nothing on screen changes.
+     ============================================================ */
+  // `var` (not const): the HR module above paints before this line has run.
+  var HRZONES = (function(){
+    let lib = window.PoolsideZones || null;
+    const profile = () => (state.session && state.session.hrProfile) || null;
+    function scheme(){
+      const p = profile(); const sc = p && p.scheme;
+      if (!lib || !sc) return 'sweetenham';
+      if (typeof sc === 'string') return sc;
+      return sc.types ? lib.sanitiseScheme(sc) : (lib.BUILT_IN_SCHEMES[sc.id] ? sc.id : 'sweetenham');
+    }
+    function maxHr(){ const p = profile(); const m = p && Number(p.maxHr); return lib && m >= 120 && m <= 240 ? m : null; }
+    function style(code){ return lib ? lib.resolveZoneStyle(code, scheme()) : null; }
+    // Every zone with an HR band, low → high intensity: {code, lo, hi, color, text, group}.
+    function bands(){
+      const m = maxHr(); if (!m) return null;
+      return lib.PRESCRIBABLE_CODES.map(code => {
+        const r = lib.hrTargetRange(code, m); if (!r) return null;
+        const st = style(code);
+        return { code, lo: r.lo, hi: r.hi, color: st.color, text: st.text, group: st.group };
+      }).filter(Boolean);
+    }
+    function band(code){ const m = maxHr(); if (!m || !code) return null; const r = lib.hrTargetRange(code, m); return r ? { ...r, ...style(code), code } : null; }
+    // The zone a heart rate falls in. Bands overlap on the chart (CS/MVO, LP/LT, and
+    // Zone 3 with Zone 4 at 5–10 below max): the lowest-intensity group wins, and
+    // types in that group are shown together ("CS/MVO"). Lower edges are exclusive so
+    // a boundary value belongs to one band. Above max → the top band, marked over.
+    function forHr(bpm){
+      const b = bands(); if (!b || !Number.isFinite(bpm)) return null;
+      let m = b.filter(z => (z.lo == null || bpm > z.lo) && bpm <= z.hi), over = false;
+      if (!m.length){
+        const top = Math.max(...b.map(z => z.hi));
+        if (bpm > top){ m = b.filter(z => z.hi === top); over = true; } else return null;
+      }
+      const g = m[0].group; m = m.filter(z => z.group === g);
+      return { codes: m.map(z => z.code), label: m.map(z => z.code).join('/') + (over ? '+' : ''), color: m[0].color, text: m[0].text,
+               lo: m.some(z => z.lo == null) ? null : Math.min(...m.map(z => z.lo)), hi: Math.max(...m.map(z => z.hi)), over };
+    }
+    function tag(z){ return z ? '<span class="zone-tag" style="background:'+z.color+';color:'+z.text+'">'+escapeHtml(z.label || z.code)+'</span>' : ''; }
+    const range = (z) => z.lo == null ? 'under ' + z.hi : z.lo + '–' + z.hi;
+    // Where a heart rate sits against a target zone's band.
+    function versus(bpm, code){
+      const t = band(code); if (!t || !Number.isFinite(bpm)) return null;
+      if (bpm > t.hi) return { cls:'zone-high', txt:'above' };
+      if (t.lo != null && bpm <= t.lo) return { cls:'zone-low', txt:'below' };
+      return { cls:'zone-in', txt:'in band' };
+    }
+    function maxNote(){ const p = profile(); return maxHr() ? 'max ' + maxHr() + (p.estimated ? ' (est. 220 − age)' : '') : ''; }
+    // Test panel: the target zone's HR band, with the live reading against it.
+    function targetLine(code){
+      const t = band(code); if (!t) return '';
+      const live = window.__zoneFakeLive || HR.last(), v = live ? versus(live.bpm, code) : null;   // __zoneFakeLive: test hook
+      return '<div class="t-hr">'+tag({ ...t, label: t.code })+'<span>HR '+range(t)+' bpm</span>'+
+        (v ? '<span class="live '+v.cls+'">now '+live.bpm+' · '+v.txt+'</span>' : '<span style="color:var(--muted);font-weight:600">'+maxNote()+'</span>')+'</div>';
+    }
+    function sheetLine(z){
+      if (!maxHr()) return '';
+      return z ? tag(z) + ' <span>' + range(z) + ' bpm · ' + maxNote() + '</span>' : '<span>' + maxNote() + '</span>';
+    }
+    window.addEventListener('poolside-zones-ready', () => { lib = window.PoolsideZones; render(); });
+    window.__zoneDebug = () => ({ ready: !!lib, maxHr: maxHr(), scheme: typeof scheme() === 'string' ? scheme() : 'custom',
+      at178: forHr(178), at168: forHr(168), at250: forHr(250), atBand: band('AT') });
+    return { forHr, band, tag, versus, targetLine, sheetLine, active: () => !!maxHr() };
   })();
 
   // Chronological start times of every timed rep in the session — a rep's
@@ -1462,9 +1556,16 @@ const SwimCore = (function(){
     return best;
   }
   const HR_SHORT = { hrStart:'HR-Start', hrMin:'min', hrAvg:'avg', hrPeak:'max', hrEnd:'HR-End', hrRec30:'+30s' };
-  function hrLineHtml(m){
+  function hrLineHtml(m, planCode){
     if (!m) return '';
     const bits = ['hrStart','hrMin','hrAvg','hrPeak','hrEnd','hrRec30'].filter(k => m[k] != null).map(k => HR_SHORT[k] + ' ' + m[k]);
+    // Zone of the rep's peak HR (Sweetenham counts HR at the end of the swim), and,
+    // for a test rep with a target zone, whether it was in that zone's band.
+    const zp = m.hrPeak != null ? HRZONES.forHr(m.hrPeak) : null;
+    if (zp){
+      const v = planCode ? HRZONES.versus(m.hrPeak, planCode) : null;
+      bits.push(HRZONES.tag(zp) + (v ? ' <span class="'+v.cls+'">'+v.txt+' '+escapeHtml(planCode)+'</span>' : ''));
+    }
     const low = m.hrCoverage < (HR.lib ? HR.lib.HR_MIN_COVERAGE : 0.4);
     return '<div class="rep-hr"><span class="heart">&#9829;</span>' + bits.map(b => '<span>' + b + '</span>').join('') +
       '<span class="' + (low ? 'low' : '') + '">' + Math.round(m.hrCoverage*100) + '% covered' + (low ? ' — patchy' : '') + '</span></div>';
@@ -1743,7 +1844,7 @@ const SwimCore = (function(){
       (splitsHtml ? (splitsHtml.startsWith('<table') ? splitsHtml : '<div class="splits">'+splitsHtml+'</div>') : '')+
       '<div class="rep-meta">'+timeMeta+'</div>'+
       (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
-      hrLineHtml(HR.repMetrics(rep, nextRepStart(rep.startTime)))+
+      hrLineHtml(HR.repMetrics(rep, nextRepStart(rep.startTime)), testNo != null && state.test ? (repPlan(testNo) || {}).intensity : null)+
       (flagLines ? '<div class="flags">'+flagLines+'</div>' : '')+
       actions+
     '</div>';
@@ -2409,6 +2510,16 @@ const SwimCore = (function(){
   import { repHrMetrics, lengthHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS } from './hrMetrics.js';
   window.PoolsideHR = { HrMonitor, isSupported, sensorFor, forgetSensor, repHrMetrics, lengthHrMetrics, freshness, packStream, unpackStream, HR_MIN_COVERAGE, HR_METRIC_KEYS };
   window.dispatchEvent(new Event('poolside-hr-ready'));
+</script>
+
+<!-- Heart-rate zones. types.js / schemes.js (+ writeups.js) are copied from
+     src/zones/ by scripts/copy-setformat.mjs (edit them there). Without them, or
+     without a max HR from SwimZone, Poolside looks and works exactly as before. -->
+<script type="module">
+  import { PRESCRIBABLE_CODES, TYPES, hrTargetRange } from './types.js';
+  import { resolveZoneStyle, sanitiseScheme, BUILT_IN_SCHEMES } from './schemes.js';
+  window.PoolsideZones = { PRESCRIBABLE_CODES, TYPES, hrTargetRange, resolveZoneStyle, sanitiseScheme, BUILT_IN_SCHEMES };
+  window.dispatchEvent(new Event('poolside-zones-ready'));
 </script>
 
 </body>

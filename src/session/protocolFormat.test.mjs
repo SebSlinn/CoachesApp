@@ -169,6 +169,10 @@ async function run() {
   const enc = await encodeHandoff(h);
   ok('encoded compactly (deflate) for a URL', enc.startsWith('z.') && enc.length < 2500 && /^[A-Za-z0-9._-]+$/.test(enc), enc.length);
   ok('decodes back to the same object', JSON.stringify(await decodeHandoff(enc)) === JSON.stringify(h));
+  ok('no max HR given → no hr / zoneScheme fields (older Poolside unaffected)', !('hr' in h) && !('zoneScheme' in h));
+  const hHr = buildHandoff(grp2, 'a2', { sessionId: 'sess-1', hr: { maxHr: 206, source: 'age', estimated: true }, zoneScheme: { id: 'urbanchek' } });
+  ok('carries max HR + zone scheme when given', hHr.hr.maxHr === 206 && hHr.hr.estimated === true && hHr.zoneScheme.id === 'urbanchek');
+  ok('…and they survive encode/decode', (await decodeHandoff(await encodeHandoff(hHr))).hr.maxHr === 206);
   const stepH = buildHandoff(prescribe(step, { athlete }), 'a1');
   ok('step hand-off has targets as labels', stepH.reps[0].targetLabel === '2:40' && stepH.reps[0].targetTime === '2:40');
   let threw = false; try { await decodeHandoff('x.abc'); } catch (e) { threw = true; }

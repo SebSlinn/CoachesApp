@@ -114,9 +114,13 @@ const TYPE_LIST = [
   // intense). The British Swimming / Swim England chart lists them the other way round;
   // Al chose this order on 2026-10-14. PL sits above LT.
   {
+    // LP RULES UNDER REVIEW (Al, 2026-10-14) — do not change until he has finished reading.
+    // The 1.0–1.2 rest:work rule came from an earlier chat with no source. Sweetenham and
+    // Bowman use LONG rest (e.g. 50s on 2:30–3:00; Bowman: lactate peaks ~4:00 after) over
+    // 50–100m reps. Al prefers whole-number ratios (or send-offs) when it is redone.
     code: 'LP', group: 4, rank: 6, label: 'Lactate production', short: 'LP',
     name: 'LP / Lactate Production', rpe: '17-19', energyModel: true, speedRatio: 1.00,
-    desc: 'Glycolytic system building lactate. Hard sustained efforts. Early season focus.',
+    desc: 'Improves the rate of anaerobic glycolysis. Hard efforts building lactate. Early season focus.',
     hrBand: { fromBbm: 0, toBbm: 10 },
     criteria: { speed: [0.97, 1.025], restWork: [1.0, 1.2], distMax: 100 },
   },

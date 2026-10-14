@@ -21,6 +21,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { listProtocols, prescribeForAthletes, getTestHistory } from '../services/protocols';
 import { ingestPoolsideSetResult } from '../services/results';
 import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel } from '../session/protocolFormat';
+import { resolveAthleteMaxHr } from '../services/athleteService.js';
+import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
 import { recordsHref } from '../records/athleteLink.js';
 import { levelShortLabel } from '../records/testVersions.js';
@@ -150,6 +152,7 @@ export default function TestSets() {
   const [openRun, setOpenRun] = useState(null);
   const [runsTick, setRunsTick] = useState(0);
   const [importMsg, setImportMsg] = useState(null);     // { ok, text }
+  const { scheme: zoneScheme } = useZoneScheme();   // sent to Poolside for HR zone colours
 
   // Library
   useEffect(() => {
@@ -200,7 +203,13 @@ export default function TestSets() {
   async function timeInPoolside(pAthleteId) {
     const mWin = window.open('', '_blank');
     try {
-      const mHandoff = buildHandoff(prescription, pAthleteId);
+      // The swimmer's max HR (saved → Max HR test → 220 − age) and the coach's zone
+      // colours travel with the set, so Poolside can colour heart rate by zone.
+      const mHr = await resolveAthleteMaxHr(pAthleteId).catch(() => null);
+      const mHandoff = buildHandoff(prescription, pAthleteId, {
+        hr: mHr && mHr.maxHr ? { maxHr: mHr.maxHr, source: mHr.source, estimated: mHr.estimated } : null,
+        zoneScheme: zoneScheme.builtIn ? { id: zoneScheme.id } : zoneScheme,
+      });
       const mUrl = '/poolside/#run=' + (await encodeHandoff(mHandoff));
       if (mWin) mWin.location.href = mUrl; else window.location.assign(mUrl);
     } catch (e) {

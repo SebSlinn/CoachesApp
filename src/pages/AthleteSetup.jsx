@@ -20,6 +20,7 @@ import {
   resolveAthleteMaxHr,
 } from '../services/athleteService.js';
 import MaxHrCard, { effectiveMaxHr } from '../components/MaxHrCard.jsx';
+import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 import { getAthleteBests, ingestPoolsideExport, ingestPoolsideSetResult, persistAthleteTimes, importOfficialRecords } from '../services/results.js';
 import { parsePaste } from '../athlete/swimmingResults.js';
 
@@ -73,6 +74,7 @@ export default function AthleteSetup() {
   const [maxHrSrc,       setMaxHrSrc]       = useState(null);    // 'typed' | 'test'
   const [maxHrOn,        setMaxHrOn]        = useState(null);
   const [hrBasis,        setHrBasis]        = useState({ test: null, dateOfBirth: null });
+  const { scheme: zoneScheme } = useZoneScheme();   // sent to Poolside for HR zone colours
   function applySavedMaxHr(pProf) {
     setMaxHrInput(pProf?.maxHr ? String(pProf.maxHr) : '');
     setMaxHrSrc(pProf?.maxHr ? (pProf.maxHrSource || 'typed') : null);
@@ -314,6 +316,10 @@ export default function AthleteSetup() {
     if (athleteId)   mParams.set('aid', athleteId);
     if (athleteName) mParams.set('name', athleteName);
     if (seNumber)    mParams.set('se', seNumber);
+    // Max HR in use + the coach's zone scheme → Poolside colours heart rate by zone.
+    const mHr = effectiveMaxHr({ value: maxHrInput, source: maxHrSrc, on: maxHrOn, basis: hrBasis });
+    if (mHr.maxHr) { mParams.set('mhr', String(mHr.maxHr)); if (mHr.estimated) mParams.set('mhre', '1'); }
+    if (zoneScheme?.builtIn && zoneScheme.id !== 'sweetenham') mParams.set('zs', zoneScheme.id);
     window.open('/poolside/?' + mParams.toString(), '_blank');
   }
 
