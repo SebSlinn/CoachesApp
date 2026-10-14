@@ -82,6 +82,8 @@ export default function Classifier() {
         athleteType:    mData.athleteType   || 'allround',
         phvStatus:      mData.phvStatus     || 'post',
         pace200:        mData.pace200       || '',
+        maxHr:          mData.maxHr         || null,   // max HR in use (athlete/maxHr.js), cached by Athlete Setup
+        maxHrEstimated: !!mData.maxHrEstimated,
       });
     });
     return () => { mCancelled = true; };

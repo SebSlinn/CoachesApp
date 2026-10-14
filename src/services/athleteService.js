@@ -12,7 +12,8 @@ import {
   STALE_MONTHS, VALID_DISTS, STROKE_NAMES,
   parseDateToAge, splitTimeToken, parseTimeToSec, deriveAthleteType,
 } from '../athlete/parse.js';
-import { getAthleteRepository, getAthleteProfileRepository } from '../repositories/RepositoryFactory.js';
+import { getAthleteRepository, getAthleteProfileRepository, getResultsRepository } from '../repositories/RepositoryFactory.js';
+import { resolveMaxHr, isValidMaxHr } from '../athlete/maxHr.js';
 
 // ─── Load / Save ──────────────────────────────────────────────────────────────
 
@@ -64,13 +65,68 @@ export async function saveAthleteProfile(pAthleteId, pFields) {
     return { data: null, error: { message: 'Unknown athlete type: ' + pFields.athleteType } };
   if (pFields.phvStatus != null && !PHV_STATUSES.includes(pFields.phvStatus))
     return { data: null, error: { message: 'Unknown PHV status: ' + pFields.phvStatus } };
-  return getAthleteProfileRepository().upsert(pAthleteId, {
+  const mProfile = {
     athleteType:    pFields.athleteType ?? null,
     phvStatus:      pFields.phvStatus ?? null,
     derivedProfile: pFields.derivedProfile ?? null,
     seNumber:       pFields.seNumber || null,
     club:           pFields.club || null,
-  });
+  };
+  // Max HR only when the caller says so ('maxHr' key present): null clears it.
+  if ('maxHr' in pFields) {
+    if (pFields.maxHr != null && !isValidMaxHr(pFields.maxHr))
+      return { data: null, error: { message: 'Max HR must be a number of beats per minute between 120 and 240.' } };
+    mProfile.maxHr       = pFields.maxHr == null ? null : Math.round(Number(pFields.maxHr));
+    mProfile.maxHrSource = pFields.maxHr == null ? null : (pFields.maxHrSource === 'test' ? 'test' : 'typed');
+    mProfile.maxHrOn     = pFields.maxHr == null ? null : (pFields.maxHrOn || new Date().toISOString().slice(0, 10));
+  }
+  return getAthleteProfileRepository().upsert(pAthleteId, mProfile);
+}
+
+// ─── Max heart rate ───────────────────────────────────────────────────────────
+// Rules in athlete/maxHr.js: saved on profile → latest Max HR test → 220 − age → none.
+
+/**
+ * The athlete's latest Max HR test result (analyser 'maxhr').
+ * @returns {Promise<{data: {peakHr:number, swumOn:string, effortId:string}|null, error}>}
+ */
+export async function loadLatestMaxHrTest(pAthleteId) {
+  if (!pAthleteId) return { data: null, error: null };
+  const { data, error } = await getResultsRepository().listSetEfforts(pAthleteId, {});
+  if (error) return { data: null, error };
+  const mRuns = (data || [])
+    .filter((e) => e.summary?.analyser === 'maxhr' && Number.isFinite(Number(e.summary?.peakHr)))
+    .sort((a, b) => (a.swumOn < b.swumOn ? 1 : a.swumOn > b.swumOn ? -1 : 0));
+  const m = mRuns[0];
+  return { data: m ? { peakHr: Number(m.summary.peakHr), swumOn: m.swumOn, effortId: m.id } : null, error: null };
+}
+
+/**
+ * Work out which max HR to use for an athlete. Never fails: anything it can't
+ * read is treated as unknown, and with nothing known the result is source 'none'.
+ * @param {string|null} pAthleteId
+ * @param {Object} [pOpts] { profile } — pass an already-loaded profile to save a round trip
+ * @returns {Promise<{ maxHr, source, estimated, age, detail, test, dateOfBirth }>}
+ */
+export async function resolveAthleteMaxHr(pAthleteId, pOpts = {}) {
+  if (!pAthleteId) return { ...resolveMaxHr({}), test: null, dateOfBirth: null };
+  const mRepo = getAthleteProfileRepository();
+  const [mProf, mTest, mDob] = await Promise.all([
+    pOpts.profile !== undefined ? Promise.resolve({ data: pOpts.profile }) : mRepo.get(pAthleteId).catch(() => ({ data: null })),
+    loadLatestMaxHrTest(pAthleteId).catch(() => ({ data: null })),
+    (mRepo.getDateOfBirth ? mRepo.getDateOfBirth(pAthleteId) : Promise.resolve({ data: null })).catch(() => ({ data: null })),
+  ]);
+  const p = mProf?.data || {};
+  const t = mTest?.data || null;
+  return {
+    ...resolveMaxHr({
+      savedMaxHr: p.maxHr, savedSource: p.maxHrSource, savedOn: p.maxHrOn,
+      testPeakHr: t?.peakHr, testOn: t?.swumOn,
+      dateOfBirth: mDob?.data || null,
+    }),
+    test: t,
+    dateOfBirth: mDob?.data || null,
+  };
 }
 
 // ─── Parse ────────────────────────────────────────────────────────────────────
@@ -222,6 +278,11 @@ export function buildAthleteObject(pFields) {
     athleteType:    pFields.athleteType,
     phvStatus:      pFields.phvStatus,
     pace200:        pFields.times?.['200_FS']?.display || '',
+    // The max HR in use (resolveAthleteMaxHr), cached on the active athlete so the
+    // Classifier / Set Builder / Poolside can show HR targets without a round trip.
+    maxHr:          pFields.maxHr ?? null,
+    maxHrSource:    pFields.maxHrSource || 'none',
+    maxHrEstimated: !!pFields.maxHrEstimated,
   };
 }
 

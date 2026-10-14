@@ -7,6 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { secToDisplay } from '../zones/helpers.js';
 import { ATHLETE_TYPE_OPTS } from '../zones/constants.js';
 import { deriveAthleteType, parseTimeToSec } from '../athlete/parse.js';
+import { isValidMaxHr } from '../athlete/maxHr.js';
 import {
   parseSwimmingResultsText,
   buildAthleteObject,
@@ -16,7 +17,9 @@ import {
   saveAthlete,
   loadAthleteProfile,
   saveAthleteProfile,
+  resolveAthleteMaxHr,
 } from '../services/athleteService.js';
+import MaxHrCard, { effectiveMaxHr } from '../components/MaxHrCard.jsx';
 import { getAthleteBests, ingestPoolsideExport, ingestPoolsideSetResult, persistAthleteTimes, importOfficialRecords } from '../services/results.js';
 import { parsePaste } from '../athlete/swimmingResults.js';
 
@@ -65,6 +68,16 @@ export default function AthleteSetup() {
   const [officialRecords, setOfficialRecords] = useState([]);   // parsed SwimmingResults rows w/ provenance (date/meet/venue/licence)
   const [profileMsg,     setProfileMsg]     = useState('');      // result of Save Athlete
   const [profileSavedAt, setProfileSavedAt] = useState(null);    // when this athlete's profile was last saved to their record
+  // Max HR: the value saved on the profile ('' = none) + what it falls back to (latest test, date of birth)
+  const [maxHrInput,     setMaxHrInput]     = useState('');
+  const [maxHrSrc,       setMaxHrSrc]       = useState(null);    // 'typed' | 'test'
+  const [maxHrOn,        setMaxHrOn]        = useState(null);
+  const [hrBasis,        setHrBasis]        = useState({ test: null, dateOfBirth: null });
+  function applySavedMaxHr(pProf) {
+    setMaxHrInput(pProf?.maxHr ? String(pProf.maxHr) : '');
+    setMaxHrSrc(pProf?.maxHr ? (pProf.maxHrSource || 'typed') : null);
+    setMaxHrOn(pProf?.maxHr ? (pProf.maxHrOn || null) : null);
+  }
 
   // ── On mount: if we arrived via "load this athlete" (a member/child clicked
   //    on the Dashboard or Organisations), pre-fill from THEIR records — a shell
@@ -81,6 +94,7 @@ export default function AthleteSetup() {
       setAthleteType('allround'); setPhvStatus('post');
       setAthleteTimes({}); setDerivedProfile(null);
       setProfileMsg(''); setProfileSavedAt(null);
+      applySavedMaxHr(null); setHrBasis({ test: null, dateOfBirth: null });
       setLoadedNote('Loading ' + (mHandoff.name || 'athlete') + '…');
       if (mHandoff.athleteId) {
         // Their record: best times, plus the coach's saved judgements (type, PHV)
@@ -92,11 +106,17 @@ export default function AthleteSetup() {
             const mTimes = bestsToTimes(mBests?.data?.bests || []);
             const mLocalSame = mLocal && mLocal.athleteId === mHandoff.athleteId ? mLocal : null;
             const mProf = mRes?.data || mLocalSame || {};
+            // Max HR: saved on their profile → latest Max HR test → 220 − age → none.
+            const mHr = await resolveAthleteMaxHr(mHandoff.athleteId, { profile: mRes?.data || null });
+            if (mCancelled) return;
+            applySavedMaxHr(mRes?.data || null);
+            setHrBasis({ test: mHr.test, dateOfBirth: mHr.dateOfBirth });
             const mFields = {
               athleteId: mHandoff.athleteId, name: mHandoff.name || '',
               seNumber: mProf.seNumber || '', club: mProf.club || '', times: mTimes,
               athleteType: mProf.athleteType || 'allround', phvStatus: mProf.phvStatus || 'post',
               derivedProfile: deriveAthleteType(mTimes) || null,
+              maxHr: mHr.maxHr, maxHrSource: mHr.source, maxHrEstimated: mHr.estimated,
             };
             setAthleteTimes(mTimes);
             setDerivedProfile(mFields.derivedProfile);
@@ -128,11 +148,20 @@ export default function AthleteSetup() {
       setPhvStatus(mData.phvStatus     || 'post');
       setAthleteTimes(mTimes);
       setDerivedProfile(mData.derivedProfile || deriveAthleteType(mTimes) || null);
+      // A device-only athlete keeps a typed max HR on the active slot.
+      if (!mData.athleteId && mData.maxHrSource === 'profile' && mData.maxHr) {
+        setMaxHrInput(String(mData.maxHr)); setMaxHrSrc('typed');
+      }
       // The active athlete is a real member → their record is the source of truth.
       if (mData.athleteId) {
         setAthleteId(mData.athleteId);
-        loadAthleteProfile(mData.athleteId).then(({ data: mProf }) => {
-          if (mCancelled || !mProf) return;
+        loadAthleteProfile(mData.athleteId).then(async ({ data: mProf }) => {
+          if (mCancelled) return;
+          const mHr = await resolveAthleteMaxHr(mData.athleteId, { profile: mProf || null });
+          if (mCancelled) return;
+          applySavedMaxHr(mProf || null);
+          setHrBasis({ test: mHr.test, dateOfBirth: mHr.dateOfBirth });
+          if (!mProf) return;
           if (mProf.athleteType) setAthleteType(mProf.athleteType);
           if (mProf.phvStatus)   setPhvStatus(mProf.phvStatus);
           if (mProf.seNumber)    setSeNumber(mProf.seNumber);
@@ -183,9 +212,11 @@ export default function AthleteSetup() {
   // coach's judgements on THEIR record so they follow the athlete everywhere.
   async function handleSave() {
     setProfileMsg('');
+    const mHr = effectiveMaxHr({ value: maxHrInput, source: maxHrSrc, on: maxHrOn, basis: hrBasis });
     const mAthlete = buildAthleteObject({
       athleteId, name: athleteName, seNumber, club: clubName,
       times: athleteTimes, athleteType, phvStatus, derivedProfile,
+      maxHr: mHr.maxHr, maxHrSource: mHr.source, maxHrEstimated: mHr.estimated,
     });
     setDerivedProfile(mAthlete.derivedProfile);
     await saveAthlete(mAthlete);
@@ -193,15 +224,19 @@ export default function AthleteSetup() {
       setProfileMsg('Saved on this device as the active athlete. Load them from the Dashboard or Organisations to store the profile on their record.');
       return;
     }
-    const { data, error } = await saveAthleteProfile(athleteId, {
-      athleteType, phvStatus, derivedProfile: mAthlete.derivedProfile, seNumber, club: clubName,
+    // Max HR: '' clears the saved value; a valid number saves it; anything else is left as it was.
+    const mHrFields = maxHrInput === '' ? { maxHr: null }
+      : isValidMaxHr(maxHrInput) ? { maxHr: Number(maxHrInput), maxHrSource: maxHrSrc || 'typed', maxHrOn }
+      : {};
+    const { data, error, warning } = await saveAthleteProfile(athleteId, {
+      athleteType, phvStatus, derivedProfile: mAthlete.derivedProfile, seNumber, club: clubName, ...mHrFields,
     });
     if (error) {
       setProfileMsg('Active on this device, but not saved to their record: ' + (error.message || 'save failed') + ' (you may need edit rights to this athlete’s log).');
       return;
     }
     setProfileSavedAt(data?.updatedAt || new Date().toISOString());
-    setProfileMsg('Saved — ' + (athleteName || 'athlete') + ' is active on this device and their type / maturation are stored on their record.');
+    setProfileMsg('Saved — ' + (athleteName || 'athlete') + ' is active on this device and their type / maturation / max HR are stored on their record.' + (warning ? ' ' + warning : ''));
   }
 
   function handleExportJson() {
@@ -451,6 +486,10 @@ export default function AthleteSetup() {
           </div>
         </div>
 
+        {/* Max heart rate */}
+        <MaxHrCard value={maxHrInput} source={maxHrSrc} on={maxHrOn} basis={hrBasis} athleteKnown={!!athleteId}
+          onChange={(v, src, on) => { setMaxHrInput(v); setMaxHrSrc(src); setMaxHrOn(on); }} />
+
         {/* Derived profile card */}
         {derivedProfile && (
           <div style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
@@ -511,7 +550,7 @@ export default function AthleteSetup() {
           {profileMsg && <div style={{ fontSize: 10, color: 'rgba(52,199,89,0.85)', marginTop: 6 }}>{profileMsg}</div>}
           {!profileMsg && profileSavedAt && <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>Profile on record · last saved {new Date(profileSavedAt).toLocaleString()}</div>}
           <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 6 }}>
-            Save Athlete stores type, maturation, SE number and club{athleteId ? ' on ' + (athleteName || 'the athlete') + '’s record' : ' on this device'}. {athleteId ? 'Save Times To Records writes the times to ' + (athleteName || 'the athlete') + '’s log — dated (parsed) times as official, typed times as time trials.' : 'Load an athlete to save their times to records.'}
+            Save Athlete stores type, maturation, max HR, SE number and club{athleteId ? ' on ' + (athleteName || 'the athlete') + '’s record' : ' on this device'}. {athleteId ? 'Save Times To Records writes the times to ' + (athleteName || 'the athlete') + '’s log — dated (parsed) times as official, typed times as time trials.' : 'Load an athlete to save their times to records.'}
           </div>
           {dbMsg && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.6)', marginTop: 6 }}>{dbMsg}</div>}
         </div>

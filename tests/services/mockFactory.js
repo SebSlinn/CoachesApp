@@ -1,5 +1,5 @@
 // In-memory stand-ins for the repositories the services use.
-export const store = { protocols: [], efforts: [], reps: [], bests: {}, profiles: {}, activeAthlete: null };
+export const store = { protocols: [], efforts: [], reps: [], bests: {}, profiles: {}, dobs: {}, activeAthlete: null };
 let n = 0; const id = () => 'id-' + (++n);
 export function getProtocolsRepository() {
   return {
@@ -30,6 +30,9 @@ export function getResultsRepository() {
       return { data: store.efforts.filter((e) => e.protocolId === pid && e.athleteId === a)
         .map((e) => ({ ...e, reps: store.reps.filter((r) => r.effortId === e.id) })), error: null };
     },
+    async listSetEfforts(a) {
+      return { data: store.efforts.filter((e) => e.athleteId === a), error: null };
+    },
     async updateSetEffortSummary(eid, s) { const e = store.efforts.find((x) => x.id === eid); e.summary = s; return { data: { updated: 1 }, error: null }; },
   };
 }
@@ -43,5 +46,6 @@ export function getAthleteProfileRepository() {
   return {
     async get(a) { return { data: store.profiles[a] || null, error: null }; },
     async upsert(a, p) { store.profiles[a] = { ...(store.profiles[a] || {}), ...p, athleteId: a, updatedAt: new Date().toISOString() }; return { data: store.profiles[a], error: null }; },
+    async getDateOfBirth(a) { return { data: store.dobs[a] || null, error: null }; },
   };
 }

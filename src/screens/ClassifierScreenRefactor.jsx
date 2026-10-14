@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { REST_TYPE_OPTS, ATHLETE_TYPE_OPTS, ENERGY_SYSTEMS, ZONE_GROUPS, ZONES, ZONE_WRITEUPS } from "../zones/index.js";
-import { parseTime, fmtTime, secToDisplay, suggestTimes, PRESCRIBABLE_CODES, withAlpha } from "../zones/index.js";
+import { parseTime, fmtTime, secToDisplay, suggestTimes, PRESCRIBABLE_CODES, withAlpha, hrTargetRange } from "../zones/index.js";
 import { useZoneScheme } from "../context/ZoneSchemeContext.jsx";
 
 // Zone picker order: fastest first (HVO … A1), every training type in use (types.js).
@@ -272,6 +272,23 @@ export function ClassifierScreenRefactor({
                       </div>
                     )}
                   </div>
+                  {(() => {
+                    // HR target for this zone — only when the athlete has a max HR
+                    // (saved / Max HR test / 220 − age). Without one, nothing is shown.
+                    const hrR = hrTargetRange(selectedZone, activeAthlete?.maxHr);
+                    if (!hrR) return null;
+                    return (
+                      <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:6 }}>
+                        <span style={{ fontSize:9, color:zc+'99', fontWeight:700, letterSpacing:'0.08em', width:24 }}>HR</span>
+                        <span style={{ fontSize:11, color:zc, fontWeight:700, fontFamily:'monospace' }}>
+                          {hrR.lo == null ? 'below ' + hrR.hi : hrR.lo + '–' + hrR.hi} bpm
+                        </span>
+                        <span style={{ fontSize:9, color:'rgba(255,255,255,0.3)' }}>
+                          max {activeAthlete.maxHr}{activeAthlete.maxHrEstimated ? ' (est. 220 − age)' : ''}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {selectedZone && ['A1', 'A2', 'A3'].includes(selectedZone) && (() => {

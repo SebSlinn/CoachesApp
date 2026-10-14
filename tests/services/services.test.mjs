@@ -23,6 +23,36 @@ console.log('\nAthlete profile (per athlete, stored on their record)');
 }
 
 
+console.log('\nMax HR (saved on profile → latest Max HR test → 220 − age → none)');
+{
+  const none = await A.resolveAthleteMaxHr(null);
+  ok('no athlete → plain working (source none, no max HR)', none.source === 'none' && none.maxHr === null, none);
+  const kid = await A.resolveAthleteMaxHr('hr-kid');
+  ok('athlete with nothing known → none', kid.source === 'none', kid);
+  store.dobs['hr-kid'] = '2012-03-02';
+  const byAge = await A.resolveAthleteMaxHr('hr-kid');
+  ok('date of birth only → 220 − age estimate', byAge.source === 'age' && byAge.estimated && byAge.maxHr === 220 - byAge.age, byAge);
+  store.efforts.push({ id: 'mhr-1', athleteId: 'hr-kid', swumOn: '2026-09-01', summary: { analyser: 'maxhr', peakHr: 199 } },
+                     { id: 'mhr-2', athleteId: 'hr-kid', swumOn: '2026-10-01', summary: { analyser: 'maxhr', peakHr: 203 } },
+                     { id: 'oth-1', athleteId: 'hr-kid', swumOn: '2026-10-05', summary: { analyser: 'series', peakHr: 250 } });
+  const byTest = await A.resolveAthleteMaxHr('hr-kid');
+  ok('latest Max HR test beats the estimate', byTest.source === 'test' && byTest.maxHr === 203 && byTest.test.effortId === 'mhr-2', byTest);
+  const bad = await A.saveAthleteProfile('hr-kid', { maxHr: 40 });
+  ok('rejects an impossible max HR', !!bad.error);
+  await A.saveAthleteProfile('hr-kid', { athleteType: 'sprint', maxHr: 197 });
+  const bySaved = await A.resolveAthleteMaxHr('hr-kid');
+  ok('saved on profile beats the test', bySaved.source === 'profile' && bySaved.maxHr === 197, bySaved);
+  ok('saved value records how it was set', store.profiles['hr-kid'].maxHrSource === 'typed' && !!store.profiles['hr-kid'].maxHrOn);
+  await A.saveAthleteProfile('hr-kid', { athleteType: 'sprint' });
+  ok('saving without maxHr leaves the saved value alone', store.profiles['hr-kid'].maxHr === 197);
+  await A.saveAthleteProfile('hr-kid', { athleteType: 'sprint', maxHr: null });
+  ok('maxHr: null clears it → back to the test', (await A.resolveAthleteMaxHr('hr-kid')).source === 'test');
+  ok('active athlete carries the max HR in use', A.buildAthleteObject({ name: 'K', times: {}, maxHr: 203, maxHrSource: 'test' }).maxHr === 203);
+  // tidy: leave the shared store as later tests expect it
+  store.efforts.splice(store.efforts.findIndex((e) => e.id === 'mhr-1'), 3);
+}
+
+
 console.log('\nTest history across ladder versions');
 {
   const lv1 = { ...ladderProtocol, id: 'lad-1', version: 1, ownerOrgId: null, locked: true };
