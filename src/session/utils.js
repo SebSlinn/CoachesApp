@@ -1,5 +1,6 @@
 //src/session/utils.js - Utility functions for session modeling and set builder operations.
 // Set Builder utility functions
+import { zoneColor } from '../zones/schemes.js';
 function sbId() { return "sb" + Date.now() + Math.random().toString(36).substr(2, 9); }
 
 function sbNewLine(defaults) {
@@ -54,14 +55,10 @@ function sbFmtTime(s) {
   return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, "0")}`;
 }
 
-function sbZoneColor(zone) {
-  // Must match ZONE_COLORS in zones/constants.js exactly.
-  const colors = {
-    HVO: "#FF2D55", LT: "#FF5500", LP: "#FF9500", AT: "#FFCC00",
-    A3: "#34C759", A2: "#30B0C7", A1: "#007AFF",
-    CS: "#30B0C7", // CS shares A2's colour family (aerobic threshold zone)
-  };
-  return colors[zone] || "#888";
+function sbZoneColor(zone, scheme) {
+  // Thin wrapper over zones/schemes.js (one colour source; contracts/ZONES.md).
+  // Non-zone values ('Drill', 'Skills', '') get the neutral grey.
+  return zoneColor(zone, scheme);
 }
 
 function sbBlockVolume(block) {

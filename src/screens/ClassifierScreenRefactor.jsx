@@ -2,7 +2,10 @@
 
 import React from 'react';
 import { REST_TYPE_OPTS, ATHLETE_TYPE_OPTS, ENERGY_SYSTEMS, ZONE_GROUPS, ZONES, ZONE_WRITEUPS } from "../zones/index.js";
-import { parseTime, fmtTime, secToDisplay, suggestTimes } from "../zones/index.js";
+import { parseTime, fmtTime, secToDisplay, suggestTimes, TYPE_CODES, zoneColor } from "../zones/index.js";
+
+// Zone picker order: fastest first (HVO … A1), every training type in types.js.
+const PICKER_CODES = [...TYPE_CODES].reverse();
 import { DRILL_LIBRARY } from "../drills/index.js";
 import EnergyGraph from "../components/EnergyGraph.jsx";
 import RepChart from "../components/RepChart.jsx";
@@ -38,7 +41,7 @@ export function ClassifierScreenRefactor({
           const p200s = parseTime(inputs.pace200);
           if (!p200s) return null;
           const candidate = {};
-          ["HVO","LT","LP","AT","CS","A3","A2","A1"].forEach(z => {
+          PICKER_CODES.forEach(z => {
             candidate[z] = suggestTimes(z, inputs.distM, inputs.stroke, p200s, activeAthlete?.derivedProfile?.css);
           });
           return candidate;
@@ -46,7 +49,6 @@ export function ClassifierScreenRefactor({
       })()
     : null;
 
-  const zoneColors = {HVO:'#FF2D55',LT:'#FF5500',LP:'#FF9500',AT:'#FFCC00',CS:'#30B0C7',A3:'#34C759',A2:'#30B0C7',A1:'#007AFF'};
   const selectedSuggestion = classifierSuggestion && selectedZone ? classifierSuggestion[selectedZone] : null;
   const singleResult = seqResult || rawSingleResult;
 
@@ -150,8 +152,8 @@ export function ClassifierScreenRefactor({
         </div> {/* end greyed numeric inputs wrapper */}
 
         <div style={{ display:'flex', gap:4, marginBottom:6 }}>
-          {['HVO','LT','LP','AT','CS','A3','A2','A1'].map(function(z) {
-            var zc = zoneColors[z];
+          {PICKER_CODES.map(function(z) {
+            var zc = zoneColor(z);
             var active = selectedZone===z;
             return (
               <button key={z} onClick={() => { setSelectedZone(active ? null : z); setClassifierDrill(''); }}
@@ -216,7 +218,7 @@ export function ClassifierScreenRefactor({
             // Deduplicate and sort ascending (smallest ON = least rest first)
             const onOpts = [...new Set(onOptsRaw)].sort((a, b) => a - b);
 
-            const zc = zoneColors[selectedZone] || '#fff';
+            const zc = zoneColor(selectedZone);
             const showNoOn = selectedZone === 'A1' || (onOpts.length > 0 && onOpts[0] === onOpts[onOpts.length - 1] && onOpts[0] <= (sg.inHigh + 2));
 
             return (
@@ -640,7 +642,7 @@ export function ClassifierScreenRefactor({
                 const zoneId = singleResult.csDetection?.isCS ? "CS" : singleResult.primary?.id;
                 const wr = zoneId && ZONE_WRITEUPS[zoneId];
                 if (!wr) return null;
-                const zc = {HVO:"#FF2D55",LT:"#FF5500",LP:"#FF9500",AT:"#FFCC00",CS:"#30B0C7",A3:"#34C759",A2:"#30B0C7",A1:"#007AFF"}[zoneId] || "#fff";
+                const zc = zoneColor(zoneId);
                 return (
                   <div style={{ background: "rgba(255,255,255,0.025)", border: `1px solid ${zc}30`,
                     borderLeft: `3px solid ${zc}`, borderRadius: 8, padding: "12px 14px", marginBottom: 10 }}>

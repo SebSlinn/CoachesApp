@@ -1,6 +1,8 @@
 // src/zones/zoneCriteria.js
 // Model-agnostic zone matching criteria.
 //
+// IMPORTS: only ./types.js (the criteria data). The evaluator itself is pure.
+//
 // PURPOSE
 // Single source of truth for "what counts as zone X" — independent of UI.
 // All banners and badges read from here via evaluateZoneMatch().
@@ -44,95 +46,31 @@
 //   distMax / distMin
 //     Single-rep distance constraints in metres.
 //
+//   hrBand: { fromBbm, toBbm }
+//     Heart rate as beats below the athlete's max HR (bbm = maxHr − hr).
+//     Passes when fromBbm ≤ bbm ≤ toBbm (null = open). Needs BOTH
+//     athleteContext.maxHr AND a measured HR on the inputs (pInputs.hr, else
+//     hrPeak, else hrAvg — a swum set from Tests/Records). Missing either →
+//     SKIPPED, never failed. A planned set has no HR, so prescribing is unaffected.
+//
+//   after: [codes]
+//     The type only applies straight after one of these types. Needs
+//     pInputs.prevType; without it the evaluator returns null ("no opinion")
+//     for the whole type. No type uses it yet — kept for sequence-defined methods.
+//
 // All present conditions must pass for isMatch = true.
 // If ≥1 passes and ≥1 fails → isPartial = true.
 // If a zone has no conditions → returns null (no opinion).
 // Conditions that cannot be evaluated (missing athleteContext) are skipped —
 // they contribute neither to pass nor fail counts.
 
+import { criteriaTable } from './types.js';
+
 // ── Sweetenham model ────────────────────────────────────────────────────────
+// The criteria now live with each training type in types.js (one entry per code).
+// This table is derived from it, each type's hrBand folded in as a condition.
 
-const ZONE_CRITERIA_SWEETENHAM = {
-
-  // HVO — Alactic sprints. Faster than any race pace, very long rest, ≤15s reps.
-  HVO: {
-    speed:    [null, 0.85],       // >15% faster than 200PB pace
-    restWork: [5, null],          // rest ≥ 5× work time
-    workDur:  [null, 15],         // ≤15s per rep
-  },
-
-  // LT — Lactate Tolerance. High-speed glycolytic work.
-  LT: {
-    speed: [0.85, 0.97],
-  },
-
-  // LP — Lactate Production. Near race pace, ~1:1 rest:work, short reps.
-  LP: {
-    speed:    [0.97, 1.025],
-    restWork: [1.0, 1.2],
-    distMax:  100,
-  },
-
-  // AT — Anaerobic Threshold (Sweetenham).
-  // Pace: ½ × 200PB + 7–10s per 100m.
-  // Rest: ~10s for 50m, 10–20s for 100–400m.
-  // Volume (metres): Sprinters 1500–3000, Mid 3000–4500, Distance >4500.
-  // Falls back to ratio band [1.025, 1.10] when no athlete loaded.
-  AT: {
-    atPace:  { offsetLow: 7, offsetHigh: 10 },
-    speed:   [1.025, 1.10],
-    restSecByDist: {
-      default: [10, 20],
-      byDist:  [
-        [50,  [5, 15]],
-        [400, [10, 20]],
-      ],
-    },
-    volumeByAthleteType: {
-      sprint:    [1500, 3000],
-      allround:  [3000, 4500],
-      endurance: [4500, null],
-    },
-  },
-
-  // A3 — Hard Aerobic. Overlaps AT at the fast end (both share +10s boundary).
-  // Pace: ½ × 200PB + 10–15s per 100m.
-  // Rest: 10–20s (same rest profile as AT — zone is distinguished by pace + context).
-  // Distance: typically 50–400m, can be longer.
-  // Falls back to ratio band [1.10, 1.22] when no athlete loaded.
-  A3: {
-    atPace:  { offsetLow: 10, offsetHigh: 15 },
-    speed:   [1.10, 1.22],
-    restSecByDist: {
-      default: [10, 20],
-      byDist:  [
-        [50,  [5, 15]],
-        [400, [10, 20]],
-      ],
-    },
-  },
-
-  // A2 — Moderate Aerobic.
-  A2: {
-    speed: [1.22, 1.38],
-  },
-
-  // A1 — Easy Aerobic / recovery.
-  A1: {
-    speed: [1.38, null],
-  },
-
-  // CS — Critical Speed. A training method in Zone 3 (AT/A3 crossover).
-  // Pace: within ±5% of CSS (athlete-specific, from 1500+400 or 800+400 etc.).
-  // Structure: work:rest ~1.2–2.5:1 (rest:work 0.4–0.83), 22–38 min volume.
-  // Falls back to speed ratio [0.95, 1.05] when no CSS available.
-  CS: {
-    cssPace:  0.05,             // ±5% of athlete's CSS pace
-    speed:    [0.95, 1.05],     // fallback ratio band
-    restWork: [0.4, 0.83],      // rest:work 0.4–0.83 (work:rest 1.2–2.5)
-    volume:   [22 * 60, 38 * 60],
-  },
-};
+const ZONE_CRITERIA_SWEETENHAM = criteriaTable();
 
 // Active model — change this single line to swap models globally.
 const ACTIVE_CRITERIA = ZONE_CRITERIA_SWEETENHAM;
@@ -147,8 +85,9 @@ const ACTIVE_CRITERIA = ZONE_CRITERIA_SWEETENHAM;
  *                                  restWorkRatio, workDur, repPace100,
  *                                  base100Pace
  * @param {Object} pInputs          classifier inputs — needs distM, qty, onTime,
- *                                  targetTime
- * @param {Object} [pAthleteCtx]    optional { css, pace200Sec } for athlete-
+ *                                  targetTime. Optional: hr | hrPeak | hrAvg (bpm,
+ *                                  swum sets) and prevType (type of the line before).
+ * @param {Object} [pAthleteCtx]    optional { css, pace200Sec, athleteType, maxHr } for athlete-
  *                                  specific criteria. Pass null/undefined to
  *                                  use ratio-band fallbacks.
  * @returns {{isMatch, isPartial, criteria}|null}
@@ -156,6 +95,12 @@ const ACTIVE_CRITERIA = ZONE_CRITERIA_SWEETENHAM;
 export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) {
   const mCrit = ACTIVE_CRITERIA[pZoneId];
   if (!mCrit || !pSingleResult) return null;
+
+  // after: needs the previous line's type; without it, no opinion.
+  if (mCrit.after) {
+    const mPrev = pInputs?.prevType;
+    if (!mPrev) return null;
+  }
 
   const mResults   = [];
   const mSr        = pSingleResult.speedRatio;
@@ -304,6 +249,32 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
       key: 'dist', label: 'Distance',
       met: mOk,
       detail: `${mDist}m` + describeRange(mLo, mHi, v => v + 'm'),
+    });
+  }
+
+  // ── after ──────────────────────────────────────────────────────────────────
+  if (mCrit.after) {
+    const mPrev = pInputs.prevType;
+    mResults.push({
+      key: 'after', label: 'Follows',
+      met: mCrit.after.includes(mPrev),
+      detail: `after ${mPrev} (need after ${mCrit.after.join('/')})`,
+    });
+  }
+
+  // ── hrBand ─────────────────────────────────────────────────────────────────
+  // Beats below max. Skipped (not failed) without max HR or a measured HR.
+  const mMaxHr = Number(pAthleteCtx?.maxHr) || null;
+  const mHr    = Number(pInputs?.hr ?? pInputs?.hrPeak ?? pInputs?.hrAvg) || null;
+  if (mCrit.hrBand && mMaxHr && mHr) {
+    const { fromBbm: mLo = null, toBbm: mHi = null } = mCrit.hrBand;
+    const mBbm = mMaxHr - mHr;
+    const mOk  = (mLo === null || mBbm >= mLo) && (mHi === null || mBbm <= mHi);
+    mResults.push({
+      key: 'hrBand', label: 'Heart rate',
+      met: mOk,
+      detail: `${Math.round(mHr)} bpm = ${Math.round(mBbm)} below max ${Math.round(mMaxHr)}` +
+        describeRange(mLo, mHi, v => v + ' bbm'),
     });
   }
 

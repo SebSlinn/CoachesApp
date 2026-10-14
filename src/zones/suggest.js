@@ -93,7 +93,9 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue) {
     // Use mid-IN time as basis for rest calculation
     const mMidIn = (mInLow + mInHigh) / 2;
     mRestLow  = mRwLo !== null ? mMidIn * mRwLo : 0;
-    mRestHigh = mRwHi !== null ? mMidIn * mRwHi : mMidIn * 0.5;
+    // Open-ended upper bound (HVO, PL: "rest ≥ 5× work"): suggest up to 1.5× the minimum.
+    // (Was mMidIn × 0.5, which put the ON high below the ON low.)
+    mRestHigh = mRwHi !== null ? mMidIn * mRwHi : Math.max(mRestLow * 1.5, mMidIn * 0.5);
 
   } else {
     // No rest criteria defined (A1, A2 — straight-on)

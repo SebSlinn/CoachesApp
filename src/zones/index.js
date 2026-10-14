@@ -6,6 +6,8 @@ export * from './energy.js';
 export * from './classify.js';
 export * from './suggest.js';
 export * from './zoneCriteria.js';
+export * from './types.js';     // training types: TYPES, TYPE_CODES, hrTargetRange …
+export * from './schemes.js';   // display schemes: resolveZoneStyle, zoneColor, BUILT_IN_SCHEMES …
 // Named (not `export *`): speedChart.js has its own private STROKE_MULT
 // (identical values, kept local to its split-time maths) which collides
 // with constants.js's STROKE_MULT under `export *` — a duplicate-export

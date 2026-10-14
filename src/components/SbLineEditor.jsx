@@ -2,6 +2,13 @@
 import { useState } from 'react';
 import { DRILL_LIBRARY } from '../drills/index.js';
 import { suggestTimes } from '../zones/suggest.js';
+import { TYPES, PRESCRIBABLE_CODES } from '../zones/types.js';
+import { zoneColor } from '../zones/schemes.js';
+
+// Zone picker: every training type (types.js), then the non-zone values.
+const INTENSITY_OPTS = [...PRESCRIBABLE_CODES, 'Drill', 'Skills'];
+const typeSpeedRatio = code => TYPES[code]?.speedRatio || 1.30;
+const typeRank = code => TYPES[code]?.rank ?? -1;
 
 function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst, isLast, pace200Map }) {
   const [drillOpen, setDrillOpen] = useState(false);
@@ -53,7 +60,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
             { k:"distM",      lb:"DIST(m)", ph:"100",   tp:"number" },
             { k:"stroke",     lb:"STROKE",  ph:"",      tp:"sel", opts:["FS","BK","BR","Fly","IM","Kick"] },
             { k:"modifier",   lb:"TYPE",    ph:"",      tp:"sel", opts:["Full","Drill","Tech","Focus","Kick","Broken"] },
-            { k:"intensity",  lb:"ZONE",    ph:"",      tp:"sel", opts:["A1","A2","A3","AT","CS","HVO","LP","LT","Drill","Skills"] },
+            { k:"intensity",  lb:"ZONE",    ph:"",      tp:"sel", opts:INTENSITY_OPTS },
             { k:"targetTime", lb:"IN",      ph:"1:10" },
             { k:"onTime",     lb:"ON",      ph:"1:20" },
             { k:"note",       lb:"NOTE",    ph:"Fast, drill name…" },
@@ -115,8 +122,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
     if (selDrill && selDrill.paceFactor && pace200Map) {
       var SMULT5 = { FS:1.0, BK:1.045, BR:1.254, Fly:1.051, IM:1.082 };
       var p5 = pace200Map[drillStroke] || pace200Map["FS"];
-      var zoneSR = { A1:1.52, A2:1.30, A3:1.16, AT:1.06, LP:1.00, LT:0.96, HVO:0.88, CS:1.06 };
-      var sr5 = zoneSR[line.intensity] || 1.30;
+      var sr5 = typeSpeedRatio(line.intensity);
       var dist5 = parseFloat(line.distM) || 100;
       if (p5) {
         var base5 = (p5 * (SMULT5[drillStroke]||1.0)) / 2;
@@ -126,8 +132,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
         sugTime = m5 > 0 ? m5+":"+(s5<10?"0":"")+s5 : String(s5);
       }
     }
-    var ZC5 = { HVO:"#FF2D55",LT:"#FF5500",LP:"#FF9500",AT:"#FFCC00",CS:"#30B0C7",A3:"#34C759",A2:"#30B0C7",A1:"#007AFF" };
-    var zc5 = ZC5[line.intensity] || "#8E8E93";
+    var zc5 = zoneColor(line.intensity);
     return (
       <div style={{ marginTop:4, padding:"6px 8px",
         background:"rgba(142,142,147,0.08)", border:"1px solid rgba(142,142,147,0.2)",
@@ -141,8 +146,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
             if (chosen && chosen.paceFactor && pace200Map) {
               var SMULT7 = { FS:1.0, BK:1.045, BR:1.254, Fly:1.051, IM:1.082 };
               var p7 = pace200Map[line.stroke||"FS"] || pace200Map["FS"];
-              var zoneSR7 = { A1:1.52, A2:1.30, A3:1.16, AT:1.06, LP:1.00, LT:0.96, HVO:0.88, CS:1.06 };
-              var sr7 = zoneSR7[line.intensity] || 1.30;
+              var sr7 = typeSpeedRatio(line.intensity);
               var dist7 = parseFloat(line.distM) || 100;
               if (p7) {
                 var base7 = (p7 * (SMULT7[line.stroke||"FS"]||1.0)) / 2;
@@ -187,9 +191,8 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
           </div>
         )}
         {selDrill && selDrill.zoneCeiling && (function(){
-          var zoneOrder = ["A1","A2","A3","AT","CS","LP","LT","HVO"];
-          var ceilIdx = zoneOrder.indexOf(selDrill.zoneCeiling);
-          var intIdx  = zoneOrder.indexOf(line.intensity);
+          var ceilIdx = typeRank(selDrill.zoneCeiling);
+          var intIdx  = typeRank(line.intensity);
           if (intIdx > ceilIdx && ceilIdx >= 0) {
             return (
               <div style={{ marginTop:3, fontSize:9,
@@ -218,9 +221,7 @@ function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst,
     if (!p4) return null;
     var sg4 = suggestTimes(line.intensity, line.distM, s4, p4);
     if (!sg4) return null;
-    var ZC4 = { HVO:"#FF2D55",LT:"#FF5500",LP:"#FF9500",AT:"#FFCC00",
-      A3:"#34C759",A2:"#30B0C7",A1:"#007AFF" };
-    var zc4 = ZC4[line.intensity] || "rgba(255,255,255,0.4)";
+    var zc4 = zoneColor(line.intensity);
     return (
       <div style={{ marginTop:4, padding:"5px 8px",
         background:zc4+"0D", border:"1px solid "+zc4+"30", borderRadius:5,

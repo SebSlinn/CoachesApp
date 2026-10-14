@@ -1,4 +1,10 @@
 //zones/constants.js - Core data for zones and energy systems.
+//
+// Training types (codes, criteria, HR bands, write-ups) now live in types.js and
+// display labels/colours in schemes.js (contracts/ZONES.md). ZONES, ZONE_COLORS and
+// ZONE_WRITEUPS below are DERIVED from them and kept so existing callers keep working.
+import { TYPES, TYPE_CODES, ENERGY_MODEL_CODES, GROUPS, typesInGroup, formatHrBand } from './types.js';
+import { resolveZoneStyle, groupColor, DEFAULT_SCHEME_ID } from './schemes.js';
 const STROKE_MULT = { FS: 1.0, BK: 1.045, BR: 1.254, Fly: 1.051, IM: 1.082 };
 
 // ─── Rest type lactate clearance multipliers ────────────────────────────────
@@ -69,9 +75,9 @@ const ENERGY_SYSTEMS = [
 // ─── Training Zone data (Layer 2 + Layer 3) ──────────────────────────────────
 const ZONE_GROUPS = [
   {
-    zone: 1, label: "Zone 1 — Aerobic", color: "#30B0C7",
+    zone: 1, label: GROUPS[0].label, color: groupColor(1, DEFAULT_SCHEME_ID),
     system: "Aerobic (Oxidative)", muscle: "Slow twitch (Type I) — mitochondrial density and cardiovascular base",
-    members: ["A1","A2","A3"],
+    members: typesInGroup(1),
     adaptations: {
       A1: {
         specific: ["Accelerates lactate clearance — optimal at ~60–70% max velocity","Blood flow to muscles promotes recovery","Maintains aerobic base without adding stress","Efficient stroke mechanics at low effort"],
@@ -89,9 +95,9 @@ const ZONE_GROUPS = [
     phvNote: "Essential for all ages. Pre-PHV athletes should spend the majority of training in Zone 1. A3 is the upper limit of emphasis before PHV.",
   },
   {
-    zone: 2, label: "Zone 2 — Threshold", color: "#FFCC00",
+    zone: 2, label: GROUPS[1].label, color: groupColor(2, DEFAULT_SCHEME_ID),
     system: "Aerobic / Glycolytic crossover", muscle: "Intermediate (Type IIa) — mitochondrial development",
-    members: ["AT"],
+    members: typesInGroup(2),
     adaptations: {
       AT: {
         specific: ["Raises the anaerobic threshold — pace at which lactate begins to accumulate","Mitochondrial development in intermediate fibres — converting fast twitch toward aerobic","Increased lactate clearance rate at threshold pace","Improved fat/carbohydrate fuel utilisation","Increased capillary density in working muscles"],
@@ -101,9 +107,9 @@ const ZONE_GROUPS = [
     phvNote: "Accessible for all post-PHV athletes. Limited but appropriate for early post-PHV. Pre-PHV keep below 20% of total volume.",
   },
   {
-    zone: 3, label: "Zone 3 — HPE", color: "#FF9500",
+    zone: 3, label: GROUPS[2].label, color: groupColor(3, DEFAULT_SCHEME_ID),
     system: "Aerobic ceiling / Cardiovascular", muscle: "Intermediate and slow twitch — cardiac and respiratory system",
-    members: ["CS","MVO"],
+    members: typesInGroup(3),
     adaptations: {
       CS: {
         specific: ["Raises Critical Speed threshold — pace sustainable indefinitely","Increased cardiac output at high sustained intensity","Improved lactate clearance at threshold pace","Mitochondrial development in intermediate fibres","Blood lactate steady state at progressively higher speeds"],
@@ -117,9 +123,9 @@ const ZONE_GROUPS = [
     phvNote: "Post-PHV primarily. Can be introduced carefully to well-trained early post-PHV athletes. Very demanding — 24–48 hours recovery for MVO.",
   },
   {
-    zone: 4, label: "Zone 4 — Lactate", color: "#FF5500",
+    zone: 4, label: GROUPS[3].label, color: groupColor(4, DEFAULT_SCHEME_ID),
     system: "Glycolytic (Lactic)", muscle: "Fast twitch Type IIa and IIx — lactate production and buffering",
-    members: ["LP","LT","PL"],
+    members: typesInGroup(4),
     adaptations: {
       LP: {
         specific: ["Increased glycolytic enzyme activity","Elevated peak lactate tolerance","Development of buffering capacity (bicarbonate system)","Sustaining output at high lactate concentrations"],
@@ -137,9 +143,9 @@ const ZONE_GROUPS = [
     phvNote: "Post-PHV only. LP early season, LT later season (Sweetenham). Never the foundation of a programme. PL used sparingly — 48–72 hours recovery.",
   },
   {
-    zone: 5, label: "Zone 5 — Speed", color: "#FF2D55",
+    zone: 5, label: GROUPS[4].label, color: groupColor(5, DEFAULT_SCHEME_ID),
     system: "ATP / ATP-CP (Alactic)", muscle: "Fast twitch Type IIx — neural recruitment and phosphocreatine",
-    members: ["HVO"],
+    members: typesInGroup(5),
     adaptations: {
       HVO: {
         specific: ["Increased phosphocreatine store size","Faster rate of ATP-CP resynthesis between efforts","Improved neural firing rate and motor unit recruitment","Maximal velocity mechanics development"],
@@ -152,95 +158,27 @@ const ZONE_GROUPS = [
 
 // ─── Maximum speed validation ────────────────────────────────────────────────
 
-// Training zone writeups from British Swimming / Sweetenham model
-const ZONE_WRITEUPS = {
-  A1: {
-  hr: ">50 bbm", la: "<2 mmol/L", rpe: "<9", domain: "Moderate",
-  name: "Aerobic Low Intensity",
-  description: "The foundational zone. Work relies almost entirely on fat metabolism and slow-twitch muscle fibre recruitment. Athletes can sustain this effort for extended periods with minimal physiological stress.",
-  usedFor: ["Warm-up and warm-down","Technical and skill-focused training","Base conditioning and volume building","Active recovery between harder sessions","Replenishing glycogen stores between high-intensity bouts"],
-  primary: ["Increased stroke volume and cardiac output","Increased blood volume","Improved blood shunting to working muscles","Increased capillarisation around slow-twitch fibres","Increased myoglobin and mitochondria in slow-twitch fibres","Enhanced lactate removal (MCT1/4 upregulation)"],
-  setStructure: "2,000–4,000m or continuous · Rest: 5–30s depending on rep distance",
-  },
-  A2: {
-  hr: "40–50 bbm", la: "2–4 mmol/L", rpe: "10–12", domain: "Moderate",
-  name: "Aerobic Maintenance / Development",
-  description: "The primary aerobic development zone. Slightly elevated above pure recovery, this zone stimulates aerobic adaptation while sitting comfortably within the aerobic domain. The majority of an endurance swimmer's volume is accumulated here.",
-  usedFor: ["Building and maintaining aerobic base","High-volume aerobic training blocks","Improving cardio-respiratory efficiency","Developing lactate removal capacity","Fat metabolism training"],
-  primary: ["Improved aerobic capacity and VO₂ efficiency","Enhanced lactate removal from trained fibres","Increased capillarisation around fast and slow-twitch fibres","Increased myoglobin and mitochondria in fast and slow-twitch fibres"],
-  secondary: ["Increased stroke volume and cardiac output","Increased blood volume","Progressive VO₂max improvements in fast-twitch fibres"],
-  setStructure: "2,000–4,000m (~40 mins work) · Rest: 5–30s depending on rep distance",
-  },
-  A3: {
-  hr: "30–40 bbm", la: "3–6 mmol/L", rpe: "14–15", domain: "Heavy / Approaching Threshold",
-  name: "Aerobic Capacity (Threshold Approach)",
-  description: "A transitional zone between pure aerobic work and the anaerobic threshold. Training here pushes athletes toward their lactate threshold without crossing it — highly effective for developing aerobic capacity. Sometimes combined with AT sets in a single session.",
-  usedFor: ["Developing aerobic capacity and threshold approach","Bridging aerobic base and threshold training","Developing the aerobic system in fast-twitch fibres","Extended race-simulation sets (800m–1500m FS, 200m IM)"],
-  primary: ["Increased percentage utilisation of VO₂max","Increased lactate removal from trained fibres","Increased capillarisation and mitochondria in fast and slow-twitch fibres"],
-  secondary: ["Increased stroke volume and cardiac output","Improved VO₂max, particularly in fast-twitch fibres"],
-  setStructure: "1,200–2,000m (~30 mins work) · ~6 min sustained efforts · Rest: 5–120s",
-  },
-  AT: {
-  hr: "20–30 bbm", la: "3–6 mmol/L", rpe: "14–15", domain: "Heavy / MLSS",
-  name: "Anaerobic Threshold (LT2 / MLSS)",
-  description: "The point at which lactate production equals lactate removal — the Maximal Lactate Steady State (MLSS). Considered the optimal intensity for developing aerobic capacity in competitive swimmers and the backbone of elite training programmes. Individual lactate testing is strongly recommended.",
-  usedFor: ["Developing the anaerobic threshold and MLSS","Improving aerobic power and efficiency","Middle-distance event preparation (200m–800m)","Threshold sets at race pace for 400–1500m swimmers"],
-  primary: ["Raising the threshold at which lactate production equals removal","Increased lactate removal from trained fibres","Increased capillarisation of fast and slow-twitch fibres"],
-  secondary: ["Increased stroke volume and cardiac output","Increased blood volume","Progressive VO₂max development in fast-twitch fibres"],
-  setStructure: "1,200–2,000m · Rest: 5–30s (short), 10–30s (middle)",
-  },
-  CS: {
-  hr: "5–20 bbm", la: "6–12 mmol/L", rpe: "17–19", domain: "Severe / Critical Speed",
-  name: "Critical Speed / VO₂max (MVO₂)",
-  description: "High-intensity training at approximately VO₂max intensity, defined by the Critical Speed boundary — the threshold above which oxygen consumption rises until VO₂max is reached. Includes Heart Rate-controlled sets and Critical Velocity sets. Corresponds to Aerobic Power in the Sweetenham model.",
-  usedFor: ["Improving VO₂max","Developing aerobic power","Heart rate sets and Vcrit sets","Preparation for 100m–400m events","VO₂max-specific intervals (e.g. 8–12 × 100m at Vcrit pace)"],
-  primary: ["Increased maximal oxygen consumption in all trained fibres including Type IIx","Increased capillarisation around all fibres including Type IIx","Increased myoglobin and mitochondria in all fibres including Type IIx","Increased rate of lactate removal from all fibres","Increased buffering capacity across all three fibre types"],
-  setStructure: "300–1,200m total · ~6 mins at target intensity · Rest: 15–120s · Total work 27–33 min",
-  },
-  LP: {
-  hr: "5–15 bbm", la: "8–15 mmol/L", rpe: "17–19", domain: "Extreme / Severe",
-  name: "Lactate Production",
-  description: "Training that drives maximal speed of lactate accumulation — the point at which anaerobic glycolysis is working at or near its peak. Includes race pace training for sprint events. The glycolytic energy system is the primary contributor.",
-  usedFor: ["Race pace training for 100m and 200m events","Developing the rate of anaerobic energy production","Enhancing glycolytic capacity","Preparing athletes for the lactate demands of competition"],
-  primary: ["Increased rate of anaerobic metabolism","Increased MCT-1 and MCT-4 lactate transporter density","Increased maximum sprinting speed"],
-  secondary: ["Increased ATP/PC stores","Increased muscular power","Improved neuromuscular coordination at fast speeds","Increased buffering capacity"],
-  setStructure: "300–600m total · 25–75m reps · Rest: 1–3 min (25m), 3–5 min (50–75m)",
-  },
-  LT: {
-  hr: "0–10 bbm", la: "12–20 mmol/L", rpe: "19–20", domain: "Severe / Extreme",
-  name: "Lactate Tolerance",
-  description: "The most physiologically demanding zone. Athletes train to tolerate severe acidosis. Medium rest allows partial recovery so each rep begins with elevated blood lactate already present — forcing work under acidotic conditions.",
-  usedFor: ["Building tolerance to severe acidosis","Increasing buffering capacity of all fibre types","Developing anaerobic muscular endurance","Event-specific preparation for 100m–200m sprint events","Maintaining technique under extreme fatigue"],
-  primary: ["Increased muscle buffering capacity","Improved ability to maintain technique under severe acidosis","Increased MCT-1 and MCT-4 density","Improved pain tolerance and psychological resilience"],
-  secondary: ["Increased ATP/PC and glycogen stores","Increased rate of blood lactate removal","Increased VO₂max","Increased rate of anaerobic metabolism"],
-  setStructure: "600–2,000m · 25–200m reps · Rest: 5–30s (broken), 15s–10min (max acidosis)",
-  },
-  HVO: {
-  hr: "N/A", la: "N/A", rpe: "Maximal", domain: "Sprint / Alactic",
-  name: "High Velocity Overload (ATP-PC Sprinting)",
-  description: "Maximum effort, very short duration sprinting to develop the alactic (ATP-PC) energy system, neuromuscular coordination, and Type IIx fast-twitch recruitment. Work is short enough that significant lactate accumulation does not occur. Full recovery is required between reps.",
-  usedFor: ["Developing maximum sprint speed and power","Improving neuromuscular coordination at and above race speeds","Fast-twitch (Type IIx) muscle fibre recruitment","Developing muscular strength and rate of force development","Training above race pace for 50m and 100m specialists"],
-  primary: ["Increased muscular strength","Increased rate and pattern of CNS muscle fibre stimulation","Increased rate of force development"],
-  secondary: ["Increased ATP/PC stores","Increased rate of ATP resynthesis","Increased muscular power","Improved neuromuscular coordination at maximum speed"],
-  setStructure: "200–600m total (quality over volume) · 10–25m reps · Rest: 45s–2 min (full PC recovery required)",
-  },
-};
+// ─── Derived (back-compat) ───────────────────────────────────────────────────
 
-// ─── Zone color map (canonical source for all zone coloring) ────────────────
-const ZONE_COLORS = {
-  HVO: "#FF2D55", LT: "#FF5500", LP: "#FF9500", AT: "#FFCC00",
-  A3: "#34C759", A2: "#30B0C7", A1: "#007AFF",
-};
+// Write-ups per code (now in writeups.js; .hr comes from the type's hrBand).
+const ZONE_WRITEUPS = Object.fromEntries(
+  TYPE_CODES.filter(c => TYPES[c].writeup).map(c => [c, TYPES[c].writeup]));
 
-const ZONES = [
-  { id: "HVO", name: "HVO / ATP-CP",            textColor: "#fff", rpe: "Max",   bbm: "N/A",   desc: "Alactic sprints. Pure phosphocreatine — exhausted in 10-15s. Needs 6:1+ rest to replenish." },
-  { id: "LT",  name: "LT / Lactate Tolerance",  textColor: "#fff", rpe: "18-20", bbm: "5-15",  desc: "High-speed glycolytic work with significant lactate accumulation. Post-PHV athletes." },
-  { id: "LP",  name: "LP / Lactate Production", textColor: "#fff", rpe: "17-19", bbm: "10-20", desc: "Glycolytic system building lactate. Hard sustained efforts. Early season focus." },
-  { id: "AT",  name: "AT / Anaerobic Threshold",textColor: "#1a1a2e", rpe: "15-17", bbm: "20-30", desc: "Lactate/aerobic crossover. Key race-pace zone. Lactate produced ≈ lactate cleared." },
-  { id: "A3",  name: "A3 / Hard Aerobic",        textColor: "#fff", rpe: "14-15", bbm: "30-40", desc: "Upper aerobic. Challenging but aerobically sustainable. Good for fitness base." },
-  { id: "A2",  name: "A2 / Moderate Aerobic",    textColor: "#fff", rpe: "11-13", bbm: "40-50", desc: "Moderate aerobic. Cardiovascular development. Drill-compatible." },
-  { id: "A1",  name: "A1 / Easy Aerobic",         textColor: "#fff", rpe: "7-10",  bbm: "50-70", desc: "Recovery and technique. Aerobic base. Suitable all ages." },
-].map(z => ({ ...z, color: ZONE_COLORS[z.id] || "#fff" }));
+// DEPRECATED — default-scheme colour per code. Use resolveZoneStyle / zoneColor
+// from schemes.js so the coach's scheme applies.
+const ZONE_COLORS = Object.fromEntries(
+  TYPE_CODES.map(c => [c, resolveZoneStyle(c, DEFAULT_SCHEME_ID).color]));
+
+// The seven energy-model types, in classifySet()'s breakdown order (fastest first).
+// classifySet() and session/model.js map over this — keep it to energyModel types only.
+const ZONES = [...ENERGY_MODEL_CODES].reverse().map(c => {
+  const t = TYPES[c];
+  const st = resolveZoneStyle(c, DEFAULT_SCHEME_ID);
+  return {
+    id: c, name: t.name, rpe: t.rpe, bbm: formatHrBand(t.hrBand).replace(' bbm', ''),
+    desc: t.desc, color: st.color, textColor: st.text, group: t.group,
+  };
+});
 
 // ─── Drill Library ──────────────────────────────────────────────────────────
 

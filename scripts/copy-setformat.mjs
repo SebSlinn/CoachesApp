@@ -7,7 +7,9 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 
 // Live heart rate (src/hr/) travels the same way — Poolside imports both.
-const FILES = ['session/setFormat.js', 'session/protocolFormat.js', 'hr/hrMonitor.js', 'hr/hrMetrics.js'];
+// Zone types + schemes (contracts/ZONES.md) travel together: schemes.js → types.js → writeups.js.
+const FILES = ['session/setFormat.js', 'session/protocolFormat.js', 'hr/hrMonitor.js', 'hr/hrMetrics.js',
+               'zones/types.js', 'zones/writeups.js', 'zones/schemes.js'];
 const destDir = 'public/poolside';
 
 try {
