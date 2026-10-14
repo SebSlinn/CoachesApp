@@ -1,7 +1,7 @@
 // src/lib/storage.js
 // Centralised localStorage wrapper for SwimZone.
 //
-// All six cross-page keys are defined here — never use raw string keys elsewhere.
+// All cross-page keys are defined here — never use raw string keys elsewhere.
 // get/set handle JSON serialisation and try/catch internally.
 // getRaw/setRaw are for the one case (active-group) where a plain string is stored.
 
@@ -12,6 +12,7 @@ export const KEYS = {
   SELECTED_ELEMENT: 'swimzone-selected-element',
   ACTIVE_GROUP:     'swimzone-active-group',
   EDITING_BLOCK:    'swimzone-editing-block',
+  ZONE_SCHEME:      'swimzone-zone-scheme',   // coach's zone colour scheme (this device) — 2026-10-14
 };
 
 export const storage = {

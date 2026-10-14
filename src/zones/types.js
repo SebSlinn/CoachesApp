@@ -27,6 +27,8 @@
 //               null = no HR target (HVO/PL: too short for HR to mean anything).
 //   criteria    zoneCriteria.js condition object (see the condition list there), or null = no opinion
 //   provisional true = criteria/numbers not yet confirmed by the coach
+//   benched     true = code reserved but not in use: hidden from pickers, groups and criteria.
+//               TYPES[code] still resolves, so any stored line with that code still displays.
 //   writeup     long-form text (from writeups.js), with .hr derived from hrBand
 
 import { WRITEUPS } from './writeups.js';
@@ -36,7 +38,7 @@ import { WRITEUPS } from './writeups.js';
 const GROUPS = [
   { zone: 1, label: 'Zone 1 — Aerobic',   short: 'Aerobic',   color: '#30B0C7' },
   { zone: 2, label: 'Zone 2 — Threshold', short: 'Threshold', color: '#FFCC00' },
-  { zone: 3, label: 'Zone 3 — HPE',       short: 'HPE',       color: '#AF52DE' },
+  { zone: 3, label: 'Zone 3 — HPE',       short: 'HPE',       color: '#FF9500' },
   { zone: 4, label: 'Zone 4 — Lactate',   short: 'Lactate',   color: '#FF5500' },
   { zone: 5, label: 'Zone 5 — Speed',     short: 'Speed',     color: '#FF2D55' },
 ];
@@ -98,8 +100,9 @@ const TYPE_LIST = [
   },
   {
     // Sweetenham's own training method; he places it in Zone 3 with CS and MVO.
-    // Criteria and HR band still to be supplied by the coach: until then the
-    // evaluator has no opinion on LR (empty criteria → null) and there is no HR target.
+    // BENCHED (2026-10-14): the code is reserved, but LR is hidden from pickers, zone
+    // groups and the criteria table until Al has worked out what it is.
+    benched: true,
     code: 'LR', group: 3, rank: 5, label: 'Lactate removal', short: 'LR',
     name: 'LR / Lactate Removal', rpe: '', energyModel: false, speedRatio: 1.06,
     desc: 'Sweetenham lactate-removal sets (Zone 3). Criteria to be confirmed.',
@@ -171,10 +174,14 @@ const TYPES = Object.freeze(Object.fromEntries(TYPE_LIST.map(t => [t.code, Objec
   writeup: WRITEUPS[t.code] ? { ...WRITEUPS[t.code], hr: formatHrBand(t.hrBand) } : null,
 })])));
 
-/** All codes, ordered low → high intensity. */
-const TYPE_CODES = TYPE_LIST.map(t => t.code);
+/** Every code including benched ones (reserved), ordered low → high intensity. */
+const ALL_TYPE_CODES = TYPE_LIST.map(t => t.code);
 
-/** Codes a coach can pick for a set line (everything; the order is the UI order). */
+/** Codes in use (benched ones left out), ordered low → high intensity. */
+const ACTIVE_LIST = TYPE_LIST.filter(t => !t.benched);
+const TYPE_CODES = ACTIVE_LIST.map(t => t.code);
+
+/** Codes a coach can pick for a set line (the order is the UI order). */
 const PRESCRIBABLE_CODES = TYPE_CODES;
 
 /** Codes with their own slice in classifySet()'s energy breakdown (the original seven). */
@@ -184,19 +191,19 @@ const GROUPS_BY_ZONE = Object.freeze(Object.fromEntries(GROUPS.map(g => [g.zone,
 
 /** Codes in a zone group, ordered low → high. */
 function typesInGroup(pZone) {
-  return TYPE_LIST.filter(t => t.group === Number(pZone)).map(t => t.code);
+  return ACTIVE_LIST.filter(t => t.group === Number(pZone)).map(t => t.code);
 }
 
 function isTypeCode(pCode) { return Object.prototype.hasOwnProperty.call(TYPES, pCode); }
 
 /** Criteria table { code: criteria } for zoneCriteria.js (types with criteria only). */
 function criteriaTable() {
-  return Object.fromEntries(TYPE_LIST.filter(t => t.criteria).map(t => [
+  return Object.fromEntries(ACTIVE_LIST.filter(t => t.criteria).map(t => [
     t.code, t.hrBand ? { ...t.criteria, hrBand: t.hrBand } : t.criteria,
   ]));
 }
 
 export {
-  GROUPS, GROUPS_BY_ZONE, TYPES, TYPE_CODES, PRESCRIBABLE_CODES, ENERGY_MODEL_CODES,
+  GROUPS, GROUPS_BY_ZONE, TYPES, TYPE_CODES, ALL_TYPE_CODES, PRESCRIBABLE_CODES, ENERGY_MODEL_CODES,
   typesInGroup, isTypeCode, criteriaTable, formatHrBand, hrTargetRange,
 };

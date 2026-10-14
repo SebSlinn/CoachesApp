@@ -1,6 +1,6 @@
 //src/session/utils.js - Utility functions for session modeling and set builder operations.
 // Set Builder utility functions
-import { zoneColor } from '../zones/schemes.js';
+import { resolveZoneStyle } from '../zones/schemes.js';
 function sbId() { return "sb" + Date.now() + Math.random().toString(36).substr(2, 9); }
 
 function sbNewLine(defaults) {
@@ -57,8 +57,9 @@ function sbFmtTime(s) {
 
 function sbZoneColor(zone, scheme) {
   // Thin wrapper over zones/schemes.js (one colour source; contracts/ZONES.md).
-  // Non-zone values ('Drill', 'Skills', '') get the neutral grey.
-  return zoneColor(zone, scheme);
+  // Non-zone values ('Drill', 'Skills', '') keep Set Builder's original grey.
+  const mStyle = resolveZoneStyle(zone, scheme);
+  return mStyle.known ? mStyle.color : "#888";
 }
 
 function sbBlockVolume(block) {

@@ -12,6 +12,7 @@ import { SupabaseLogSharingRepository } from './supabase/SupabaseLogSharingRepos
 import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository';
 import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
 import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
+import { LocalZoneSchemeRepository } from './local/LocalZoneSchemeRepository';
 
 let authRepository = null;
 let membershipRepository = null;
@@ -22,6 +23,7 @@ let logSharingRepository = null;
 let resultsRepository = null;
 let protocolsRepository = null;
 let athleteProfileRepository = null;
+let zoneSchemeRepository = null;
 
 export function getAuthRepository() {
   if (!authRepository) authRepository = new SupabaseAuthRepository();
@@ -73,4 +75,12 @@ export function getProtocolsRepository() {
 export function getAthleteProfileRepository() {
   if (!athleteProfileRepository) athleteProfileRepository = new SupabaseAthleteProfileRepository();
   return athleteProfileRepository;
+}
+
+// ---- Zone colour scheme (added 2026-10-14) — the coach's display choice
+// (contracts/ZONES.md). This device only for now; a Supabase version (per coach,
+// with a club default) replaces it here once Accounts adds the column/table.
+export function getZoneSchemeRepository() {
+  if (!zoneSchemeRepository) zoneSchemeRepository = new LocalZoneSchemeRepository();
+  return zoneSchemeRepository;
 }

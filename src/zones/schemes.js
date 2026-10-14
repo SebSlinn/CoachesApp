@@ -16,7 +16,7 @@
 // Label fallback order:  scheme.types[code].label → TYPES[code].label → code.
 //
 // Rule: types in the same group share the group colour unless the scheme gives the
-// type its own. Zone 3 (CS, MVO, LR) shares one colour in every built-in scheme.
+// type its own. Zone 3 (CS, MVO) shares one colour in every built-in scheme.
 
 import { TYPES, GROUPS_BY_ZONE, isTypeCode } from './types.js';
 
@@ -25,20 +25,28 @@ const DEFAULT_SCHEME_ID = 'sweetenham';
 
 // ── Built-in schemes ─────────────────────────────────────────────────────────
 
-// Sweetenham: the app's original per-type colours (unchanged); Zone 3 (CS, MVO, LR) shared purple.
+// Sweetenham = EXACTLY the colours SwimZone has always shown (the default scheme).
+// Type colours from the old ZONE_COLORS / sbZoneColor; CS (and MVO, which shares
+// Zone 3 with it) keep CS's teal. Group colours are the old ZONE_GROUPS header colours.
+// Don't change these without meaning to change every coach's default screen.
 const SWEETENHAM = {
-  id: 'sweetenham', name: 'Sweetenham', builtIn: true,
+  id: 'sweetenham', name: 'Sweetenham (SwimZone default)', builtIn: true,
   types: {
     A1:  { color: '#007AFF' },
     A2:  { color: '#30B0C7' },
     A3:  { color: '#34C759' },
     AT:  { color: '#FFCC00', text: '#1a1a2e' },
+    CS:  { color: '#30B0C7' },
+    MVO: { color: '#30B0C7' },
     LP:  { color: '#FF9500' },
     LT:  { color: '#FF5500' },
-    PL:  { color: '#D70015' },
-    HVO: { color: '#FF2D55', label: 'Sprint / ATP-PC' },
+    PL:  { color: '#CC2200' },   // the Classifier's existing "possible PL" banner colour
+    HVO: { color: '#FF2D55' },
   },
-  groups: { 3: { color: '#AF52DE' } },
+  groups: {
+    1: { color: '#30B0C7' }, 2: { color: '#FFCC00' }, 3: { color: '#FF9500' },
+    4: { color: '#FF5500' }, 5: { color: '#FF2D55' },
+  },
 };
 
 // Urbanchek colour system — mapping from the Training Zones Classifications chart.
@@ -46,7 +54,6 @@ const URBANCHEK = {
   id: 'urbanchek', name: 'Urbanchek colours', builtIn: true,
   types: {
     A1:  { label: 'White',  short: 'White',  color: '#F5F5F5', text: '#111' },
-    LR:  { label: 'Purple', short: 'Purple' },
     A2:  { label: 'Pink',   short: 'Pink',   color: '#F4A6C8', text: '#111' },
     A3:  { label: 'Red',    short: 'Red',    color: '#E53935' },
     AT:  { label: 'Blue',   short: 'Blue',   color: '#1E88E5' },
@@ -66,7 +73,6 @@ const MAGLISCHO = {
   id: 'maglischo', name: 'Maglischo', builtIn: true,
   types: {
     A1:  { label: 'EN1', short: 'EN1', color: MAG.EN1 },
-    LR:  { label: 'EN3', short: 'EN3', color: MAG.EN3 },
     A2:  { label: 'EN1', short: 'EN1', color: MAG.EN1 },
     A3:  { label: 'EN2', short: 'EN2', color: MAG.EN2 },
     AT:  { label: 'EN2', short: 'EN2', color: MAG.EN2 },
@@ -107,12 +113,14 @@ function pickScheme(pScheme) {
  * How to show a type code under a scheme.
  * @param {string} pCode            type code, e.g. 'AT'. Unknown codes ('Drill', null) get a neutral grey.
  * @param {Object|string} [pScheme] scheme object or built-in id; default Sweetenham.
- * @returns {{code, label, short, color, text, group:number|null, known:boolean}}
+ * @returns {{code, label, short, name, color, text, group:number|null, known:boolean}}
+ *   name = the "CODE / Long name" line used in zone lists; the type's own name unless the
+ *   scheme relabels the type, then "CODE / scheme label". Buttons and badges keep showing the code.
  */
 function resolveZoneStyle(pCode, pScheme) {
   const mScheme = pickScheme(pScheme);
   if (!isTypeCode(pCode)) {
-    return { code: pCode ?? null, label: pCode || '—', short: pCode || '—',
+    return { code: pCode ?? null, label: pCode || '—', short: pCode || '—', name: pCode || '—',
              color: UNKNOWN_COLOR, text: '#fff', group: null, known: false };
   }
   const mType  = TYPES[pCode];
@@ -125,11 +133,23 @@ function resolveZoneStyle(pCode, pScheme) {
     code:  pCode,
     label: mOver.label || mType.label,
     short: mOver.short || mOver.label || mType.short,
+    name:  mOver.label ? `${pCode} / ${mOver.label}` : mType.name,
     color: mColor,
     text:  mOver.text || contrastText(mColor),
     group: mType.group,
     known: true,
   };
+}
+
+/**
+ * A scheme colour at an opacity, as an rgba() string — for tints of zone colours
+ * where the old code wrote literal rgba(r,g,b,a). Non-hex input is returned unchanged.
+ */
+function withAlpha(pHex, pAlpha) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(pHex || ''));
+  if (!m) return pHex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${pAlpha})`;
 }
 
 /** Shorthand: the colour only. */
@@ -189,5 +209,5 @@ function sanitiseScheme(pScheme) {
 
 export {
   BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, UNKNOWN_COLOR,
-  resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, contrastText,
+  resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, contrastText, withAlpha,
 };

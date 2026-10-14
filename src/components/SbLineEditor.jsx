@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { DRILL_LIBRARY } from '../drills/index.js';
 import { suggestTimes } from '../zones/suggest.js';
 import { TYPES, PRESCRIBABLE_CODES } from '../zones/types.js';
-import { zoneColor } from '../zones/schemes.js';
+import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 
 // Zone picker: every training type (types.js), then the non-zone values.
 const INTENSITY_OPTS = [...PRESCRIBABLE_CODES, 'Drill', 'Skills'];
@@ -12,6 +12,7 @@ const typeRank = code => TYPES[code]?.rank ?? -1;
 
 function SbLineEditor({ line, onChange, onDelete, onMoveUp, onMoveDown, isFirst, isLast, pace200Map }) {
   const [drillOpen, setDrillOpen] = useState(false);
+  const { color: zoneColor } = useZoneScheme();   // coach's scheme (contracts/ZONES.md)
   const inp = {
     background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)",
     borderRadius: 5, color: "#fff", padding: "5px 5px", fontFamily: "monospace",

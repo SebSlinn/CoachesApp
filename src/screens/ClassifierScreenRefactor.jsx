@@ -2,10 +2,11 @@
 
 import React from 'react';
 import { REST_TYPE_OPTS, ATHLETE_TYPE_OPTS, ENERGY_SYSTEMS, ZONE_GROUPS, ZONES, ZONE_WRITEUPS } from "../zones/index.js";
-import { parseTime, fmtTime, secToDisplay, suggestTimes, TYPE_CODES, zoneColor } from "../zones/index.js";
+import { parseTime, fmtTime, secToDisplay, suggestTimes, PRESCRIBABLE_CODES, withAlpha } from "../zones/index.js";
+import { useZoneScheme } from "../context/ZoneSchemeContext.jsx";
 
-// Zone picker order: fastest first (HVO … A1), every training type in types.js.
-const PICKER_CODES = [...TYPE_CODES].reverse();
+// Zone picker order: fastest first (HVO … A1), every training type in use (types.js).
+const PICKER_CODES = [...PRESCRIBABLE_CODES].reverse();
 import { DRILL_LIBRARY } from "../drills/index.js";
 import EnergyGraph from "../components/EnergyGraph.jsx";
 import RepChart from "../components/RepChart.jsx";
@@ -35,6 +36,10 @@ export function ClassifierScreenRefactor({
   editingBlock,
   setEditingBlock,
 }) {
+  // Zone colours/names come from the coach's scheme (contracts/ZONES.md). Default = the original look.
+  const { color: zoneColor, groupColor: zoneGroupColor, style: zoneStyle } = useZoneScheme();
+  const csC = zoneColor("CS"), lpC = zoneColor("LP"), plC = zoneColor("PL");
+
   const classifierSuggestion = (inputs.distM && inputs.stroke && inputs.pace200)
     ? (function() {
         try {
@@ -285,8 +290,7 @@ export function ClassifierScreenRefactor({
                   if (DL2.MULTI) DL2.MULTI.forEach(d => available2.push(d));
                   if (available2.length === 0) return null;
 
-                  const ZC6 = { A3:'#34C759', A2:'#30B0C7', A1:'#007AFF' };
-                  const zc6 = ZC6[selectedZone] || '#8E8E93';
+                  const zc6 = ['A1','A2','A3'].includes(selectedZone) ? zoneColor(selectedZone) : '#8E8E93';
                   const selD = available2.find(d => d.name === classifierDrill);
 
                   return (
@@ -367,11 +371,11 @@ export function ClassifierScreenRefactor({
 
       {/* ── Zone detection banners ──────────────────────────────────────── */}
       {selectedZone === "CS" && singleResult?.csDetection && (
-        <div style={{ background: singleResult.csDetection.isCS ? "rgba(48,176,199,0.12)" : "rgba(48,176,199,0.06)",
-          border: "1px solid " + (singleResult.csDetection.isCS ? "rgba(48,176,199,0.5)" : "rgba(48,176,199,0.2)"),
-          borderLeft: "4px solid " + (singleResult.csDetection.isCS ? "#30B0C7" : "rgba(48,176,199,0.3)"),
+        <div style={{ background: singleResult.csDetection.isCS ? withAlpha(csC, 0.12) : withAlpha(csC, 0.06),
+          border: "1px solid " + (singleResult.csDetection.isCS ? withAlpha(csC, 0.5) : withAlpha(csC, 0.2)),
+          borderLeft: "4px solid " + (singleResult.csDetection.isCS ? csC : withAlpha(csC, 0.3)),
           borderRadius: 8, padding: "10px 14px", marginBottom: 10, fontSize: 11, lineHeight: 1.7 }}>
-          <div style={{ fontWeight: 700, color: singleResult.csDetection.isCS ? "#30B0C7" : "rgba(48,176,199,0.7)", marginBottom: 4 }}>
+          <div style={{ fontWeight: 700, color: singleResult.csDetection.isCS ? csC : withAlpha(csC, 0.7), marginBottom: 4 }}>
             {singleResult.csDetection.isCS ? "✓ CS TRAINING SET" : "~ PARTIAL CS MATCH"}
           </div>
           <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10 }}>
@@ -388,9 +392,9 @@ export function ClassifierScreenRefactor({
         </div>
       )}
       {selectedZone === "CS" && !singleResult?.csDetection && (
-        <div style={{ background: "rgba(48,176,199,0.05)", border: "1px solid rgba(48,176,199,0.15)",
-          borderLeft: "4px solid rgba(48,176,199,0.25)", borderRadius: 8, padding: "8px 14px",
-          marginBottom: 10, fontSize: 10, color: "rgba(48,176,199,0.5)" }}>
+        <div style={{ background: withAlpha(csC, 0.05), border: "1px solid " + withAlpha(csC, 0.15),
+          borderLeft: "4px solid " + withAlpha(csC, 0.25), borderRadius: 8, padding: "8px 14px",
+          marginBottom: 10, fontSize: 10, color: withAlpha(csC, 0.5) }}>
           {activeAthlete?.derivedProfile?.css ? "Enter set parameters to check against CSS pace"
             : "Load athlete times to calculate CSS — then time suggestions will appear"}
         </div>
@@ -401,11 +405,11 @@ export function ClassifierScreenRefactor({
         const distOk  = parseFloat(inputs.distM) <= 100;
         const isLP    = inRange && restOk && distOk;
         return (
-          <div style={{ background: isLP ? "rgba(255,149,0,0.10)" : "rgba(255,149,0,0.05)",
-            border: "1px solid " + (isLP ? "rgba(255,149,0,0.45)" : "rgba(255,149,0,0.2)"),
-            borderLeft: "4px solid " + (isLP ? "#FF9500" : "rgba(255,149,0,0.3)"),
+          <div style={{ background: isLP ? withAlpha(lpC, 0.10) : withAlpha(lpC, 0.05),
+            border: "1px solid " + (isLP ? withAlpha(lpC, 0.45) : withAlpha(lpC, 0.2)),
+            borderLeft: "4px solid " + (isLP ? lpC : withAlpha(lpC, 0.3)),
             borderRadius: 8, padding: "10px 14px", marginBottom: 10, fontSize: 11, lineHeight: 1.7 }}>
-            <div style={{ fontWeight: 700, color: isLP ? "#FF9500" : "rgba(255,149,0,0.6)", marginBottom: 4 }}>
+            <div style={{ fontWeight: 700, color: isLP ? lpC : withAlpha(lpC, 0.6), marginBottom: 4 }}>
               {isLP ? "✓ LP SET" : "~ PARTIAL LP MATCH"}
             </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10 }}>
@@ -421,7 +425,7 @@ export function ClassifierScreenRefactor({
       {(selectedZone === "AT" || selectedZone === "A3") && singleResult && (() => {
         const zr = selectedZone === "AT" ? [1.025, 1.10] : [1.10, 1.22];
         const inR = singleResult.speedRatio >= zr[0] && singleResult.speedRatio < zr[1];
-        const zc2 = selectedZone === "AT" ? "#FFCC00" : "#34C759";
+        const zc2 = zoneColor(selectedZone);
         return (
           <div style={{ background: inR ? zc2+"12" : zc2+"06", border: "1px solid " + (inR ? zc2+"45" : zc2+"20"),
             borderLeft: "4px solid " + (inR ? zc2 : zc2+"40"), borderRadius: 8, padding: "8px 14px",
@@ -441,9 +445,9 @@ export function ClassifierScreenRefactor({
         <div style={{ animation: "fadeIn 0.35s ease" }}>
 
           {singleResult.plSuggestion && (
-            <div style={{ background: "rgba(204,34,0,0.08)", border: "1px solid rgba(204,34,0,0.3)",
-              borderLeft: "4px solid #CC2200", borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 11, lineHeight: 1.7 }}>
-              <div style={{ fontWeight: 700, color: "rgba(204,34,0,0.9)", marginBottom: 4 }}>⚑ POSSIBLE PL TERRITORY</div>
+            <div style={{ background: withAlpha(plC, 0.08), border: "1px solid " + withAlpha(plC, 0.3),
+              borderLeft: "4px solid " + plC, borderRadius: 8, padding: "10px 14px", marginBottom: 14, fontSize: 11, lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 700, color: withAlpha(plC, 0.9), marginBottom: 4 }}>⚑ POSSIBLE PL TERRITORY</div>
               <div style={{ color: "rgba(255,255,255,0.55)", fontSize: 10 }}>{singleResult.plSuggestion.note}</div>
             </div>
           )}
@@ -581,25 +585,25 @@ export function ClassifierScreenRefactor({
           {resultView === "zones" && (
             <div>
               {singleResult.csDetection?.isCS ? (
-                <div style={{ background: "rgba(48,176,199,0.12)", border: "1px solid rgba(48,176,199,0.5)",
-                  borderLeft: "4px solid #30B0C7", borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 10, color: "rgba(48,176,199,0.6)", letterSpacing: "0.1em" }}>TRAINING OBJECTIVE</div>
-                  <div style={{ fontSize: 20, fontWeight: 900, color: "#30B0C7", marginTop: 1 }}>CS — Critical Speed Training</div>
+                <div style={{ background: withAlpha(csC, 0.12), border: "1px solid " + withAlpha(csC, 0.5),
+                  borderLeft: "4px solid " + csC, borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 10, color: withAlpha(csC, 0.6), letterSpacing: "0.1em" }}>TRAINING OBJECTIVE</div>
+                  <div style={{ fontSize: 20, fontWeight: 900, color: csC, marginTop: 1 }}>CS — Critical Speed Training</div>
                   <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 4, lineHeight: 1.6 }}>
                     Sustained work at CSS pace. Raises the critical speed threshold. 27–33 min total work at ~1.5:1 work:rest.
                   </div>
                 </div>
               ) : (
-                <div style={{ background: singleResult.primary.color+"1a", border: `1px solid ${singleResult.primary.color}45`,
-                  borderLeft: `4px solid ${singleResult.primary.color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
+                <div style={{ background: zoneColor(singleResult.primary.id)+"1a", border: `1px solid ${zoneColor(singleResult.primary.id)}45`,
+                  borderLeft: `4px solid ${zoneColor(singleResult.primary.id)}`, borderRadius: 10, padding: "12px 16px", marginBottom: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", letterSpacing: "0.1em" }}>PRIMARY ZONE</div>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: singleResult.primary.color, marginTop: 1 }}>{singleResult.primary.name}</div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: zoneColor(singleResult.primary.id), marginTop: 1 }}>{zoneStyle(singleResult.primary.id).name}</div>
                       <div style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", marginTop: 4, maxWidth: 360 }}>{singleResult.primary.desc}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 32, fontWeight: 900, color: singleResult.primary.color }}>{singleResult.primary.pct}%</div>
+                      <div style={{ fontSize: 32, fontWeight: 900, color: zoneColor(singleResult.primary.id) }}>{singleResult.primary.pct}%</div>
                       <div style={{ fontSize: 8, color: "rgba(255,255,255,0.3)" }}>RPE {singleResult.primary.rpe}</div>
                     </div>
                   </div>
@@ -612,20 +616,20 @@ export function ClassifierScreenRefactor({
                 if (gp === 0) return null;
                 return (
                   <div key={grp.zone} style={{ background: "rgba(255,255,255,0.02)",
-                    border: `1px solid ${grp.color}25`, borderLeft: `3px solid ${grp.color}`,
+                    border: `1px solid ${zoneGroupColor(grp.zone)}25`, borderLeft: `3px solid ${zoneGroupColor(grp.zone)}`,
                     borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: grp.color }}>{grp.label}</span>
-                      <span style={{ fontSize: 14, fontWeight: 900, color: grp.color }}>{gp}%</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: zoneGroupColor(grp.zone) }}>{grp.label}</span>
+                      <span style={{ fontSize: 14, fontWeight: 900, color: zoneGroupColor(grp.zone) }}>{gp}%</span>
                     </div>
                     {gz.map(z => (
                       <div key={z.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: z.color, flexShrink: 0 }} />
-                        <div style={{ fontSize: 10, width: 170, color: "rgba(255,255,255,0.6)" }}>{z.name}</div>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: zoneColor(z.id), flexShrink: 0 }} />
+                        <div style={{ fontSize: 10, width: 170, color: "rgba(255,255,255,0.6)" }}>{zoneStyle(z.id).name}</div>
                         <div style={{ flex: 1, height: 4, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
-                          <div style={{ width: `${z.pct}%`, height: "100%", background: z.color, borderRadius: 2 }} />
+                          <div style={{ width: `${z.pct}%`, height: "100%", background: zoneColor(z.id), borderRadius: 2 }} />
                         </div>
-                        <div style={{ fontSize: 11, width: 30, textAlign: "right", fontWeight: 700, color: z.color }}>{z.pct}%</div>
+                        <div style={{ fontSize: 11, width: 30, textAlign: "right", fontWeight: 700, color: zoneColor(z.id) }}>{z.pct}%</div>
                         <div style={{ fontSize: 9, width: 70, color: "rgba(255,255,255,0.25)" }}>RPE {z.rpe}</div>
                       </div>
                     ))}
@@ -707,23 +711,23 @@ export function ClassifierScreenRefactor({
                 return (
                   <div key={grp.zone} style={{ marginBottom: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
-                      borderBottom: `1px solid ${grp.color}40`, paddingBottom: 6, marginBottom: 10 }}>
-                      <span style={{ fontSize: 13, fontWeight: 900, color: grp.color }}>{grp.label}</span>
-                      <span style={{ fontSize: 16, fontWeight: 900, color: grp.color }}>{gp}%</span>
+                      borderBottom: `1px solid ${zoneGroupColor(grp.zone)}40`, paddingBottom: 6, marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, fontWeight: 900, color: zoneGroupColor(grp.zone) }}>{grp.label}</span>
+                      <span style={{ fontSize: 16, fontWeight: 900, color: zoneGroupColor(grp.zone) }}>{gp}%</span>
                     </div>
                     {gz.map(z => {
                       const adpt = grp.adaptations?.[z.id];
                       if (!adpt) return null;
                       return (
-                        <div key={z.id} style={{ background: `${z.color}10`, border: `1px solid ${z.color}25`, borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
+                        <div key={z.id} style={{ background: `${zoneColor(z.id)}10`, border: `1px solid ${zoneColor(z.id)}25`, borderRadius: 8, padding: "10px 14px", marginBottom: 8 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, color: z.color }}>{z.name}</span>
-                            <span style={{ fontSize: 13, fontWeight: 900, color: z.color }}>{z.pct}%</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: zoneColor(z.id) }}>{zoneStyle(z.id).name}</span>
+                            <span style={{ fontSize: 13, fontWeight: 900, color: zoneColor(z.id) }}>{z.pct}%</span>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                             <div>
                               <div style={{ fontSize: 8, color: "rgba(255,255,255,0.25)", letterSpacing: "0.1em", marginBottom: 5 }}>SPECIFIC ADAPTATIONS</div>
-                              {adpt.specific.map((s,i) => <div key={i} style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", marginBottom: 3, paddingLeft: 8, borderLeft: `2px solid ${z.color}60`, lineHeight: 1.5 }}>{s}</div>)}
+                              {adpt.specific.map((s,i) => <div key={i} style={{ fontSize: 9, color: "rgba(255,255,255,0.55)", marginBottom: 3, paddingLeft: 8, borderLeft: `2px solid ${zoneColor(z.id)}60`, lineHeight: 1.5 }}>{s}</div>)}
                             </div>
                             <div>
                               <div style={{ fontSize: 8, color: "rgba(255,255,255,0.25)", letterSpacing: "0.1em", marginBottom: 5 }}>GENERAL ADAPTATIONS</div>
@@ -761,10 +765,10 @@ export function ClassifierScreenRefactor({
               win.document.write(`<!DOCTYPE html><html><head><title>Zone Report</title><style>body{font-family:monospace;margin:32px;color:#111}h2{font-size:13px;text-transform:uppercase;border-bottom:1px solid #ddd;padding-bottom:4px;margin:16px 0 8px}table{width:100%;border-collapse:collapse}th{background:#111;color:#fff;padding:6px 8px;font-size:10px}@media print{body{margin:16px}}</style></head><body>
               <h1>SWIM ZONE CLASSIFIER</h1>
               <p style="font-size:11px;color:#888">${new Date().toLocaleDateString("en-GB")} · ${inputs.stroke} · ${inputs.distM}m × ${inputs.qty} · IN ${inputs.targetTime} · ON ${inputs.onTime||"—"}</p>
-              <h2>Primary Zone: ${singleResult.primary.name} — ${singleResult.primary.pct}%</h2>
+              <h2>Primary Zone: ${zoneStyle(singleResult.primary.id).name} — ${singleResult.primary.pct}%</h2>
               <p>${singleResult.primary.desc}</p>
               <h2>Zone Breakdown</h2><table><thead><tr><th>Zone</th><th>%</th><th>RPE</th><th>Description</th></tr></thead><tbody>
-              ${singleResult.breakdown.filter(z=>z.pct>0).map(z=>`<tr><td style="padding:5px 8px">${z.name}</td><td style="padding:5px 8px;font-weight:700;color:${z.color}">${z.pct}%</td><td style="padding:5px 8px">${z.rpe}</td><td style="padding:5px 8px;font-size:11px;color:#666">${z.desc}</td></tr>`).join("")}
+              ${singleResult.breakdown.filter(z=>z.pct>0).map(z=>`<tr><td style="padding:5px 8px">${zoneStyle(z.id).name}</td><td style="padding:5px 8px;font-weight:700;color:${zoneColor(z.id)}">${z.pct}%</td><td style="padding:5px 8px">${z.rpe}</td><td style="padding:5px 8px;font-size:11px;color:#666">${z.desc}</td></tr>`).join("")}
               </tbody></table>
               <h2>Energy Systems</h2><p>ATP-CP: ${(singleResult.avgAtpcp*100).toFixed(0)}% · Glycolytic: ${(singleResult.avgGlycolytic*100).toFixed(0)}% · Aerobic: ${(singleResult.avgAerobic*100).toFixed(0)}%</p>
               ${singleResult.phvWarning ? `<div style="background:#fff3cd;border-left:4px solid #ff9500;padding:10px;margin:12px 0">${singleResult.phvWarning}</div>` : ""}

@@ -2,10 +2,10 @@
 // Training types, schemes and the criteria evaluator (contracts/ZONES.md).
 import assert from 'node:assert/strict';
 import {
-  TYPES, TYPE_CODES, ENERGY_MODEL_CODES, GROUPS, typesInGroup, hrTargetRange, formatHrBand,
+  TYPES, TYPE_CODES, ALL_TYPE_CODES, PRESCRIBABLE_CODES, ENERGY_MODEL_CODES, GROUPS, typesInGroup, hrTargetRange, formatHrBand,
 } from './types.js';
 import {
-  BUILT_IN_SCHEMES, resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, UNKNOWN_COLOR,
+  BUILT_IN_SCHEMES, resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, UNKNOWN_COLOR, withAlpha,
 } from './schemes.js';
 import { evaluateZoneMatch, ACTIVE_CRITERIA } from './zoneCriteria.js';
 import { ZONES, ZONE_COLORS, ZONE_WRITEUPS, ZONE_GROUPS } from './constants.js';
@@ -18,8 +18,14 @@ const test = (name, fn) => { fn(); mPass++; console.log('  ✓', name); };
 
 console.log('types');
 test('the target list from ZONES.md is all there, in its groups', () => {
-  const mWant = { A1: 1, A2: 1, A3: 1, AT: 2, CS: 3, MVO: 3, LR: 3, LP: 4, LT: 4, PL: 4, HVO: 5 };
+  const mWant = { A1: 1, A2: 1, A3: 1, AT: 2, CS: 3, MVO: 3, LP: 4, LT: 4, PL: 4, HVO: 5 };
   assert.deepEqual(Object.fromEntries(TYPE_CODES.map(c => [c, TYPES[c].group])), mWant);
+});
+test('LR is benched: code reserved, hidden from pickers/groups/criteria', () => {
+  assert.equal(TYPES.LR.benched, true);
+  assert.ok(ALL_TYPE_CODES.includes('LR') && !TYPE_CODES.includes('LR') && !PRESCRIBABLE_CODES.includes('LR'));
+  assert.ok(!typesInGroup(3).includes('LR') && !('LR' in ACTIVE_CRITERIA));
+  assert.equal(resolveZoneStyle('LR').known, true, 'a stored LR line still displays');
 });
 test('every type has a writeup, a valid group and criteria (or none on purpose)', () => {
   for (const c of TYPE_CODES) {
@@ -32,7 +38,7 @@ test('HR bands match the chart (bbm below max)', () => {
   const mBands = Object.fromEntries(TYPE_CODES.map(c => [c, formatHrBand(TYPES[c].hrBand)]));
   assert.deepEqual(mBands, {
     A1: '>50 bbm', A2: '40–50 bbm', A3: '30–40 bbm', AT: '20–30 bbm',
-    CS: '5–20 bbm', MVO: '10–20 bbm', LR: 'N/A', LP: '0–10 bbm', LT: '0–10 bbm', PL: 'N/A', HVO: 'N/A',
+    CS: '5–20 bbm', MVO: '10–20 bbm', LP: '0–10 bbm', LT: '0–10 bbm', PL: 'N/A', HVO: 'N/A',
   });
   assert.equal(TYPES.AT.writeup.hr, '20–30 bbm', 'writeup.hr is derived from the band');
 });
@@ -51,15 +57,23 @@ test('TYPES is frozen (codes are permanent)', () => {
 });
 
 console.log('schemes');
-test('Sweetenham keeps the original colours for the original seven', () => {
-  const mOld = { HVO: '#FF2D55', LT: '#FF5500', LP: '#FF9500', AT: '#FFCC00', A3: '#34C759', A2: '#30B0C7', A1: '#007AFF' };
+test('default scheme = exactly the colours SwimZone has always shown', () => {
+  // old ZONE_COLORS / sbZoneColor / Classifier zoneColors (CS teal) + PL banner colour
+  const mOld = { HVO: '#FF2D55', LT: '#FF5500', LP: '#FF9500', AT: '#FFCC00', A3: '#34C759', A2: '#30B0C7', A1: '#007AFF',
+                 CS: '#30B0C7', PL: '#CC2200' };
   for (const [c, col] of Object.entries(mOld)) assert.equal(zoneColor(c), col, c);
+  // old ZONE_GROUPS header colours
+  assert.deepEqual([1, 2, 3, 4, 5].map(z => groupColor(z)), ['#30B0C7', '#FFCC00', '#FF9500', '#FF5500', '#FF2D55']);
+  // old ZONES text colours and names
   assert.equal(resolveZoneStyle('AT').text, '#1a1a2e');
+  for (const c of ['HVO', 'LT', 'LP', 'A3', 'A2', 'A1']) assert.equal(resolveZoneStyle(c).text, '#fff', c);
+  assert.equal(resolveZoneStyle('AT').name, 'AT / Anaerobic Threshold');
+  assert.equal(resolveZoneStyle('HVO').name, 'HVO / ATP-CP');
+  assert.equal(withAlpha('#30B0C7', 0.12), 'rgba(48,176,199,0.12)');
 });
 test('Zone 3 types share one colour in every built-in scheme', () => {
   for (const id of Object.keys(BUILT_IN_SCHEMES)) {
     assert.equal(zoneColor('CS', id), zoneColor('MVO', id), id);
-    assert.equal(zoneColor('LR', id), zoneColor('CS', id), id);
   }
 });
 test('labels: HVO code stays, label is the scheme\'s', () => {
@@ -67,6 +81,9 @@ test('labels: HVO code stays, label is the scheme\'s', () => {
   assert.equal(resolveZoneStyle('HVO', 'urbanchek').label, 'Gold');
   assert.equal(resolveZoneStyle('HVO', 'maglischo').short, 'SP3');
   assert.equal(resolveZoneStyle('HVO', 'urbanchek').code, 'HVO');
+});
+test('scheme names: relabelled types read "CODE / label"', () => {
+  assert.equal(resolveZoneStyle('AT', 'urbanchek').name, 'AT / Blue');
 });
 test('Urbanchek / Maglischo mappings from the chart', () => {
   const u = c => resolveZoneStyle(c, 'urbanchek').label;
@@ -82,7 +99,7 @@ test('fallbacks: group colour, then neutral grey for non-zones', () => {
   assert.equal(zoneColor('A2', mBare), GROUPS[0].color);
   assert.equal(zoneColor('Drill'), UNKNOWN_COLOR);
   assert.equal(resolveZoneStyle(null).known, false);
-  assert.equal(groupColor(3), '#AF52DE');
+  assert.equal(groupColor(3, 'urbanchek'), '#7E57C2');
 });
 test('light colours get dark text', () => {
   assert.equal(resolveZoneStyle('A1', 'urbanchek').text, '#111');
@@ -102,10 +119,10 @@ test('copyScheme is an editable deep copy; sanitiseScheme drops junk', () => {
 console.log('back-compat');
 test('ZONE_COLORS / sbZoneColor / ZONE_GROUPS come from the same source', () => {
   for (const c of TYPE_CODES) assert.equal(sbZoneColor(c), ZONE_COLORS[c]);
-  assert.equal(sbZoneColor('Skills'), UNKNOWN_COLOR);
-  assert.deepEqual(ZONE_GROUPS.find(g => g.zone === 3).members, ['CS', 'MVO', 'LR']);
+  assert.equal(sbZoneColor('Skills'), '#888', 'Set Builder keeps its old grey for non-zones');
+  assert.deepEqual(ZONE_GROUPS.find(g => g.zone === 3).members, ['CS', 'MVO']);
   assert.deepEqual(typesInGroup(4), ['LP', 'LT', 'PL']);
-  assert.ok(ZONE_WRITEUPS.MVO && ZONE_WRITEUPS.LR && ZONE_WRITEUPS.PL);
+  assert.ok(ZONE_WRITEUPS.MVO && ZONE_WRITEUPS.PL);
 });
 test('classifySet breakdown still sums to 100 over the seven', () => {
   const r = classifySet({ distM: 100, qty: 8, targetTimeSec: 68, restSec: 12, pace200Sec: 130, stroke: 'FS' });
@@ -139,7 +156,7 @@ test('hr prefers explicit hr, then hrPeak, then hrAvg', () => {
   const m = evaluateZoneMatch('A2', r, { hr: 155, hrPeak: 190, hrAvg: 120 }, { maxHr: 200 });
   assert.equal(m.criteria.find(c => c.key === 'hrBand').met, true);
 });
-test('LR: no opinion until its criteria are filled in', () => {
+test('LR (benched): no opinion', () => {
   assert.equal(evaluateZoneMatch('LR', res({ speedRatio: 1.03 }), { distM: 100, qty: 10 }, { maxHr: 200 }), null);
 });
 test('MVO and PL have working criteria', () => {
@@ -155,8 +172,8 @@ test('MVO and PL have working criteria', () => {
 
 console.log('suggestTimes');
 test('every type with criteria gets a suggestion; ON high never below ON low', () => {
-  assert.equal(suggestTimes('LR', 100, 'FS', 130, 70), null, 'LR: criteria not yet supplied');
-  for (const c of TYPE_CODES.filter(c => Object.keys(TYPES[c].criteria).length)) {
+  assert.equal(suggestTimes('LR', 100, 'FS', 130, 70), null, 'LR benched');
+  for (const c of TYPE_CODES) {
     const s = suggestTimes(c, 100, 'FS', 130, 70);
     assert.ok(s, c);
     assert.ok(s.onHigh >= s.onLow, `${c} on ${s.onLow}-${s.onHigh}`);

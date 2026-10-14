@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { getProfile, updateProfile } from '../services/users';
+import ZoneSchemePicker from '../components/ZoneSchemePicker.jsx';
 
 export default function Account() {
   const { user } = useAuth();
@@ -73,6 +74,10 @@ export default function Account() {
             </button>
             {status && <span style={{ fontSize: 13, color: status.startsWith('Could not') ? '#c00' : '#060' }}>{status}</span>}
           </div>
+
+          <label style={label}>Zone colours</label>
+          <ZoneSchemePicker />
+          <p style={help}>How zones are coloured on the Classifier and Set Builder. Changes take effect straight away and are saved on this device. Your sets and results are not changed.</p>
         </>
       )}
     </div>

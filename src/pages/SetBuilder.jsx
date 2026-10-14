@@ -16,6 +16,7 @@ import {
   validateSession, importSessionJson, exportSessionJson,
   loadSession, saveSession, getActiveGroup, setActiveGroup as persistActiveGroup,
 } from '../services/sessionService.js';
+import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 import { generateSessionPrintHtml } from '../services/classifierService.js';
 import { loadAthlete } from '../services/athleteService.js';
 import { storage, KEYS, convertTimeForDisplay } from '../lib/storage.js';
@@ -53,6 +54,9 @@ function findSelectedElementGroup(pSession, pElement) {
 
 export default function SetBuilder() {
   const navigate = useNavigate();
+  // Zone colours follow the coach's scheme (contracts/ZONES.md); default = the original look.
+  const { scheme: zoneScheme } = useZoneScheme();
+  const zoneColorFn = (pZone) => sbZoneColor(pZone, zoneScheme);
 
   // Hydrate from localStorage once on mount
   const mInitialSession         = loadSavedSession();
@@ -290,7 +294,7 @@ export default function SetBuilder() {
                 onMoveUp={() => sbMoveBlock(group.id, block.id, -1)}
                 onMoveDown={() => sbMoveBlock(group.id, block.id, 1)}
                 isFirst={bi === 0} isLast={bi === group.blocks.length - 1}
-                sbZoneColor={sbZoneColor} sbFmtDur={sbFmtDur}
+                sbZoneColor={zoneColorFn} sbFmtDur={sbFmtDur}
                 sbBlockVolume={sbBlockVolume} sbBlockTotalTime={sbBlockTotalTime} sbLineRest={sbLineRest}
                 isSelected={selectedElement?.type === 'block' && selectedElement?.id === block.id}
                 onSelect={() => {
@@ -322,7 +326,7 @@ export default function SetBuilder() {
             sbAddChild={sbAddChild} sbDeleteChild={sbDeleteChild}
             sbUpdateChild={sbUpdateChild} sbMoveChild={sbMoveChild}
             sbParseSec={sbParseSec} sbFmtDur={sbFmtDur}
-            sbZoneColor={sbZoneColor} sbLineRest={sbLineRest}
+            sbZoneColor={zoneColorFn} sbLineRest={sbLineRest}
             sbBlockVolume={sbBlockVolume} sbBlockTotalTime={sbBlockTotalTime}
             pace200Map={pace200Map} phvStatus={phvStatus} poolDisplay={poolDisplay}
           />
