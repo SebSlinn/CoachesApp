@@ -21,6 +21,9 @@ test('the target list from ZONES.md is all there, in its groups', () => {
   const mWant = { A1: 1, A2: 1, A3: 1, AT: 2, CS: 3, MVO: 3, LP: 4, LT: 4, PL: 4, HVO: 5 };
   assert.deepEqual(Object.fromEntries(TYPE_CODES.map(c => [c, TYPES[c].group])), mWant);
 });
+test('intensity order: LP below LT (Sweetenham & Atkinson), PL above LT', () => {
+  assert.deepEqual(TYPE_CODES, ['A1', 'A2', 'A3', 'AT', 'CS', 'MVO', 'LP', 'LT', 'PL', 'HVO']);
+});
 test('LR is benched: code reserved, hidden from pickers/groups/criteria', () => {
   assert.equal(TYPES.LR.benched, true);
   assert.ok(ALL_TYPE_CODES.includes('LR') && !TYPE_CODES.includes('LR') && !PRESCRIBABLE_CODES.includes('LR'));
@@ -121,7 +124,7 @@ test('ZONE_COLORS / sbZoneColor / ZONE_GROUPS come from the same source', () => 
   for (const c of TYPE_CODES) assert.equal(sbZoneColor(c), ZONE_COLORS[c]);
   assert.equal(sbZoneColor('Skills'), '#888', 'Set Builder keeps its old grey for non-zones');
   assert.deepEqual(ZONE_GROUPS.find(g => g.zone === 3).members, ['CS', 'MVO']);
-  assert.deepEqual(typesInGroup(4), ['LP', 'LT', 'PL']);
+  assert.deepEqual(typesInGroup(4), ['LP', 'LT', 'PL'], 'LP below LT (Sweetenham)');
   assert.ok(ZONE_WRITEUPS.MVO && ZONE_WRITEUPS.PL);
 });
 test('classifySet breakdown still sums to 100 over the seven', () => {
@@ -158,6 +161,15 @@ test('hr prefers explicit hr, then hrPeak, then hrAvg', () => {
 });
 test('LR (benched): no opinion', () => {
   assert.equal(evaluateZoneMatch('LR', res({ speedRatio: 1.03 }), { distM: 100, qty: 10 }, { maxHr: 200 }), null);
+});
+test('PL sits above LT: Urbanchek Orange, Maglischo SP1; 50–100m reps', () => {
+  assert.equal(zoneColor('PL', 'urbanchek'), zoneColor('LT', 'urbanchek'));
+  assert.equal(resolveZoneStyle('PL', 'maglischo').short, 'SP1');
+  assert.ok(TYPES.PL.rank > TYPES.LT.rank && TYPES.LT.rank > TYPES.LP.rank);
+  const r = res({ speedRatio: 0.92, restWorkRatio: 8, workDur: 30 });
+  assert.equal(evaluateZoneMatch('PL', r, { distM: 50, qty: 4 }).isMatch, true);
+  assert.equal(evaluateZoneMatch('PL', r, { distM: 25, qty: 4 }).isMatch, false, 'too short');
+  assert.equal(evaluateZoneMatch('PL', r, { distM: 200, qty: 2 }).isMatch, false, 'too long');
 });
 test('MVO and PL have working criteria', () => {
   // 10×200 @ 2:20 with 1:30 rest-ish: rw 0.6, 140 s reps, 23 min work, ratio 1.03

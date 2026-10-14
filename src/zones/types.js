@@ -110,6 +110,9 @@ const TYPE_LIST = [
     criteria: {},
     provisional: true,
   },
+  // Order: LP below LT (Sweetenham & Atkinson — LP early season and less intense, LT more
+  // intense). The British Swimming / Swim England chart lists them the other way round;
+  // Al chose this order on 2026-10-14. PL sits above LT.
   {
     code: 'LP', group: 4, rank: 6, label: 'Lactate production', short: 'LP',
     name: 'LP / Lactate Production', rpe: '17-19', energyModel: true, speedRatio: 1.00,
@@ -127,10 +130,10 @@ const TYPE_LIST = [
   {
     code: 'PL', group: 4, rank: 8, label: 'Peak lactate', short: 'PL',
     name: 'PL / Peak Lactate', rpe: '20', energyModel: false, speedRatio: 0.92,
-    desc: 'Near-maximal 30 s–2.5 min efforts with long recovery to drive lactate to its peak. Use sparingly.',
+    desc: 'Near-maximal 50–100m efforts with long recovery to drive lactate to its peak. Use sparingly.',
     hrBand: null,
-    // Faster than LP, longer than HVO (>15 s), very long rest (≥5× work).
-    criteria: { speed: [null, 0.97], restWork: [5, null], workDur: [30, 150] },
+    // Above LT: all-out, 50–100m reps, very long rest (≥5× work).
+    criteria: { speed: [null, 0.95], restWork: [5, null], distMin: 50, distMax: 100 },
     provisional: true,
   },
   {

@@ -169,9 +169,12 @@ const ZONE_WRITEUPS = Object.fromEntries(
 const ZONE_COLORS = Object.fromEntries(
   TYPE_CODES.map(c => [c, resolveZoneStyle(c, DEFAULT_SCHEME_ID).color]));
 
-// The seven energy-model types, in classifySet()'s breakdown order (fastest first).
-// classifySet() and session/model.js map over this — keep it to energyModel types only.
-const ZONES = [...ENERGY_MODEL_CODES].reverse().map(c => {
+// The seven energy-model types, in classifySet()'s breakdown order. classifySet() and
+// session/model.js map over this — keep it to energyModel types only. The order is the
+// engine's own (it breaks ties between equal percentages), so it is fixed here rather
+// than following the display order in types.js.
+const ENGINE_ORDER = ['HVO', 'LT', 'LP', 'AT', 'A3', 'A2', 'A1'];   // the engine's original order
+const ZONES = ENGINE_ORDER.filter(c => ENERGY_MODEL_CODES.includes(c)).map(c => {
   const t = TYPES[c];
   const st = resolveZoneStyle(c, DEFAULT_SCHEME_ID);
   return {

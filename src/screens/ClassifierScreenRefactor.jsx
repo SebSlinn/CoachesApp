@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { REST_TYPE_OPTS, ATHLETE_TYPE_OPTS, ENERGY_SYSTEMS, ZONE_GROUPS, ZONES, ZONE_WRITEUPS } from "../zones/index.js";
-import { parseTime, fmtTime, secToDisplay, suggestTimes, PRESCRIBABLE_CODES, withAlpha, hrTargetRange } from "../zones/index.js";
+import { parseTime, fmtTime, secToDisplay, suggestTimes, PRESCRIBABLE_CODES, withAlpha, hrTargetRange, evaluateZoneMatch } from "../zones/index.js";
 import { useZoneScheme } from "../context/ZoneSchemeContext.jsx";
 
 // Zone picker order: fastest first (HVO … A1), every training type in use (types.js).
@@ -38,7 +38,7 @@ export function ClassifierScreenRefactor({
 }) {
   // Zone colours/names come from the coach's scheme (contracts/ZONES.md). Default = the original look.
   const { color: zoneColor, groupColor: zoneGroupColor, style: zoneStyle } = useZoneScheme();
-  const csC = zoneColor("CS"), lpC = zoneColor("LP"), plC = zoneColor("PL");
+  const csC = zoneColor("CS"), plC = zoneColor("PL");
 
   const classifierSuggestion = (inputs.distM && inputs.stroke && inputs.pace200)
     ? (function() {
@@ -416,25 +416,28 @@ export function ClassifierScreenRefactor({
             : "Load athlete times to calculate CSS — then time suggestions will appear"}
         </div>
       )}
-      {selectedZone === "LP" && singleResult && (() => {
-        const inRange = singleResult.speedRatio >= 0.97 && singleResult.speedRatio < 1.025;
-        const restOk  = singleResult.restWorkRatio >= 1.0 && singleResult.restWorkRatio <= 1.2;
-        const distOk  = parseFloat(inputs.distM) <= 100;
-        const isLP    = inRange && restOk && distOk;
+      {(selectedZone === "LP" || selectedZone === "LT") && singleResult && (() => {
+        // Driven by the type's criteria (zones/types.js) — LP and LT follow the Training
+        // Zones chart: LP = fast 25–75m with long rest, LT = race pace on short rest.
+        const zc3 = zoneColor(selectedZone);
+        const m = evaluateZoneMatch(selectedZone, singleResult, { distM: inputs.distM, qty: inputs.qty });
+        if (!m) return null;
+        const ok = m.isMatch;
         return (
-          <div style={{ background: isLP ? withAlpha(lpC, 0.10) : withAlpha(lpC, 0.05),
-            border: "1px solid " + (isLP ? withAlpha(lpC, 0.45) : withAlpha(lpC, 0.2)),
-            borderLeft: "4px solid " + (isLP ? lpC : withAlpha(lpC, 0.3)),
+          <div style={{ background: ok ? withAlpha(zc3, 0.10) : withAlpha(zc3, 0.05),
+            border: "1px solid " + (ok ? withAlpha(zc3, 0.45) : withAlpha(zc3, 0.2)),
+            borderLeft: "4px solid " + (ok ? zc3 : withAlpha(zc3, 0.3)),
             borderRadius: 8, padding: "10px 14px", marginBottom: 10, fontSize: 11, lineHeight: 1.7 }}>
-            <div style={{ fontWeight: 700, color: isLP ? lpC : withAlpha(lpC, 0.6), marginBottom: 4 }}>
-              {isLP ? "✓ LP SET" : "~ PARTIAL LP MATCH"}
+            <div style={{ fontWeight: 700, color: ok ? zc3 : withAlpha(zc3, 0.6), marginBottom: 4 }}>
+              {ok ? "✓ " + selectedZone + " SET" : m.isPartial ? "~ PARTIAL " + selectedZone + " MATCH" : "✗ NOT AN " + selectedZone + " SET"}
             </div>
             <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 10 }}>
-              <span style={{ color: inRange ? "#34C759" : "rgba(255,255,255,0.3)" }}>Pace {inRange?"✓":"✗"} {secToDisplay(singleResult.repPace100)}/100m</span>
-              {" · "}
-              <span style={{ color: restOk ? "#34C759" : "rgba(255,255,255,0.3)" }}>Rest {restOk?"✓":"✗"} {singleResult.restWorkRatio.toFixed(2)}:1 (need 1.0–1.2)</span>
-              {" · "}
-              <span style={{ color: distOk ? "#34C759" : "rgba(255,255,255,0.3)" }}>Dist {distOk?"✓":"✗"} {inputs.distM}m (25–100m)</span>
+              {m.criteria.map((c, i) => (
+                <span key={c.key}>
+                  {i > 0 && " · "}
+                  <span style={{ color: c.met ? "#34C759" : "rgba(255,255,255,0.3)" }}>{c.label} {c.met ? "✓" : "✗"} {c.detail}</span>
+                </span>
+              ))}
             </div>
           </div>
         );

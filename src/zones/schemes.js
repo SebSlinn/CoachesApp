@@ -30,7 +30,7 @@ const DEFAULT_SCHEME_ID = 'sweetenham';
 // Zone 3 with it) keep CS's teal. Group colours are the old ZONE_GROUPS header colours.
 // Don't change these without meaning to change every coach's default screen.
 const SWEETENHAM = {
-  id: 'sweetenham', name: 'Sweetenham (SwimZone default)', builtIn: true,
+  id: 'sweetenham', name: 'SwimZone default', builtIn: true,
   types: {
     A1:  { color: '#007AFF' },
     A2:  { color: '#30B0C7' },
@@ -61,7 +61,7 @@ const URBANCHEK = {
     MVO: { label: 'Purple', short: 'Purple' },
     LT:  { label: 'Orange', short: 'Orange', color: '#FB8C00' },
     LP:  { label: 'Green',  short: 'Green',  color: '#43A047' },
-    PL:  { label: 'Orange (peak)', short: 'Orange', color: '#FB8C00' },
+    PL:  { label: 'Orange (peak)', short: 'Orange', color: '#FB8C00' },   // PL sits above LT → LT's colour
     HVO: { label: 'Gold',   short: 'Gold',   color: '#D4AF37', text: '#111' },
   },
   groups: { 3: { color: '#7E57C2' } },
@@ -80,7 +80,7 @@ const MAGLISCHO = {
     MVO: { label: 'EN3', short: 'EN3', color: MAG.EN3 },
     LT:  { label: 'SP1', short: 'SP1', color: MAG.SP1 },
     LP:  { label: 'SP2', short: 'SP2', color: MAG.SP2 },
-    PL:  { label: 'SP1 (peak)', short: 'SP1', color: MAG.SP1 },
+    PL:  { label: 'SP1 (peak)', short: 'SP1', color: MAG.SP1 },     // PL sits above LT → LT's category
     HVO: { label: 'SP3', short: 'SP3', color: MAG.SP3 },
   },
   groups: {},
