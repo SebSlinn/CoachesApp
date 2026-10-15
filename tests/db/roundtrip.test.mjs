@@ -52,15 +52,17 @@ for (const f of files) {
 await db.exec(`grant usage on schema public to authenticated, service_role;
   grant select, insert, update, delete on all tables in schema public to authenticated, service_role;`);
 
-// people: Al (root), a coach, Esmee (adult swimmer) who shares her log with the coach, a stranger
+// people: Al (root), a coach, Esmee (adult swimmer) in the coach's group, a stranger
 const U = {};
 for (const n of ['al', 'coach', 'esmee', 'stranger']) {
   U[n] = (await db.query(`insert into users(id,email,full_name,date_of_birth) values (gen_random_uuid(), $1, $2, '1990-01-01') returning id`,
     [`${n}@x.com`, n])).rows[0].id;
 }
-await db.exec(fs.readFileSync('supabase/bootstrap_root.sql', 'utf8').replace(/alsonline@outlook\.com/g, 'al@x.com'));
-await db.query(`insert into log_permissions(owner_user_id, grantee_user_id, can_read, can_add, can_edit, status)
-                values ($1, $2, true, true, false, 'active')`, [U.esmee, U.coach]);
+await db.exec(fs.readFileSync('supabase/bootstrap_root.sql', 'utf8').replace(/YOUR-EMAIL@example\.com/g, 'al@x.com'));
+// Esmee is a member of a coaching group where the coach is Coach (read + add her results)
+const club = (await db.query(`insert into organisations(name, org_type, group_type) values ('Riverside', 'club', 'coaching') returning id`)).rows[0].id;
+await db.query(`insert into memberships(user_id, org_id, role, status) values ($1,$3,'team_manager','active'), ($2,$3,'coach','active'), ($4,$3,'member','active')`,
+  [U.al, U.coach, club, U.esmee]);
 attach(db);
 
 // ---------------------------------------------------------------------------

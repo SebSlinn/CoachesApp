@@ -4,7 +4,9 @@ import Dashboard from './pages/Dashboard'
 import Classifier from './pages/Classifier'
 import AthleteSetup from './pages/AthleteSetup'
 import SetBuilder from './pages/SetBuilder'
-import Organisations from './pages/admin/Organisations'
+import Groups from './pages/Groups'
+import JoinGroup from './pages/JoinGroup'
+import Sponsorship from './pages/Sponsorship'
 import SetPassword from './pages/SetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 import AthleteRecords from './pages/AthleteRecords'
@@ -40,11 +42,27 @@ export default function App() {
             <SetBuilder />
           </ProtectedRoute>
         } />
-        <Route path="/admin/orgs" element={
+        <Route path="/groups" element={
           <ProtectedRoute>
-            <Organisations />
+            <Groups />
           </ProtectedRoute>
         } />
+        <Route path="/groups/:orgId" element={
+          <ProtectedRoute>
+            <Groups />
+          </ProtectedRoute>
+        } />
+        <Route path="/join/:code" element={
+          <ProtectedRoute>
+            <JoinGroup />
+          </ProtectedRoute>
+        } />
+        <Route path="/sponsorship" element={
+          <ProtectedRoute>
+            <Sponsorship />
+          </ProtectedRoute>
+        } />
+        <Route path="/admin/orgs" element={<Navigate to="/sponsorship" replace />} />
         <Route path="/athlete-records" element={
           <ProtectedRoute>
             <AthleteRecords />

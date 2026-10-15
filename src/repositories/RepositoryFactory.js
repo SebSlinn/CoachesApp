@@ -9,6 +9,7 @@ import { LocalAthleteRepository } from './local/LocalAthleteRepository';
 import { LocalSessionRepository } from './local/LocalSessionRepository';
 import { SupabaseGroupRepository } from './supabase/SupabaseGroupRepository';
 import { SupabaseLogSharingRepository } from './supabase/SupabaseLogSharingRepository';
+import { SupabaseSponsorshipRepository } from './supabase/SupabaseSponsorshipRepository';
 import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository';
 import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
 import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
@@ -20,6 +21,7 @@ let athleteRepository = null;
 let sessionRepository = null;
 let groupRepository = null;
 let logSharingRepository = null;
+let sponsorshipRepository = null;
 let resultsRepository = null;
 let protocolsRepository = null;
 let athleteProfileRepository = null;
@@ -45,7 +47,7 @@ export function getSessionRepository() {
   return sessionRepository;
 }
 
-// ---- user accounts (added 2026-09-24) — server-only by nature: the
+// ---- user accounts (added 2026-09-24; groups reworked 2026-10-15) — server-only by nature: the
 // permission rules live in the database, so there are no Local versions.
 export function getGroupRepository() {
   if (!groupRepository) groupRepository = new SupabaseGroupRepository();
@@ -57,13 +59,20 @@ export function getLogSharingRepository() {
   return logSharingRepository;
 }
 
+// ---- sponsorship (added 2026-10-15) — who may bring NEW people in; was the
+// adding-rights grant tree. Server-only: the rules live in the database.
+export function getSponsorshipRepository() {
+  if (!sponsorshipRepository) sponsorshipRepository = new SupabaseSponsorshipRepository();
+  return sponsorshipRepository;
+}
+
 export function getResultsRepository() {
   if (!resultsRepository) resultsRepository = new SupabaseResultsRepository();
   return resultsRepository;
 }
 
 // ---- Test Set Library (added 2026-09-30) — server-only: visibility follows
-// the grant tree, which lives in the database.
+// group membership (parent groups included), which lives in the database.
 export function getProtocolsRepository() {
   if (!protocolsRepository) protocolsRepository = new SupabaseProtocolsRepository();
   return protocolsRepository;

@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { getProfile, updateProfile } from '../services/users';
 import ZoneSchemePicker from '../components/ZoneSchemePicker.jsx';
+import { getMyQualifications, addQualification, removeQualification, errorText } from '../services/groups';
 
 export default function Account() {
   const { user } = useAuth();
@@ -75,11 +76,60 @@ export default function Account() {
             {status && <span style={{ fontSize: 13, color: status.startsWith('Could not') ? '#c00' : '#060' }}>{status}</span>}
           </div>
 
+          <Qualifications userId={user.id} label={label} help={help} input={input} />
+
           <label style={label}>Zone colours</label>
           <ZoneSchemePicker />
           <p style={help}>How zones are coloured on the Classifier and Set Builder. Changes take effect straight away and are saved on this device. Your sets and results are not changed.</p>
         </>
       )}
     </div>
+  );
+}
+
+// Coaching / team-manager qualifications. Shown to people on the join screen of
+// any group where you're staff; self-declared until SwimZone verifies them.
+function Qualifications({ userId, label, help, input }) {
+  const [list, setList] = useState([]);
+  const [title, setTitle] = useState('');
+  const [issuer, setIssuer] = useState('');
+  const [expires, setExpires] = useState('');
+  const [error, setError] = useState(null);
+
+  const load = async () => setList((await getMyQualifications(userId)).data || []);
+  useEffect(() => { load(); }, [userId]);
+
+  async function add() {
+    setError(null);
+    const { error: e } = await addQualification({ title, issuer, expiresOn: expires || null });
+    if (e) { setError(errorText(e)); return; }
+    setTitle(''); setIssuer(''); setExpires(''); load();
+  }
+  async function remove(id) {
+    const { error: e } = await removeQualification(id);
+    if (e) setError(errorText(e)); else load();
+  }
+
+  return (
+    <>
+      <label style={label}>Qualifications</label>
+      {list.length === 0 && <p style={help}>None added.</p>}
+      {list.map((q) => (
+        <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, margin: '4px 0' }}>
+          <span>{q.title}{q.issuer ? ` (${q.issuer})` : ''}{q.expires_on ? `, until ${new Date(q.expires_on).toLocaleDateString()}` : ''}</span>
+          <span style={{ fontSize: 12, color: q.verified_at ? '#060' : '#999' }}>{q.verified_at ? 'verified' : 'self-declared'}</span>
+          <span style={{ flex: 1 }} />
+          <button onClick={() => remove(q.id)}>Remove</button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+        <input style={{ ...input, flex: 2, minWidth: 180 }} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Swim England Coach Level 2" />
+        <input style={{ ...input, flex: 1, minWidth: 120 }} value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Issued by" />
+        <input style={{ ...input, flex: 1, minWidth: 140 }} type="date" value={expires} onChange={(e) => setExpires(e.target.value)} title="Expires (optional)" />
+        <button onClick={add} disabled={!title.trim()}>Add</button>
+      </div>
+      {error && <p style={{ ...help, color: '#c00' }}>{error}</p>}
+      <p style={help}>Shown on the join screen of groups where you're a coach, Team Manager or other staff, so members and parents know who they're joining. Includes safeguarding and DBS if you want to list them.</p>
+    </>
   );
 }

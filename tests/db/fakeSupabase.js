@@ -3,9 +3,10 @@
 // signed-in user (role `authenticated`, auth.uid() = that user), so Row Level
 // Security, triggers, constraints and the real migrations all apply.
 //
-// It covers only what SupabaseResultsRepository / SupabaseProtocolsRepository use:
+// It covers only what the Supabase repositories use (results, protocols, groups, sponsorship, guardians):
 //   from(t).select(cols | 'a, alias:child!fk(cols)') .insert(row|rows) .upsert(rows,{onConflict,ignoreDuplicates})
 //   .update(v) .delete() .eq .neq .is .gte .lte .in .order .limit .single .maybeSingle
+//   rpc(name, args) — scalar functions return the value, table functions an array of rows
 // and returns { data, error } with values shaped like PostgREST JSON
 // (dates 'YYYY-MM-DD', timestamps ISO, numeric as string, jsonb as objects).
 
@@ -170,7 +171,16 @@ async function rpc(name, args = {}) {
   try {
     await DB.exec(`reset role; select set_config('request.jwt.claim.sub', '${UID || ''}', false);`);
     if (UID) await DB.exec('set role authenticated');
-    const r = await DB.query(`select public.${q(name).slice(1, -1)}(${call}) as result`, params);
+    const fn = q(name).slice(1, -1);
+    // A function that returns a table (setof) comes back as an array of rows, like PostgREST.
+    const meta = await DB.query(`select bool_or(p.proretset) as set from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                                  where n.nspname = 'public' and p.proname = $1`, [fn]);
+    if (meta.rows[0]?.set) {
+      const r = await DB.query(`select * from public.${fn}(${call})`, params);
+      const iso = (v) => (v instanceof Date ? v.toISOString() : v);
+      return { data: r.rows.map((row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, iso(v)]))), error: null };
+    }
+    const r = await DB.query(`select public.${fn}(${call}) as result`, params);
     return { data: r.rows[0] ? r.rows[0].result : null, error: null };
   } catch (e) {
     return { data: null, error: { code: e.code, message: e.message, details: e.detail || null } };

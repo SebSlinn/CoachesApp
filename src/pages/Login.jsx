@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { signIn, requestPasswordReset } from '../services/auth'
 
 export default function Login() {
@@ -9,6 +9,9 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState(null)
   const navigate = useNavigate()
+  // Back to where you were going (e.g. an invite link), else the Dashboard.
+  const from = useLocation().state?.from
+  const next = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') ? from : '/dashboard'
 
   const handleForgot = async () => {
     setError(null)
@@ -30,7 +33,7 @@ export default function Login() {
         setError(error.message)
         setLoading(false)
       } else {
-        navigate('/dashboard')
+        navigate(next, { replace: true })
       }
     } catch (err) {
       setError(err.message || 'Sign-in failed unexpectedly.')

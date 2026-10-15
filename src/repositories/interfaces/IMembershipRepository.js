@@ -11,6 +11,7 @@ export class IMembershipRepository {
   async createProfile(_userId, _email, _fullName) {
     throw new Error('IMembershipRepository.createProfile not implemented');
   }
+  /** The signed-in user's memberships with effective capabilities (see my_memberships()). */
   async getMemberships(_userId) {
     throw new Error('IMembershipRepository.getMemberships not implemented');
   }

@@ -24,21 +24,10 @@ export class SupabaseMembershipRepository extends IMembershipRepository {
     return { data, error };
   }
 
-  async getMemberships(userId) {
-    const { data, error } = await supabase
-      .from('memberships')
-      .select(`
-        id,
-        role,
-        status,
-        organisations (
-          id,
-          name,
-          org_type
-        )
-      `)
-      .eq('user_id', userId)
-      .eq('status', 'active');
+  // My live memberships (active, pending, awaiting a guardian) with each one's
+  // effective capabilities, via my_memberships() — userId is implied by the session.
+  async getMemberships(_userId) {
+    const { data, error } = await supabase.rpc('my_memberships');
     return { data, error };
   }
 

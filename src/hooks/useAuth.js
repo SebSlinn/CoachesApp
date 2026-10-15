@@ -1,12 +1,24 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { onAuthChange, getSession } from '../services/auth'
 import { getProfile, createProfile, getMemberships } from '../services/users'
+import { hasCapability } from '../services/groupLabels'
 
+// Who am I, and what can I do?
+//   memberships  my_memberships() rows: active, pending and awaiting-guardian, one per role per group,
+//                each with effective manage_members / read_results / add_results / is_staff
+//   can(cap)     true if any ACTIVE membership gives it: 'manage_members' | 'read_results' | 'add_results' | 'staff'
+//   isCoach      kept for older callers: can('add_results') via a staff role
+// Roles are data (group_roles), so screens ask about capabilities, never role names.
 export function useAuth() {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
   const [memberships, setMemberships] = useState([])
   const [loading, setLoading] = useState(true)
+
+  const loadMemberships = useCallback(async () => {
+    const { data: mem } = await getMemberships()
+    setMemberships(mem || [])
+  }, [])
 
   const loadUserData = async (authUser) => {
     if (!authUser) {
@@ -30,9 +42,7 @@ export function useAuth() {
     }
     setProfile(prof)
 
-    // Get memberships and roles
-    const { data: mem } = await getMemberships(authUser.id)
-    setMemberships(mem || [])
+    await loadMemberships()
     setLoading(false)
   }
 
@@ -48,13 +58,8 @@ export function useAuth() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  // Helper — does this user have a role anywhere
-  const hasRole = (role) => memberships.some(m => m.role === role)
+  const can = (pCap) => hasCapability(memberships, pCap)
+  const isCoach = memberships.some((m) => m.status === 'active' && m.is_staff && m.add_results)
 
-  const isAdmin = hasRole('admin')
-  const isCoach = hasRole('coach')
-  const isManager = hasRole('manager')
-  const isAthlete = hasRole('athlete')
-
-  return { user, profile, memberships, loading, isAdmin, isCoach, isManager, isAthlete }
+  return { user, profile, memberships, loading, can, isCoach, refreshMemberships: loadMemberships }
 }

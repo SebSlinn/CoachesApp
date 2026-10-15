@@ -12,6 +12,8 @@ export const createProfile = async (userId, email, fullName) => {
   return getMembershipRepository().createProfile(userId, email, fullName)
 }
 
+// The signed-in user's memberships (my_memberships()): active, pending and
+// awaiting-guardian rows with effective capabilities. userId is optional.
 export const getMemberships = async (userId) => {
   return getMembershipRepository().getMemberships(userId)
 }

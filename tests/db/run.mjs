@@ -3,15 +3,17 @@
 // (Postgres via PGlite, signed in as a user). Vite-style extensionless imports
 // need a bundler; esbuild ships with Vite.
 //
-//   node tests/db/run.mjs
+//   node tests/db/run.mjs                       (results round trip)
+//   node tests/db/run.mjs accounts.test.mjs     (groups / sponsorship / guardians)
 import { build } from 'esbuild';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const out = path.join(here, '.out.mjs');
+const entry = process.argv[2] || 'roundtrip.test.mjs';
+const out = path.join(here, '.out-' + path.basename(entry, '.mjs') + '.mjs');
 await build({
-  entryPoints: [path.join(here, 'roundtrip.test.mjs')], bundle: true, platform: 'node', format: 'esm',
+  entryPoints: [path.join(here, entry)], bundle: true, platform: 'node', format: 'esm',
   outfile: out, logLevel: 'warning', external: ['@electric-sql/pglite'],
   define: { 'import.meta.env.VITE_SUPABASE_URL': '"x"', 'import.meta.env.VITE_SUPABASE_ANON_KEY': '"x"' },
   plugins: [{ name: 'fake-supabase', setup(b) {

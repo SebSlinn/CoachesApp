@@ -5,17 +5,19 @@
 
 select * from (
   -- ---- 20260923120000_user_accounts ----------------------------------------
-  select 1 as ord, 'accounts' as area, 'admin_grants table' as "check",
-         case when to_regclass('public.admin_grants') is not null then 'OK' else 'MISSING' end as status,
+  select 1 as ord, 'accounts' as area, 'sponsorships table (was admin_grants)' as "check",
+         case when to_regclass('public.sponsorships') is not null then 'OK'
+              when to_regclass('public.admin_grants') is not null then 'OLD (run groups_sponsorship)'
+              else 'MISSING' end as status,
          null::text as detail
   union all
   select 2, 'accounts', 'has_log_access() function',
          case when exists (select 1 from pg_proc where proname = 'has_log_access') then 'OK' else 'MISSING' end, null
   union all
-  select 3, 'accounts', 'root group (grant with no parent)',
-         case when to_regclass('public.admin_grants') is null then 'n/a'
+  select 3, 'accounts', 'root group (sponsorship with no parent)',
+         case when to_regclass('public.sponsorships') is null then 'n/a'
               when (xpath('/row/n/text()', query_to_xml(
-                     'select count(*) as n from public.admin_grants where parent_grant_id is null and status = ''active''',
+                     'select count(*) as n from public.sponsorships where parent_sponsorship_id is null and status = ''active''',
                      false, true, '')))[1]::text::int > 0 then 'OK' else 'MISSING' end, null
 
   -- ---- 20260924130000 / 20260924140000 ------------------------------------
@@ -24,8 +26,17 @@ select * from (
          case when exists (select 1 from pg_constraint where conname = 'organisations_org_type_check'
                             and pg_get_constraintdef(oid) like '%root%') then 'OK' else 'MISSING' end, null
   union all
-  select 5, 'accounts', 'is_org_staff() (rls_no_recursion)',
-         case when exists (select 1 from pg_proc where proname = 'is_org_staff') then 'OK' else 'MISSING' end, null
+  select 5, 'accounts', 'is_member_of() (rls_no_recursion)',
+         case when exists (select 1 from pg_proc where proname = 'is_member_of') then 'OK' else 'MISSING' end, null
+
+  -- ---- 20261015120000_groups_sponsorship -----------------------------------
+  union all
+  select 6, 'accounts', 'group_roles catalogue (groups_sponsorship)',
+         case when to_regclass('public.group_roles') is not null then 'OK' else 'MISSING' end, null
+  union all
+  select 7, 'accounts', 'group_invites / group_events / staff_qualifications',
+         case when to_regclass('public.group_invites') is not null and to_regclass('public.group_events') is not null
+                   and to_regclass('public.staff_qualifications') is not null then 'OK' else 'MISSING' end, null
 
   -- ---- 20260927120000_athlete_records --------------------------------------
   union all

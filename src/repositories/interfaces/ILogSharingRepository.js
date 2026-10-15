@@ -1,23 +1,18 @@
-//repositories/interfaces/ILogSharingRepository.js
-// Contract for who can read / add to / edit an athlete's log, including
-// guardians of under-18s. Today the only implementation is
-// SupabaseLogSharingRepository (the `log_permissions` table + RPCs).
+// Contract for who can see an athlete's log outside groups — guardians of
+// under-18s — and the list of athletes the signed-in user can load.
+// (Personal shares were retired 2026-10-15: groups replace them.)
+// Today the only implementation is SupabaseLogSharingRepository.
 //
 // Every method resolves to { data, error } — never throws.
 
 export class ILogSharingRepository {
-  /** Active and pending permissions on one athlete's log, with grantee names. */
-  async getPermissionsForOwner(_ownerId) { throw new Error('ILogSharingRepository.getPermissionsForOwner not implemented'); }
-  /** Logs shared with this user (incl. pending guardianships), with owner names. */
-  async getSharedWithMe(_userId) { throw new Error('ILogSharingRepository.getSharedWithMe not implemented'); }
+  /** Athletes I can load: my juniors (guardian) and members of my groups I can read or add to. */
+  async getLoadableAthletes() { throw new Error('ILogSharingRepository.getLoadableAthletes not implemented'); }
+  /** Guardians (active and pending) of one athlete, with names. */
+  async getGuardians(_ownerId) { throw new Error('ILogSharingRepository.getGuardians not implemented'); }
   /** @returns {Promise<{data: boolean, error}>} */
   async canManageSharing(_ownerId) { throw new Error('ILogSharingRepository.canManageSharing not implemented'); }
-
-  /** @param {{read: boolean, add: boolean, edit: boolean}} _access
-   *  @param {string|null} _expiresAt ISO timestamp */
-  async share(_ownerId, _granteeEmail, _access, _expiresAt) { throw new Error('ILogSharingRepository.share not implemented'); }
   async revoke(_permissionId) { throw new Error('ILogSharingRepository.revoke not implemented'); }
-
   async nominateGuardian(_juniorId, _guardianEmail) { throw new Error('ILogSharingRepository.nominateGuardian not implemented'); }
   async respondToGuardianship(_permissionId, _accept) { throw new Error('ILogSharingRepository.respondToGuardianship not implemented'); }
 }

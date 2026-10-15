@@ -6,5 +6,5 @@ dist
 .env*
 
 tests/services/.out.mjs
-tests/db/.out.mjs
+tests/db/.out*.mjs
 claude-docs/
