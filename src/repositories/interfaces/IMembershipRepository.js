@@ -19,6 +19,14 @@ export class IMembershipRepository {
   async displayNames(_ids) {
     throw new Error('IMembershipRepository.displayNames not implemented');
   }
+  /** About me: { has_date_of_birth, is_junior, is_adult, juniors_missing_date_of_birth: [{user_id, name}] }. */
+  async getAccountStatus() {
+    throw new Error('IMembershipRepository.getAccountStatus not implemented');
+  }
+  /** Add my own date of birth, once (private: only me and a guardian can read it). */
+  async setMyDateOfBirth(_date) {
+    throw new Error('IMembershipRepository.setMyDateOfBirth not implemented');
+  }
   /** Update the caller's own profile (public_name / full_name). RLS enforces self. */
   async updateProfile(_userId, _changes) {
     throw new Error('IMembershipRepository.updateProfile not implemented');

@@ -11,7 +11,7 @@ import { attach, signIn } from './fakeSupabase.js';
 import * as G from '../../src/services/groups.js';
 import * as SP from '../../src/services/sponsorship.js';
 import * as L from '../../src/services/logSharing.js';
-import { getMemberships } from '../../src/services/users.js';
+import { getMemberships, getAccountStatus, setMyDateOfBirth } from '../../src/services/users.js';
 import { groupsFromMemberships, hasCapability, describeCapabilities, describeEvent, describeVisibility } from '../../src/services/groupLabels.js';
 import { parseAccountError } from '../../src/services/accountErrors.js';
 
@@ -42,8 +42,9 @@ await db.exec(`grant usage on schema public to authenticated, service_role;
 const U = {};
 const yearsAgo = (y) => { const d = new Date(); d.setFullYear(d.getFullYear() - y); return d.toISOString().slice(0, 10); };
 for (const [n, age] of [['al', 50], ['coach', 40], ['parent', 42], ['adult', 30], ['kid', 12], ['helper', 45], ['stranger', 33]]) {
-  U[n] = (await db.query(`insert into users(id, email, full_name, public_name, date_of_birth) values (gen_random_uuid(), $1, $2, $3, $4) returning id`,
-    [`${n}@x.com`, n[0].toUpperCase() + n.slice(1) + ' Smith', n, yearsAgo(age)])).rows[0].id;
+  U[n] = (await db.query(`insert into users(id, email, full_name, public_name) values (gen_random_uuid(), $1, $2, $3) returning id`,
+    [`${n}@x.com`, n[0].toUpperCase() + n.slice(1) + ' Smith', n])).rows[0].id;
+  await db.query(`insert into user_birthdates(user_id, date_of_birth) values ($1,$2)`, [U[n], yearsAgo(age)]);
 }
 await db.exec(fs.readFileSync('supabase/bootstrap_root.sql', 'utf8').replace(/YOUR-EMAIL@example\.com/g, 'al@x.com'));
 await db.query(`insert into log_permissions(owner_user_id, grantee_user_id, can_read, can_add, can_edit, is_guardian, status)
@@ -200,5 +201,16 @@ ok('suspended → coach cannot sponsor', (await SP.canSponsor()).data === false)
 ok('…but still reads the adult\'s results', (await L.getLoadableAthletes()).data.some((a) => a.athlete_id === U.adult && a.can_read));
 ok('addPerson validates before the Edge Function', /full name/.test((await SP.addPerson({ email: 'x@y.z' })).error?.message));
 
+console.log('\nDates of birth (private) and adding people without them');
+signIn(U.coach);
+const roundAge = (await import('../../src/repositories/RepositoryFactory.js')).getAthleteProfileRepository();
+ok('coach gets the adult\'s age, not the date', (await roundAge.getAge(U.adult)).data === 30);
+signIn(U.stranger);
+ok('stranger gets no age', (await roundAge.getAge(U.adult)).data === null);
+let st = (await getAccountStatus()).data;
+ok('account status: date on record, adult', st.has_date_of_birth && st.is_adult, st);
+ok('setting it again is refused, in words', parseAccountError((await setMyDateOfBirth('1980-01-01')).error).message.startsWith('A date of birth is already'));
+ok('bad date caught before the DB', /INVALID/.test((await setMyDateOfBirth('soon')).error?.message));
+ok('addPerson: under 18 needs a guardian', /GUARDIAN_REQUIRED/.test((await SP.addPerson({ email: 'k@x.z', fullName: 'K', isJunior: true })).error?.message));
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

@@ -106,15 +106,15 @@ export async function loadLatestMaxHrTest(pAthleteId) {
  * read is treated as unknown, and with nothing known the result is source 'none'.
  * @param {string|null} pAthleteId
  * @param {Object} [pOpts] { profile } — pass an already-loaded profile to save a round trip
- * @returns {Promise<{ maxHr, source, estimated, age, detail, test, dateOfBirth }>}
+ * @returns {Promise<{ maxHr, source, estimated, age, detail, test }>}  (age only — never a date of birth)
  */
 export async function resolveAthleteMaxHr(pAthleteId, pOpts = {}) {
-  if (!pAthleteId) return { ...resolveMaxHr({}), test: null, dateOfBirth: null };
+  if (!pAthleteId) return { ...resolveMaxHr({}), test: null };
   const mRepo = getAthleteProfileRepository();
-  const [mProf, mTest, mDob] = await Promise.all([
+  const [mProf, mTest, mAge] = await Promise.all([
     pOpts.profile !== undefined ? Promise.resolve({ data: pOpts.profile }) : mRepo.get(pAthleteId).catch(() => ({ data: null })),
     loadLatestMaxHrTest(pAthleteId).catch(() => ({ data: null })),
-    (mRepo.getDateOfBirth ? mRepo.getDateOfBirth(pAthleteId) : Promise.resolve({ data: null })).catch(() => ({ data: null })),
+    (mRepo.getAge ? mRepo.getAge(pAthleteId) : Promise.resolve({ data: null })).catch(() => ({ data: null })),
   ]);
   const p = mProf?.data || {};
   const t = mTest?.data || null;
@@ -122,10 +122,9 @@ export async function resolveAthleteMaxHr(pAthleteId, pOpts = {}) {
     ...resolveMaxHr({
       savedMaxHr: p.maxHr, savedSource: p.maxHrSource, savedOn: p.maxHrOn,
       testPeakHr: t?.peakHr, testOn: t?.swumOn,
-      dateOfBirth: mDob?.data || null,
+      age: mAge?.data ?? null,
     }),
     test: t,
-    dateOfBirth: mDob?.data || null,
   };
 }
 

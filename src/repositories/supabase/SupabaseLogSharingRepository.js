@@ -35,7 +35,12 @@ export class SupabaseLogSharingRepository extends ILogSharingRepository {
   async nominateGuardian(juniorId, guardianEmail) {
     return this.#rpc('nominate_guardian', { p_junior: juniorId, p_guardian_email: guardianEmail });
   }
-  async respondToGuardianship(permissionId, accept) {
-    return this.#rpc('respond_to_guardianship', { p_permission_id: permissionId, p_accept: accept });
+  async respondToGuardianship(permissionId, accept, dateOfBirth) {
+    const args = { p_permission_id: permissionId, p_accept: accept };
+    if (dateOfBirth) args.p_date_of_birth = dateOfBirth;
+    return this.#rpc('respond_to_guardianship', args);
+  }
+  async setJuniorDateOfBirth(juniorId, date) {
+    return this.#rpc('set_junior_date_of_birth', { p_junior: juniorId, p_date_of_birth: date });
   }
 }

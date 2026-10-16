@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { signOut } from '../services/auth'
 import { useNavigate } from 'react-router-dom'
-import { getLoadableAthletes, respondToGuardianship } from '../services/logSharing'
+import { getLoadableAthletes, respondToGuardianship, setJuniorDateOfBirth } from '../services/logSharing'
+import { getAccountStatus, setMyDateOfBirth } from '../services/users'
 import { getPendingRequests, approveMembership, approveJuniorMembership, errorText } from '../services/groups'
 import { canSponsor as fetchCanSponsor } from '../services/sponsorship'
 import { GROUP_TYPE_LABEL, groupsFromMemberships, statusText } from '../services/groupLabels'
@@ -18,10 +19,11 @@ export default function Dashboard() {
   const [athletes, setAthletes] = useState([])
   const [requests, setRequests] = useState([])
   const [canSponsor, setCanSponsor] = useState(false)
+  const [status, setStatus] = useState(null)
 
   const load = useCallback(async () => {
-    const [a, r, c] = await Promise.all([getLoadableAthletes(), getPendingRequests(), fetchCanSponsor()])
-    setAthletes(a.data || []); setRequests(r.data || []); setCanSponsor(!!c.data)
+    const [a, r, c, st] = await Promise.all([getLoadableAthletes(), getPendingRequests(), fetchCanSponsor(), getAccountStatus()])
+    setAthletes(a.data || []); setRequests(r.data || []); setCanSponsor(!!c.data); setStatus(st.data || null)
   }, [])
   useEffect(() => { if (user) load() }, [user, load])
 
@@ -45,6 +47,9 @@ export default function Dashboard() {
       </div>
 
       <p>Welcome back, <strong>{profile?.full_name || user?.email}</strong></p>
+
+      {status && !status.has_date_of_birth && !status.is_junior && <MyBirthdate onDone={load} />}
+      {(status?.juniors_missing_date_of_birth || []).map((j) => <JuniorBirthdate key={j.user_id} junior={j} onDone={load} />)}
 
       {requests.length > 0 && (
         <div style={{ marginBottom: 24 }}>
@@ -109,6 +114,7 @@ export default function Dashboard() {
 function RequestRow({ r, onDone }) {
   const act = useAction()
   const navigate = useNavigate()
+  const [dob, setDob] = useState('')
   const run = (pFn) => act.run(pFn, null, errorText).then((x) => x && onDone())
   let text, yes, no
   if (r.kind === 'junior_join') {
@@ -118,16 +124,49 @@ function RequestRow({ r, onDone }) {
     text = <><strong>{r.name}</strong> asked to join <strong>{r.org_name}</strong> as {r.role_label}.</>
     yes = () => run(() => approveMembership(r.id, true)); no = () => run(() => approveMembership(r.id, false))
   } else {
-    text = <>You've been asked to be <strong>{r.name}</strong>'s guardian.</>
-    yes = () => run(() => respondToGuardianship(r.id, true)); no = () => run(() => respondToGuardianship(r.id, false))
+    text = <>You've been asked to be <strong>{r.name}</strong>'s guardian{r.org_name ? <>, so they can join <strong>{r.org_name}</strong></> : null}.
+      {r.needs_dob && <> Their date of birth: <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} style={{ ...S.input, minWidth: 0 }} /></>}</>
+    yes = () => run(() => respondToGuardianship(r.id, true, dob || null)); no = () => run(() => respondToGuardianship(r.id, false))
   }
   return (
     <div style={{ ...S.card, ...S.row }}>
       <span style={S.small}>{text}</span>
       <span style={{ flex: 1 }} />
       {r.kind === 'junior_join' && <button style={S.btn} onClick={() => navigate('/groups/' + r.org_id)} title="The group's staff and what it shares">Details</button>}
-      <button style={S.btn} disabled={act.busy} onClick={yes}>{r.kind === 'guardianship' ? 'Accept' : 'Approve'}</button>
+      <button style={S.btn} disabled={act.busy || (r.needs_dob && !dob)} onClick={yes}>{r.kind === 'guardianship' ? 'Accept' : 'Approve'}</button>
       <button style={S.btn} disabled={act.busy} onClick={no}>Decline</button>
+      <Message error={act.error} />
+    </div>
+  )
+}
+
+// Optional for adults: needed to be a guardian, and for a heart-rate estimate from age.
+function MyBirthdate({ onDone }) {
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem('sz.hideDobPrompt') === '1' } catch { return false } })
+  const [dob, setDob] = useState('')
+  const act = useAction()
+  if (hidden) return null
+  const hide = () => { try { localStorage.setItem('sz.hideDobPrompt', '1') } catch { /* ignore */ } setHidden(true) }
+  return (
+    <div style={{ ...S.card, ...S.row, marginBottom: 16 }}>
+      <span style={S.small}>Add your date of birth? Only you can see it — coaches see your age. You need it to be a guardian, or for a heart-rate estimate.</span>
+      <input type="date" style={S.input} value={dob} onChange={(e) => setDob(e.target.value)} />
+      <button style={S.btn} disabled={!dob || act.busy} onClick={() => act.run(() => setMyDateOfBirth(dob), null, errorText).then((x) => x && onDone())}>Save</button>
+      <button style={S.btn} onClick={hide}>Not now</button>
+      <Message error={act.error} />
+    </div>
+  )
+}
+
+// A guardian whose child has no date of birth on record yet.
+function JuniorBirthdate({ junior, onDone }) {
+  const [dob, setDob] = useState('')
+  const act = useAction()
+  return (
+    <div style={{ ...S.card, ...S.row, marginBottom: 16 }}>
+      <span style={S.small}>Add <strong>{junior.name}</strong>'s date of birth. Only you and {junior.name.split(' ')[0]} can see it — coaches see the age.</span>
+      <input type="date" style={S.input} value={dob} onChange={(e) => setDob(e.target.value)} />
+      <button style={S.btn} disabled={!dob || act.busy} onClick={() => act.run(() => setJuniorDateOfBirth(junior.user_id, dob), null, errorText).then((x) => x && onDone())}>Save</button>
       <Message error={act.error} />
     </div>
   )

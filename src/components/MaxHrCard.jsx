@@ -6,8 +6,8 @@
 // Props:
 //   value, source, on   the max HR typed/saved on the profile ('' = none), 'typed'|'test', date
 //   onChange(value, source, on)
-//   basis               { test: {peakHr, swumOn}|null, dateOfBirth: string|null } from resolveAthleteMaxHr
-//   athleteKnown        true when this is a real member (so a test or DOB could exist)
+//   basis               { test: {peakHr, swumOn}|null, age: number|null } from resolveAthleteMaxHr
+//   athleteKnown        true when this is a real member (so a test or an age could exist)
 import { resolveMaxHr, isValidMaxHr } from '../athlete/maxHr.js';
 import { hrTargetRange, PRESCRIBABLE_CODES } from '../zones/types.js';
 import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
@@ -16,7 +16,7 @@ export function effectiveMaxHr({ value, source, on, basis }) {
   return resolveMaxHr({
     savedMaxHr: isValidMaxHr(value) ? Number(value) : null, savedSource: source, savedOn: on,
     testPeakHr: basis?.test?.peakHr, testOn: basis?.test?.swumOn,
-    dateOfBirth: basis?.dateOfBirth || null,
+    age: basis?.age ?? null,
   });
 }
 
@@ -54,7 +54,7 @@ export default function MaxHrCard({ value, source, on, onChange, basis, athleteK
       <div style={{ fontSize: 10, color: mSrcColour, marginTop: 8 }}>Using: {mNow.detail}</div>
       {!athleteKnown && mNow.source === 'none' && (
         <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>
-          Load the athlete from the Dashboard to use their date of birth or Max HR test, or type a max HR here.
+          Load the athlete from the Dashboard to use their age or Max HR test, or type a max HR here.
         </div>
       )}
       {mNow.maxHr && (

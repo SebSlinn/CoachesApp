@@ -70,11 +70,11 @@ const WRITEUPS = {
   LT: {
   la: "12–20 mmol/L", rpe: "19–20", domain: "Severe / Extreme",
   name: "Lactate Tolerance",
-  description: "The most physiologically demanding zone. Athletes train to tolerate severe acidosis. Medium rest allows partial recovery so each rep begins with elevated blood lactate already present — forcing work under acidotic conditions.",
+  description: "The most physiologically demanding zone. Athletes train to tolerate severe acidosis. Reps are swum at 200 race pace (the second 100 of the 200 — ½ × 200 goal or PB per 100) and sent off as the lactate from the previous rep is peaking (about 4 minutes from its start, Bowman), so each rep begins with blood lactate already high — forcing work under acidotic conditions.",
   usedFor: ["Building tolerance to severe acidosis","Increasing buffering capacity of all fibre types","Developing anaerobic muscular endurance","Event-specific preparation for 100m–200m sprint events","Maintaining technique under extreme fatigue"],
   primary: ["Increased muscle buffering capacity","Improved ability to maintain technique under severe acidosis","Increased MCT-1 and MCT-4 density","Improved pain tolerance and psychological resilience"],
   secondary: ["Increased ATP/PC and glycogen stores","Increased rate of blood lactate removal","Increased VO₂max","Increased rate of anaerobic metabolism"],
-  setStructure: "600–2,000m · 25–200m reps · Rest: 5–30s (broken), 15s–10min (max acidosis)",
+  setStructure: "600–2,000m (sprinters shorter, middle-distance longer) · 50–200m reps · ½ × 200 goal/PB per 100 · On 3:00–5:00 start-to-start",
   },
   HVO: {
   la: "N/A", rpe: "Maximal", domain: "Sprint / Alactic",

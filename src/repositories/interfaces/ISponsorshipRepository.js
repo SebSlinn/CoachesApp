@@ -18,7 +18,7 @@ export class ISponsorshipRepository {
   async setStatus(_sponsorshipId, _status) { throw new Error('ISponsorshipRepository.setStatus not implemented'); }
   async setDailyAddLimit(_limit) { throw new Error('ISponsorshipRepository.setDailyAddLimit not implemented'); }
   async setGroupDailyLimit(_orgId, _limit) { throw new Error('ISponsorshipRepository.setGroupDailyLimit not implemented'); }
-  /** @param {{organisationId, email, fullName, dateOfBirth, guardianEmails}} _person
+  /** @param {{organisationId, email, fullName, guardianEmails}} _person — guardians given = under 18
    *  @returns {Promise<{data: {user_id, pending_guardians}, error}>} */
   async addPerson(_person) { throw new Error('ISponsorshipRepository.addPerson not implemented'); }
   /** Root only. */

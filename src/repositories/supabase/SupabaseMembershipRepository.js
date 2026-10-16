@@ -44,9 +44,19 @@ export class SupabaseMembershipRepository extends IMembershipRepository {
     return { data: map, error: null };
   }
 
+  async getAccountStatus() {
+    const { data, error } = await supabase.rpc('my_account_status');
+    return { data, error };
+  }
+
+  async setMyDateOfBirth(date) {
+    const { data, error } = await supabase.rpc('set_my_date_of_birth', { p_date_of_birth: date });
+    return { data, error };
+  }
+
   // Update the caller's own profile. Only public_name / full_name are writable
-  // here; RLS (sz_users_self_update) restricts the row to id = auth.uid(), and a
-  // trigger locks date_of_birth, so nothing sensitive can be changed via this.
+  // here; RLS (sz_users_self_update) restricts the row to id = auth.uid(). Dates of
+  // birth are not on users at all (user_birthdates, set once via set_my_date_of_birth).
   async updateProfile(userId, changes) {
     const patch = {};
     if (changes.publicName !== undefined) patch.public_name = changes.publicName || null;

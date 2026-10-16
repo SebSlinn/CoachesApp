@@ -23,10 +23,10 @@ export class IAthleteProfileRepository {
   async upsert(_athleteId, _profile) {
     throw new Error('IAthleteProfileRepository.upsert not implemented');
   }
-  /** The athlete's date of birth (for the 220 − age max HR estimate).
+  /** The athlete's age in whole years (for the 220 − age max HR estimate). Never the date of birth.
    *  @param {string} _athleteId
-   *  @returns {Promise<{data: string|null, error: Object|null}>} 'YYYY-MM-DD', or null if unknown/not visible */
-  async getDateOfBirth(_athleteId) {
-    throw new Error('IAthleteProfileRepository.getDateOfBirth not implemented');
+   *  @returns {Promise<{data: number|null, error: Object|null}>} null if unknown/not visible */
+  async getAge(_athleteId) {
+    throw new Error('IAthleteProfileRepository.getAge not implemented');
   }
 }

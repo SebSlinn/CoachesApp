@@ -1,3 +1,4 @@
+import { ageInYears } from '../../src/athlete/maxHr.js';
 // In-memory stand-ins for the repositories the services use.
 export const store = { protocols: [], efforts: [], reps: [], bests: {}, profiles: {}, dobs: {}, activeAthlete: null };
 let n = 0; const id = () => 'id-' + (++n);
@@ -46,6 +47,7 @@ export function getAthleteProfileRepository() {
   return {
     async get(a) { return { data: store.profiles[a] || null, error: null }; },
     async upsert(a, p) { store.profiles[a] = { ...(store.profiles[a] || {}), ...p, athleteId: a, updatedAt: new Date().toISOString() }; return { data: store.profiles[a], error: null }; },
-    async getDateOfBirth(a) { return { data: store.dobs[a] || null, error: null }; },
+    // athlete_age(): the age only (dates of birth are private); store.dobs keeps fixtures readable
+    async getAge(a) { return { data: store.dobs[a] ? ageInYears(store.dobs[a]) : null, error: null }; },
   };
 }

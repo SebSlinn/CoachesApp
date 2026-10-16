@@ -1,4 +1,5 @@
-// groups_sponsorship.test.mjs — Groups & Sponsorship migration, PGlite, self-contained.
+// groups_sponsorship.test.mjs — Groups & Sponsorship migration (+ the private-birthdates
+// follow-up, 20261016120000), PGlite, self-contained.
 //
 // Builds the hand-made base tables as they are on the live DB, applies EVERY
 // earlier migration in order, seeds the live shape (Al = root admin, two
@@ -60,10 +61,15 @@ await db.exec(`grant usage on schema public to authenticated, service_role;
   grant select, insert, update, delete on all tables in schema public to authenticated, service_role;`);
 
 // ---- live shape: Al (root admin), two children as athletes in root, Al guardian ----
+// Before the new migration the date of birth lives on users; after it, in user_birthdates.
 async function person(n, dob) {
-  const r = await db.query(`insert into users(email, full_name, date_of_birth, public_name) values ($1,$2,$3,$4) returning id`,
-    [`${n}@x.com`, n[0].toUpperCase() + n.slice(1), dob, n]);
+  const r = await db.query(`insert into users(email, full_name, public_name) values ($1,$2,$3) returning id`,
+    [`${n}@x.com`, n[0].toUpperCase() + n.slice(1), n]);
   U[n] = r.rows[0].id;
+  if (!dob) return;
+  if ((await db.query(`select to_regclass('public.user_birthdates') t`)).rows[0].t)
+    await db.query(`insert into user_birthdates(user_id, date_of_birth) values ($1,$2)`, [U[n], dob]);
+  else await db.query(`update users set date_of_birth = $2 where id = $1`, [U[n], dob]);
 }
 const yearsAgo = (y) => { const d = new Date(); d.setFullYear(d.getFullYear() - y); return d.toISOString().slice(0, 10); };
 await person('al', '1970-01-01');
@@ -86,10 +92,14 @@ for (const k of ['kid1', 'kid2']) {
 await person('friend', '1980-01-01');
 await db.query(`insert into log_permissions(owner_user_id, grantee_user_id, status) values ($1,$2,'active')`, [U.al, U.friend]);
 
-console.log(`\nApplying ${NEW} (twice)…`);
-for (const n of [1, 2]) {
-  try { await db.exec(readFileSync(DIR + NEW, 'utf8')); console.log(`  applied (${n})`); }
-  catch (e) { console.error(`  FAILED (${n}): ${e.message}`); process.exit(1); }
+// The groups migration and every Accounts follow-up after it (private birthdates, …), each twice.
+const later = readdirSync(DIR).filter((f) => f.endsWith('.sql') && f >= NEW).sort();
+for (const f of later) {
+  console.log(`\nApplying ${f} (twice)…`);
+  for (const n of [1, 2]) {
+    try { await db.exec(readFileSync(DIR + f, 'utf8')); console.log(`  applied (${n})`); }
+    catch (e) { console.error(`  FAILED (${n}): ${e.message}`); process.exit(1); }
+  }
 }
 await db.exec(`grant select, insert, update, delete on all tables in schema public to authenticated, service_role;`);
 
@@ -304,6 +314,51 @@ ok('sponsorship_tree (stranger): nothing', (await as('stranger', `select * from 
 console.log('\nDeleting a group');
 const tmp = await one('stranger', `select public.create_group('Temp','coaching','other')`);
 ok('a group can be deleted despite the last-TM guard', (await err(null, `delete from organisations where id='${tmp}'`)) === null);
+
+console.log('\nDates of birth are private');
+ok('users no longer has a date_of_birth column',
+  (await svc(`select count(*)::int n from information_schema.columns where table_name='users' and column_name='date_of_birth'`))[0].n === 0);
+ok('existing dates of birth carried over (Al, both children)',
+  (await svc(`select count(*)::int n from user_birthdates where user_id = any($1)`, [[U.al, U.kid1, U.kid2]]))[0].n === 3);
+ok('coach cannot read a member\'s date of birth', (await as('coach', `select * from user_birthdates where user_id=$1`, [U.adultA])).rows.length === 0);
+ok('…but gets their age', (await one('coach', 'select public.athlete_age($1)', [U.adultA])) === 30);
+ok('…and their age on a given date (gala age groups)', (await one('coach', `select public.athlete_age($1, (current_date - interval '1 year')::date)`, [U.adultA])) === 29);
+ok('stranger gets no age', (await one('stranger', 'select public.athlete_age($1)', [U.adultA])) === null);
+ok('you see your own', (await as('adultA', `select * from user_birthdates where user_id=$1`, [U.adultA])).rows.length === 1);
+ok('a guardian sees their child\'s', (await as('al', `select * from user_birthdates where user_id=$1`, [U.kid1])).rows.length === 1);
+ok('nobody writes the table directly', /row-level security|permission/.test(await err('adultA', `insert into user_birthdates(user_id, date_of_birth) values ($1,'1990-01-01')`, [U.stranger]) || ''));
+ok('setting your own twice is refused', /ALREADY_SET/.test(await err('adultA', `select public.set_my_date_of_birth('1991-01-01')`) || ''));
+
+console.log('\nNew people: no dates of birth from the sponsor; junior waits for the guardian');
+await svc(`update sponsorships set status='active' where org_id=$1`, [club]);
+const adultNew = (await svc(`select gen_random_uuid() id`))[0].id;
+await svc(`select public.record_athlete_addition($1,$2,$3,'newadult@x.com','New Adult',null,'{}',true)`, [U.tm, club, adultNew]);
+U.newadult = adultNew;
+ok('new adult: active member, no date of birth on record', (await svc(`select status from memberships where user_id=$1 and org_id=$2`, [adultNew, club]))[0].status === 'active'
+  && (await svc(`select count(*)::int n from user_birthdates where user_id=$1`, [adultNew]))[0].n === 0);
+ok('…not yet an adult for guardian purposes', !(await svc(`select public.is_adult($1) a`, [adultNew]))[0].a);
+const kidNew = (await svc(`select gen_random_uuid() id`))[0].id;
+ok('cannot name them guardian until they add their date of birth',
+  /GUARDIAN_NOT_ADULT/.test((await svc(`select public.validate_athlete_addition($1,$2,null,$3) e`, [U.tm, club, ['newadult@x.com']]))[0].e));
+ok('own date of birth: too young refused', /INVALID/.test(await err('newadult', `select public.set_my_date_of_birth(current_date - 1)`) || ''));
+ok('own date of birth saved', (await err('newadult', `select public.set_my_date_of_birth('1985-06-01')`)) === null);
+const st = await one('newadult', 'select public.my_account_status()');
+ok('my_account_status: has date, adult', st.has_date_of_birth && st.is_adult && !st.is_junior, st);
+await svc(`select public.record_athlete_addition($1,$2,$3,'kidnew@x.com','Kid New',null,$4,true)`, [U.tm, club, kidNew, ['newadult@x.com']]);
+U.kidnew = kidNew;
+ok('new junior: declared under 18, waiting for guardian', (await svc(`select public.is_junior($1) j`, [kidNew]))[0].j
+  && (await svc(`select status from memberships where user_id=$1 and org_id=$2`, [kidNew, club]))[0].status === 'awaiting_guardian');
+ok('coach cannot read the junior yet', !(await one('coach', 'select public.has_log_access($1,$2)', [kidNew, 'read'])));
+const gReq = (await as('newadult', `select * from public.my_pending_requests()`)).rows.find((r) => r.kind === 'guardianship');
+ok('guardian sees the request, with the group and a date needed', gReq?.user_id === kidNew && gReq.needs_dob && gReq.org_name === 'Riverside Dev', gReq);
+ok('no separate join card for a sponsor-added junior', !(await as('newadult', `select * from public.my_pending_requests()`)).rows.some((r) => r.kind === 'junior_join'));
+ok('accept without a date → asked for it', /DOB_REQUIRED/.test(await err('newadult', `select public.respond_to_guardianship($1, true)`, [gReq.id]) || ''));
+ok('accept with an adult date → refused', /INVALID/.test(await err('newadult', `select public.respond_to_guardianship($1, true, '1990-01-01')`, [gReq.id]) || ''));
+ok('accept with the child\'s date', (await err('newadult', `select public.respond_to_guardianship($1, true, $2)`, [gReq.id, yearsAgo(10)])) === null);
+ok('junior now active in the group', (await svc(`select status from memberships where user_id=$1 and org_id=$2`, [kidNew, club]))[0].status === 'active');
+ok('coach reads the junior, sees age 10', (await one('coach', 'select public.has_log_access($1,$2)', [kidNew, 'read'])) && (await one('coach', 'select public.athlete_age($1)', [kidNew])) === 10);
+ok('guardian cannot change the date again', /ALREADY_SET/.test(await err('newadult', `select public.set_junior_date_of_birth($1,$2)`, [kidNew, yearsAgo(9)]) || ''));
+ok('root can correct it', (await err('al', `select public.correct_date_of_birth($1,$2)`, [kidNew, yearsAgo(9)])) === null);
 
 console.log('\nNew bootstrap_root.sql (on a fresh database shape)');
 await db.exec(`reset role; delete from sponsorships; delete from organisations where group_type = 'root'`);

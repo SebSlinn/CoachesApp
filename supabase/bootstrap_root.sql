@@ -26,8 +26,10 @@ select u.id, o.id, 'team_manager', 'active'
  where lower(u.email) = lower('YOUR-EMAIL@example.com')   -- <-- change this
    and o.group_type = 'root';
 
--- 3. Your own date of birth (needed so you count as an adult, e.g. to be a guardian)
--- update public.users set date_of_birth = '1970-01-01' where lower(email) = lower('YOUR-EMAIL@example.com');
+-- 3. Your own date of birth (needed so you count as an adult, e.g. to be a guardian).
+--    Easiest from the app (the Dashboard asks for it); or here:
+-- insert into public.user_birthdates (user_id, date_of_birth)
+-- select id, '1970-01-01' from public.users where lower(email) = lower('YOUR-EMAIL@example.com');
 
 -- Check: should return true when run as you in the app, or here:
 -- select public.is_root(id) from public.users where lower(email) = lower('YOUR-EMAIL@example.com');

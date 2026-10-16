@@ -84,15 +84,11 @@ export class SupabaseAthleteProfileRepository extends IAthleteProfileRepository 
     return { data: fromRow(data), error };
   }
 
-  // users.date_of_birth — readable by the athlete and anyone with a log-sharing
-  // link to them (sz_users_related). Not visible → null, not an error.
-  async getDateOfBirth(pAthleteId) {
+  // The athlete's AGE in whole years (athlete_age): dates of birth are private
+  // (user_birthdates, owner + guardian only). Null when unknown or not visible.
+  async getAge(pAthleteId) {
     if (!supabase) return UNAVAILABLE;
-    const { data, error } = await supabase
-      .from('users')
-      .select('date_of_birth')
-      .eq('id', pAthleteId)
-      .maybeSingle();
-    return { data: data?.date_of_birth || null, error };
+    const { data, error } = await supabase.rpc('athlete_age', { p_user: pAthleteId });
+    return { data: Number.isInteger(data) ? data : null, error };
   }
 }

@@ -32,6 +32,12 @@ test('date of birth only → 220 − age, marked estimated', () => {
   assert.deepEqual([r.source, r.maxHr, r.estimated, r.age], ['age', 206, true, 14]);
   assert.match(r.detail, /220 − age 14/);
 });
+test('age given directly (staff never see the date) → same estimate; beats a date of birth', () => {
+  const r = resolveMaxHr({ age: 14 });
+  assert.deepEqual([r.source, r.maxHr, r.estimated, r.age], ['age', 206, true, 14]);
+  assert.equal(resolveMaxHr({ age: 20, dateOfBirth: '2012-03-02', asOf: ASOF }).maxHr, 200);
+  assert.equal(resolveMaxHr({ age: 2 }).source, 'none', 'implausible age ignored');
+});
 test('a Max HR test beats the age estimate', () => {
   const r = resolveMaxHr({ dateOfBirth: '2012-03-02', testPeakHr: 201, testOn: '2026-10-01', asOf: ASOF });
   assert.deepEqual([r.source, r.maxHr, r.estimated], ['test', 201, false]);

@@ -129,7 +129,20 @@ const TYPE_LIST = [
     name: 'LT / Lactate Tolerance', rpe: '18-20', energyModel: true, speedRatio: 0.96,
     desc: 'High-speed glycolytic work with significant lactate accumulation. Post-PHV athletes.',
     hrBand: { fromBbm: 0, toBbm: 10 },
-    criteria: { speed: [0.85, 0.97] },
+    // Al, 2026-10-16:
+    //  - reps 50–200m
+    //  - pace = ½ × 200 goal time (else ½ × 200 PB) per 100 — the 2nd 100 of the 200 — ±2 s/100
+    //  - send-off 3:00–5:00 start-to-start: the next rep starts as lactate from the last one
+    //    peaks (Bowman: ~4:00 from the start of the previous swim). Offered 3:00/3:30/4:00/4:30/5:00.
+    //  - 600–2000m: shorter for sprinters, longer for middle-distance swimmers.
+    // speed is the ratio fallback when there is no 200 time in the context.
+    criteria: {
+      racePace: { offsetLow: -2, offsetHigh: 2 }, speed: [0.97, 1.03],
+      onSec: [180, 300], onOptions: [180, 210, 240, 270, 300],
+      distMin: 50, distMax: 200,
+      volumeM: [600, 2000],
+      volumeByAthleteType: { sprint: [600, 1000], allround: [800, 1500], endurance: [1200, 2000] },
+    },
   },
   {
     code: 'PL', group: 4, rank: 8, label: 'Peak lactate', short: 'PL',

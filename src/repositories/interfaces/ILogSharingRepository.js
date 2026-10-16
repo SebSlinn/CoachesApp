@@ -14,5 +14,8 @@ export class ILogSharingRepository {
   async canManageSharing(_ownerId) { throw new Error('ILogSharingRepository.canManageSharing not implemented'); }
   async revoke(_permissionId) { throw new Error('ILogSharingRepository.revoke not implemented'); }
   async nominateGuardian(_juniorId, _guardianEmail) { throw new Error('ILogSharingRepository.nominateGuardian not implemented'); }
-  async respondToGuardianship(_permissionId, _accept) { throw new Error('ILogSharingRepository.respondToGuardianship not implemented'); }
+  /** Accepting needs the child's date of birth when none is on record. */
+  async respondToGuardianship(_permissionId, _accept, _dateOfBirth) { throw new Error('ILogSharingRepository.respondToGuardianship not implemented'); }
+  /** A guardian adds their child's date of birth, once. */
+  async setJuniorDateOfBirth(_juniorId, _date) { throw new Error('ILogSharingRepository.setJuniorDateOfBirth not implemented'); }
 }

@@ -5,8 +5,10 @@
 const ERROR_TEXT = {
   NOT_ALLOWED: 'You don\'t have permission to do that.',
   RATE_LIMIT: 'That limit has been reached for now. Try again later.',
-  GUARDIAN_REQUIRED: 'An under-18 needs at least one adult as guardian.',
-  GUARDIAN_NOT_ADULT: 'The guardian must be 18 or over, with a date of birth set.',
+  GUARDIAN_REQUIRED: 'An under-18 needs at least one guardian: an adult already in SwimZone.',
+  GUARDIAN_NOT_ADULT: 'The guardian needs to sign in and add their date of birth (18 or over) first.',
+  DOB_REQUIRED: 'Enter your child\'s date of birth to accept.',
+  ALREADY_SET: 'A date of birth is already recorded. Ask SwimZone to correct it.',
   LAST_GUARDIAN: 'An under-18 must keep at least one guardian. Add another guardian first.',
   LAST_TEAM_MANAGER: 'A group must keep at least one Team Manager. Make someone else a Team Manager first.',
   USER_NOT_FOUND: 'There\'s no SwimZone account with that email.',

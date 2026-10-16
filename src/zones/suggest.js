@@ -6,7 +6,7 @@
 // wherever athlete-specific criteria exist. This ensures that times suggested
 // here will pass the same criteria evaluated in ZoneMatchBanner.
 //
-// For zones where zoneCriteria uses absolute-pace conditions (AT, A3, CS),
+// For zones where zoneCriteria uses absolute-pace conditions (AT, A3, CS, LT),
 // those are used directly. For zones with only ratio bands (HVO, LT, LP,
 // A2, A1), the ratio ranges from zoneCriteria are used.
 //
@@ -23,12 +23,14 @@ import { ACTIVE_CRITERIA } from './zoneCriteria.js';
  * @param {string}      pStroke      'FS' 'BK' 'BR' 'Fly' 'IM'
  * @param {number}      pPace200Sec  Athlete's 200m FS time in seconds
  * @param {number|null} pCssValue    Athlete's CSS pace in sec/100m (for CS zone)
+ * @param {number|null} [pGoal200Sec] 200m goal time in seconds; types with racePace use it
+ *                                   in place of the PB when set (e.g. LT)
  * @returns {Object|null}
  *   inLow, inHigh    — IN time range (seconds)
  *   onLow, onHigh    — ON time range (seconds)
  *   inLowStr etc.    — formatted strings
  */
-function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue) {
+function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue, pGoal200Sec) {
   if (!pPace200Sec || !pDistM || !pZone) return null;
 
   const mSMULT   = { FS: 1.0, BK: 1.045, BR: 1.254, Fly: 1.051, IM: 1.082 };
@@ -48,6 +50,13 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue) {
     const mCssTime = (pCssValue / 100) * mDist;
     mInLow  = mCssTime * (1 - mMargin);
     mInHigh = mCssTime * (1 + mMargin);
+
+  } else if (mCrit.racePace) {
+    // LT: ½ × 200 goal (else PB) per 100m ± offsets. No stroke multiplier: the 200 time
+    // is already that stroke's (same as evaluateZoneMatch).
+    const mHalf = (Number(pGoal200Sec) || pPace200Sec) / 2;
+    mInLow  = (mHalf + mCrit.racePace.offsetLow)  / 100 * mDist;
+    mInHigh = (mHalf + mCrit.racePace.offsetHigh) / 100 * mDist;
 
   } else if (mCrit.atPace && pPace200Sec) {
     // AT / A3: absolute pace = ½×200PB + offset seconds per 100m
@@ -103,10 +112,12 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue) {
     mRestHigh = 0;
   }
 
-  // ON = IN + rest, rounded to nearest 5s
+  // ON = IN + rest, rounded to nearest 5s — unless the type fixes its send-offs (onOptions).
   function mR5(pSec) { return Math.round(pSec / 5) * 5; }
-  const mOnLow  = mR5(mInLow  + mRestLow);
-  let   mOnHigh = mR5(mInHigh + mRestHigh);
+  const mOnOptions = Array.isArray(mCrit.onOptions) && mCrit.onOptions.length
+    ? [...mCrit.onOptions].sort((a, b) => a - b) : null;
+  const mOnLow  = mOnOptions ? mOnOptions[0] : mR5(mInLow  + mRestLow);
+  let   mOnHigh = mOnOptions ? mOnOptions[mOnOptions.length - 1] : mR5(mInHigh + mRestHigh);
   if (mOnLow === mOnHigh) mOnHigh = mOnLow + 5;
 
   // ── Format ────────────────────────────────────────────────────────────────
@@ -125,6 +136,7 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue) {
     onHighStr: mFmt(mOnHigh),
     inMidStr:  mFmt(Math.round((mInLow + mInHigh) / 2)),
     onMidStr:  mFmt(mR5((mOnLow + mOnHigh) / 2)),
+    onOptions: mOnOptions,   // fixed send-offs (seconds) when the type defines them, else null
   };
 }
 

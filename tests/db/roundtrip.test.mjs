@@ -55,8 +55,9 @@ await db.exec(`grant usage on schema public to authenticated, service_role;
 // people: Al (root), a coach, Esmee (adult swimmer) in the coach's group, a stranger
 const U = {};
 for (const n of ['al', 'coach', 'esmee', 'stranger']) {
-  U[n] = (await db.query(`insert into users(id,email,full_name,date_of_birth) values (gen_random_uuid(), $1, $2, '1990-01-01') returning id`,
+  U[n] = (await db.query(`insert into users(id,email,full_name) values (gen_random_uuid(), $1, $2) returning id`,
     [`${n}@x.com`, n])).rows[0].id;
+  await db.query(`insert into user_birthdates(user_id, date_of_birth) values ($1, '1990-01-01')`, [U[n]]);
 }
 await db.exec(fs.readFileSync('supabase/bootstrap_root.sql', 'utf8').replace(/YOUR-EMAIL@example\.com/g, 'al@x.com'));
 // Esmee is a member of a coaching group where the coach is Coach (read + add her results)

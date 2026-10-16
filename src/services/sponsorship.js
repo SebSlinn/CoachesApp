@@ -35,17 +35,21 @@ export const setGroupDailyLimit = async (pOrgId, pLimit) =>
   repo().setGroupDailyLimit(pOrgId, pLimit == null || pLimit === '' ? null : Number(pLimit))
 export const verifyQualification = async (pId, pVerified = true) => repo().verifyQualification(pId, pVerified)
 
-// pPerson: { organisationId, email, fullName, dateOfBirth: 'YYYY-MM-DD', guardianEmails: [] }
+// pPerson: { organisationId, email, fullName, isJunior, guardianEmails: [] }
+// No date of birth: adults add their own, a guardian adds their child's.
+// Under 18 ⇒ at least one guardian (an adult already in SwimZone), and the child
+// joins the group only once a guardian accepts.
 export const addPerson = async (pPerson) => {
+  const mJunior = !!pPerson.isJunior
   const mPerson = {
     organisationId: pPerson.organisationId,
     email: cleanEmail(pPerson.email),
     fullName: (pPerson.fullName || '').trim(),
-    dateOfBirth: pPerson.dateOfBirth || null,
-    guardianEmails: (pPerson.guardianEmails || []).map(cleanEmail).filter(Boolean),
+    guardianEmails: mJunior ? (pPerson.guardianEmails || []).map(cleanEmail).filter(Boolean) : [],
   }
   if (!mPerson.email) return { data: null, error: { message: 'INVALID: email is required' } }
   if (!mPerson.fullName) return { data: null, error: { message: 'INVALID: full name is required' } }
+  if (mJunior && !mPerson.guardianEmails.length) return { data: null, error: { message: 'GUARDIAN_REQUIRED: an under-18 needs a guardian' } }
   return repo().addPerson(mPerson)
 }
 

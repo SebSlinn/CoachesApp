@@ -8,6 +8,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { previewInvite, joinGroup, getMyMemberships, errorText } from '../services/groups'
 import { getLoadableAthletes } from '../services/logSharing'
+import { getAccountStatus } from '../services/users'
 import { GROUP_TYPE_LABEL, ORG_TYPE_LABEL, describeCapabilities, describeVisibility, statusText } from '../services/groupLabels'
 import { S, Badge, Message, useAction } from '../components/AccountsUi'
 
@@ -18,6 +19,7 @@ export default function JoinGroup() {
   const [preview, setPreview] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const [juniors, setJuniors] = useState([])
+  const [iAmJunior, setIAmJunior] = useState(false)
   const [done, setDone] = useState({})   // userId|'me' → status text
   const act = useAction()
 
@@ -27,6 +29,7 @@ export default function JoinGroup() {
       if (cancelled) return
       if (error) setLoadError(errorText(error)); else setPreview(data)
     })
+    getAccountStatus().then(({ data }) => { if (!cancelled) setIAmJunior(!!data?.is_junior) })
     getLoadableAthletes().then(({ data }) => {
       if (!cancelled) setJuniors((data || []).filter((a) => a.relation === 'guardian' && a.is_junior))
     })
@@ -34,7 +37,6 @@ export default function JoinGroup() {
   }, [code])
 
   const alreadyIn = useMemo(() => preview && memberships.find((m) => m.org_id === preview.org_id && m.role === preview.role), [preview, memberships])
-  const iAmJunior = profile?.date_of_birth && new Date(profile.date_of_birth) > new Date(new Date().setFullYear(new Date().getFullYear() - 18))
 
   const join = async (pUserId, pKey) => {
     const r = await act.run(() => joinGroup(code, pUserId), null, errorText)

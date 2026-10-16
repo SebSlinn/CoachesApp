@@ -14,7 +14,7 @@ import {
   setDailyAddLimit, setGroupDailyLimit, addPerson, errorText,
 } from '../services/sponsorship'
 import { groupsFromMemberships } from '../services/groupLabels'
-import { S, Badge, Message, useAction } from '../components/AccountsUi'
+import { S, Badge, Message, Tick, useAction } from '../components/AccountsUi'
 
 export default function Sponsorship() {
   const navigate = useNavigate()
@@ -93,24 +93,27 @@ function AddPerson({ usable, onDone }) {
   const [orgId, setOrgId] = useState(usable[0]?.org_id || '')
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
-  const [dob, setDob] = useState('')
+  const [isJunior, setIsJunior] = useState(false)
   const [guardians, setGuardians] = useState('')
   const act = useAction()
-  const isJunior = dob && new Date(dob) > new Date(new Date().setFullYear(new Date().getFullYear() - 18))
+  const groupName = usable.find((u) => u.org_id === orgId)?.org_name
 
   const submit = async () => {
     const r = await act.run(() => addPerson({
-      organisationId: orgId, email, fullName, dateOfBirth: dob || null,
+      organisationId: orgId, email, fullName, isJunior,
       guardianEmails: guardians.split(/[,\s]+/).filter(Boolean),
-    }), () => `Invitation sent to ${email}. They join ${usable.find((u) => u.org_id === orgId)?.org_name} as a member when they set a password.`, errorText)
-    if (r) { setEmail(''); setFullName(''); setDob(''); setGuardians(''); onDone() }
+    }), () => isJunior
+      ? `Invitation sent to ${email}. Their guardian has been asked to accept; ${fullName.split(' ')[0]} joins ${groupName} once they do.`
+      : `Invitation sent to ${email}. They join ${groupName} as a member when they set a password.`, errorText)
+    if (r) { setEmail(''); setFullName(''); setIsJunior(false); setGuardians(''); onDone() }
   }
 
   return (
     <>
       <h3 style={S.h3}>Bring a new person into SwimZone</h3>
       <div style={S.card}>
-        <p style={{ ...S.muted, marginTop: 0 }}>Only for someone with no SwimZone account. They get an email to set a password, and join the group as a member.</p>
+        <p style={{ ...S.muted, marginTop: 0 }}>Only for someone with no SwimZone account. They get an email to set a password, and join the group as a member.
+          You're never asked for anyone's date of birth: adults add their own if they need to, and a guardian adds their child's.</p>
         <label style={S.label}>Into group</label>
         <select style={S.input} value={orgId} onChange={(e) => setOrgId(e.target.value)}>
           {usable.map((u) => <option key={u.org_id} value={u.org_id}>{u.org_name}</option>)}
@@ -118,14 +121,15 @@ function AddPerson({ usable, onDone }) {
         <div style={{ ...S.row, alignItems: 'flex-end' }}>
           <div><label style={S.label}>Email</label><input style={S.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
           <div><label style={S.label}>Full name</label><input style={S.input} value={fullName} onChange={(e) => setFullName(e.target.value)} /></div>
-          <div><label style={S.label}>Date of birth</label><input style={S.input} type="date" value={dob} onChange={(e) => setDob(e.target.value)} /></div>
         </div>
+        <Tick checked={isJunior} onChange={setIsJunior}>Under 18</Tick>
         {isJunior && <>
           <label style={S.label}>Guardian email(s)</label>
           <input style={{ ...S.input, width: '100%' }} value={guardians} onChange={(e) => setGuardians(e.target.value)} placeholder="parent@example.com" />
-          <p style={S.muted}>An under-18 needs at least one adult guardian who already has a SwimZone account.</p>
+          <p style={S.muted}>The guardian must already be in SwimZone (bring the parent in first) and have added their own date of birth.
+            They'll be asked to accept and to enter the child's date of birth; the child joins the group only after that.</p>
         </>}
-        <button style={S.primary} disabled={act.busy || !email || !fullName || !dob} onClick={submit}>{act.busy ? 'Sending…' : 'Send invitation'}</button>
+        <button style={S.primary} disabled={act.busy || !email || !fullName || (isJunior && !guardians.trim())} onClick={submit}>{act.busy ? 'Sending…' : 'Send invitation'}</button>
         <Message error={act.error} ok={act.ok} />
       </div>
     </>

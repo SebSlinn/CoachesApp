@@ -69,11 +69,11 @@ export default function AthleteSetup() {
   const [officialRecords, setOfficialRecords] = useState([]);   // parsed SwimmingResults rows w/ provenance (date/meet/venue/licence)
   const [profileMsg,     setProfileMsg]     = useState('');      // result of Save Athlete
   const [profileSavedAt, setProfileSavedAt] = useState(null);    // when this athlete's profile was last saved to their record
-  // Max HR: the value saved on the profile ('' = none) + what it falls back to (latest test, date of birth)
+  // Max HR: the value saved on the profile ('' = none) + what it falls back to (latest test, age)
   const [maxHrInput,     setMaxHrInput]     = useState('');
   const [maxHrSrc,       setMaxHrSrc]       = useState(null);    // 'typed' | 'test'
   const [maxHrOn,        setMaxHrOn]        = useState(null);
-  const [hrBasis,        setHrBasis]        = useState({ test: null, dateOfBirth: null });
+  const [hrBasis,        setHrBasis]        = useState({ test: null, age: null });
   const { scheme: zoneScheme } = useZoneScheme();   // sent to Poolside for HR zone colours
   function applySavedMaxHr(pProf) {
     setMaxHrInput(pProf?.maxHr ? String(pProf.maxHr) : '');
@@ -96,7 +96,7 @@ export default function AthleteSetup() {
       setAthleteType('allround'); setPhvStatus('post');
       setAthleteTimes({}); setDerivedProfile(null);
       setProfileMsg(''); setProfileSavedAt(null);
-      applySavedMaxHr(null); setHrBasis({ test: null, dateOfBirth: null });
+      applySavedMaxHr(null); setHrBasis({ test: null, age: null });
       setLoadedNote('Loading ' + (mHandoff.name || 'athlete') + '…');
       if (mHandoff.athleteId) {
         // Their record: best times, plus the coach's saved judgements (type, PHV)
@@ -112,7 +112,7 @@ export default function AthleteSetup() {
             const mHr = await resolveAthleteMaxHr(mHandoff.athleteId, { profile: mRes?.data || null });
             if (mCancelled) return;
             applySavedMaxHr(mRes?.data || null);
-            setHrBasis({ test: mHr.test, dateOfBirth: mHr.dateOfBirth });
+            setHrBasis({ test: mHr.test, age: mHr.age });
             const mFields = {
               athleteId: mHandoff.athleteId, name: mHandoff.name || '',
               seNumber: mProf.seNumber || '', club: mProf.club || '', times: mTimes,
@@ -162,7 +162,7 @@ export default function AthleteSetup() {
           const mHr = await resolveAthleteMaxHr(mData.athleteId, { profile: mProf || null });
           if (mCancelled) return;
           applySavedMaxHr(mProf || null);
-          setHrBasis({ test: mHr.test, dateOfBirth: mHr.dateOfBirth });
+          setHrBasis({ test: mHr.test, age: mHr.age });
           if (!mProf) return;
           if (mProf.athleteType) setAthleteType(mProf.athleteType);
           if (mProf.phvStatus)   setPhvStatus(mProf.phvStatus);

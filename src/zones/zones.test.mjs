@@ -193,4 +193,56 @@ test('every type with criteria gets a suggestion; ON high never below ON low', (
   }
 });
 
+console.log('LT (Al, 2026-10-16)');
+// Esmee: 200 PB 2:09.55 → ½ = 64.8 s/100. LT pace band 62.8–66.8 s/100.
+const mLtRes = (pIn, pDist, pOn) => ({
+  speedRatio: (pIn / pDist * 100) / 64.775, restWorkRatio: (pOn - pIn) / pIn, workDur: pIn,
+  repPace100: pIn / pDist * 100, base100Pace: 64.775,
+});
+const mEsmee = { pace200Sec: 129.55, athleteType: 'endurance' };
+test('LT match: 12×100 @ 1:05 on 4:00 for an endurance swimmer', () => {
+  const m = evaluateZoneMatch('LT', mLtRes(65, 100, 240), { distM: 100, qty: 12 }, mEsmee);
+  assert.equal(m.isMatch, true, JSON.stringify(m.criteria));
+});
+test('LT: 100 PB pace (0:59) is too fast; 2:10 send-off is too soon; 500m too little', () => {
+  const m = evaluateZoneMatch('LT', mLtRes(59, 100, 130), { distM: 100, qty: 5 }, mEsmee);
+  const mBad = m.criteria.filter(c => !c.met).map(c => c.key).sort();
+  assert.deepEqual(mBad, ['onSec', 'racePace', 'volumeM']);
+});
+test('LT: reps 50–200m only', () => {
+  assert.equal(evaluateZoneMatch('LT', mLtRes(16, 25, 180), { distM: 25, qty: 40 }, mEsmee).isMatch, false);
+  assert.equal(evaluateZoneMatch('LT', mLtRes(260, 400, 300), { distM: 400, qty: 4 }, mEsmee).isMatch, false);
+  assert.equal(evaluateZoneMatch('LT', mLtRes(130, 200, 300), { distM: 200, qty: 8 }, mEsmee).isMatch, true);
+});
+test('LT volume follows athlete type; 600–2000m with no type', () => {
+  const r = mLtRes(65, 100, 240);
+  assert.equal(evaluateZoneMatch('LT', r, { distM: 100, qty: 8 }, { pace200Sec: 129.55, athleteType: 'sprint' }).isMatch, true);
+  assert.equal(evaluateZoneMatch('LT', r, { distM: 100, qty: 12 }, { pace200Sec: 129.55, athleteType: 'sprint' }).isMatch, false);
+  assert.equal(evaluateZoneMatch('LT', r, { distM: 100, qty: 6 }, { pace200Sec: 129.55 }).isMatch, true);
+  assert.equal(evaluateZoneMatch('LT', r, { distM: 100, qty: 5 }, { pace200Sec: 129.55 }).isMatch, false);
+});
+test('LT pace uses the 200 goal time when one is given', () => {
+  // goal 2:04 → 62 s/100; 1:02 passes on goal, fails on PB 2:09.55 (needs ≥ 62.8)
+  const r = mLtRes(62, 100, 240);
+  assert.equal(evaluateZoneMatch('LT', r, { distM: 100, qty: 12 }, mEsmee).isMatch, false);
+  assert.equal(evaluateZoneMatch('LT', r, { distM: 100, qty: 12 }, { ...mEsmee, goal200Sec: 124 }).isMatch, true);
+});
+test('LT suggestions: IN around ½ × 200, ON 3:00–5:00 in 30 s steps', () => {
+  const s100 = suggestTimes('LT', 100, 'FS', 129.55, null);
+  assert.equal(s100.inLow, 63); assert.equal(s100.inHigh, 67);
+  assert.deepEqual(s100.onOptions, [180, 210, 240, 270, 300]);
+  assert.equal(s100.onLow, 180); assert.equal(s100.onHigh, 300);
+  const s50 = suggestTimes('LT', 50, 'FS', 129.55, null);
+  assert.equal(s50.inLow, 31); assert.equal(s50.inHigh, 33);
+  const s200 = suggestTimes('LT', 200, 'FS', 129.55, null);
+  assert.equal(s200.inLow, 126); assert.equal(s200.inHigh, 134);
+  const sGoal = suggestTimes('LT', 100, 'FS', 129.55, null, 124);
+  assert.equal(sGoal.inLow, 60); assert.equal(sGoal.inHigh, 64);
+  // every suggested IN/ON pair inside the band is an LT match
+  for (const mOn of s100.onOptions) {
+    const m = evaluateZoneMatch('LT', mLtRes(65, 100, mOn), { distM: 100, qty: 12 }, mEsmee);
+    assert.equal(m.isMatch, true, `on ${mOn}`);
+  }
+});
+
 console.log(`\n${mPass} passed`);

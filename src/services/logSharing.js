@@ -17,7 +17,10 @@ export const canManageLogSharing = async (pOwnerId) => repo().canManageSharing(p
 export const revokeLogPermission = async (pPermissionId) => repo().revoke(pPermissionId)
 export const nominateGuardian = async (pJuniorId, pGuardianEmail) =>
   repo().nominateGuardian(pJuniorId, cleanEmail(pGuardianEmail))
-export const respondToGuardianship = async (pPermissionId, pAccept) =>
-  repo().respondToGuardianship(pPermissionId, !!pAccept)
+// Accepting needs the child's date of birth ('YYYY-MM-DD') when none is on record.
+export const respondToGuardianship = async (pPermissionId, pAccept, pDateOfBirth = null) =>
+  repo().respondToGuardianship(pPermissionId, !!pAccept, pDateOfBirth || null)
+// A guardian adds their child's date of birth, once (must be under 18).
+export const setJuniorDateOfBirth = async (pJuniorId, pDate) => repo().setJuniorDateOfBirth(pJuniorId, pDate)
 
 export { parseAccountError, errorText } from './accountErrors'

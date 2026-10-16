@@ -47,7 +47,7 @@ export function ClassifierScreenRefactor({
           if (!p200s) return null;
           const candidate = {};
           PICKER_CODES.forEach(z => {
-            candidate[z] = suggestTimes(z, inputs.distM, inputs.stroke, p200s, activeAthlete?.derivedProfile?.css);
+            candidate[z] = suggestTimes(z, inputs.distM, inputs.stroke, p200s, activeAthlete?.derivedProfile?.css, parseTime(inputs.goal200) || null);
           });
           return candidate;
         } catch(e) { return null; }
@@ -153,6 +153,9 @@ export function ClassifierScreenRefactor({
           <div style={{ width:78 }}><label style={lb}>200 PB</label>
             <input style={{ ...inp, padding:'5px 6px', width:'78px' }} value={inputs.pace200} onChange={e => set('pace200', e.target.value)} />
           </div>
+          <div style={{ width:78 }}><label style={lb}>200 Goal</label>
+            <input style={{ ...inp, padding:'5px 6px', width:'78px' }} placeholder='optional' value={inputs.goal200 || ''} onChange={e => set('goal200', e.target.value)} />
+          </div>
         </div>
         </div> {/* end greyed numeric inputs wrapper */}
 
@@ -213,6 +216,9 @@ export function ClassifierScreenRefactor({
               const inForOn = parseTime(inputs.targetTime) || cssTime2;
               const ratios = [2.0, 1.8, 1.7, 1.6, 1.5]; // descending ratio = ascending ON time
               ratios.forEach(r => onOptsRaw.push(Math.round((inForOn + inForOn / r) / 5) * 5));
+            } else if (sg.onOptions) {
+              // The type fixes its send-offs (LT: 3:00–5:00 start-to-start).
+              sg.onOptions.forEach(o => onOptsRaw.push(o));
             } else {
               const onStep = Math.max(5, Math.round((sg.onHigh - sg.onLow) / 4 / 5) * 5);
               for (let j2 = sg.onLow; j2 <= sg.onHigh + 2; j2 += onStep) {
@@ -418,9 +424,15 @@ export function ClassifierScreenRefactor({
       )}
       {(selectedZone === "LP" || selectedZone === "LT") && singleResult && (() => {
         // Driven by the type's criteria (zones/types.js) — LP and LT follow the Training
-        // Zones chart: LP = fast 25–75m with long rest, LT = race pace on short rest.
+        // Zones chart. LP = fast 25–75m with long rest; LT = 200 race pace, 50–200m, on 3:00–5:00.
         const zc3 = zoneColor(selectedZone);
-        const m = evaluateZoneMatch(selectedZone, singleResult, { distM: inputs.distM, qty: inputs.qty });
+        const m = evaluateZoneMatch(selectedZone, singleResult, { distM: inputs.distM, qty: inputs.qty }, {
+          pace200Sec:  parseTime(inputs.pace200) || null,
+          goal200Sec:  parseTime(inputs.goal200) || null,
+          athleteType: inputs.athleteType || activeAthlete?.athleteType || null,
+          css:         activeAthlete?.derivedProfile?.css || null,
+          maxHr:       activeAthlete?.maxHr || null,
+        });
         if (!m) return null;
         const ok = m.isMatch;
         return (

@@ -29,3 +29,13 @@ export const getDisplayNames = async (ids) => {
 export const updateProfile = async (userId, changes) => {
   return getMembershipRepository().updateProfile(userId, changes)
 }
+
+// About me: { has_date_of_birth, is_junior, is_adult, juniors_missing_date_of_birth }
+export const getAccountStatus = async () => getMembershipRepository().getAccountStatus()
+
+// My date of birth, once ('YYYY-MM-DD'). Private: only I and a guardian can read it;
+// coaches see my age. Optional for adults — needed to be a guardian.
+export const setMyDateOfBirth = async (pDate) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(pDate || '')) return { data: null, error: { message: 'INVALID: choose a date' } }
+  return getMembershipRepository().setMyDateOfBirth(pDate)
+}

@@ -24,6 +24,18 @@
 //     seconds per 100m. Requires athleteContext.pace200Sec.
 //     If athleteContext absent, falls back to speed band.
 //
+//   racePace: { offsetLow, offsetHigh }
+//     200 race-pace band: ½ × 200 time + offsetLow to + offsetHigh s/100m. The 200 time is
+//     athleteContext.goal200Sec when set, else pace200Sec. Without either → speed fallback.
+//
+//   onSec: [min, max]
+//     Send-off (start-to-start) seconds = rep time + rest. null = unbounded.
+//   onOptions: [sec, ...]
+//     Fixed send-offs suggestTimes() offers for this type (not evaluated).
+//
+//   volumeM: [min, max]
+//     Total metres (distM × qty). Used when volumeByAthleteType has no band for the athlete.
+//
 //   cssPace: marginFraction
 //     repPace100 within ±marginFraction of athleteContext.css (sec/100m).
 //     Requires athleteContext.css. If absent, condition is skipped (unknown).
@@ -154,9 +166,27 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
     });
   }
 
+  // ── racePace ───────────────────────────────────────────────────────────────
+  // ½ × 200 goal (else 200 PB) per 100m ± offsets — the second 100 of the 200.
+  let mRacePaceEvaluated = false;
+  const mRace200 = Number(pAthleteCtx?.goal200Sec) || Number(pAthleteCtx?.pace200Sec) || null;
+  if (mCrit.racePace && mRace200) {
+    mRacePaceEvaluated = true;
+    const mIsGoal = !!Number(pAthleteCtx?.goal200Sec);
+    const mBase   = mRace200 / 2;
+    const mPaceLo = mBase + mCrit.racePace.offsetLow;
+    const mPaceHi = mBase + mCrit.racePace.offsetHigh;
+    const mOk     = pSingleResult.repPace100 >= mPaceLo && pSingleResult.repPace100 <= mPaceHi;
+    mResults.push({
+      key: 'racePace', label: 'Pace',
+      met: mOk,
+      detail: `${fmtPace(pSingleResult.repPace100)}/100m (need ${fmtPace(mPaceLo)}–${fmtPace(mPaceHi)}/100m ≈ ½ × 200 ${mIsGoal ? 'goal' : 'PB'})`,
+    });
+  }
+
   // ── speed (ratio band fallback) ────────────────────────────────────────────
   // Skip if an athlete-specific pace condition was already evaluated for this zone.
-  const mHasAbsolutePace = mCssPaceEvaluated || mAtPaceEvaluated;
+  const mHasAbsolutePace = mCssPaceEvaluated || mAtPaceEvaluated || mRacePaceEvaluated;
   if (mCrit.speed && !mHasAbsolutePace) {
     const [mLo, mHi] = mCrit.speed;
     const mOk = (mLo === null || mSr >= mLo) && (mHi === null || mSr < mHi);
@@ -200,6 +230,18 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
     });
   }
 
+  // ── onSec (send-off, start-to-start) ──────────────────────────────────────
+  if (mCrit.onSec) {
+    const [mLo, mHi] = mCrit.onSec;
+    const mOn = mWd + mRestSec;
+    const mOk = (mLo === null || mOn >= mLo - 0.5) && (mHi === null || mOn <= mHi + 0.5);
+    mResults.push({
+      key: 'onSec', label: 'Send-off',
+      met: mOk,
+      detail: `on ${fmtPace(mOn)}` + describeRange(mLo, mHi, fmtPace),
+    });
+  }
+
   // ── workDur ────────────────────────────────────────────────────────────────
   if (mCrit.workDur) {
     const [mLo, mHi] = mCrit.workDur;
@@ -226,9 +268,11 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
 
   // ── volumeByAthleteType (metres) ───────────────────────────────────────────
   // Only evaluated when athleteContext.athleteType is known.
+  let mVolMEvaluated = false;
   if (mCrit.volumeByAthleteType && pAthleteCtx?.athleteType) {
     const mBand = mCrit.volumeByAthleteType[pAthleteCtx.athleteType];
     if (mBand) {
+      mVolMEvaluated = true;
       const mVolM = mDist * mQty;  // total metres
       const [mLo, mHi] = mBand;
       const mOk = (mLo === null || mVolM >= mLo) && (mHi === null || mVolM <= mHi);
@@ -238,6 +282,18 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
         detail: `${mVolM}m` + describeRange(mLo, mHi, v => v + 'm'),
       });
     }
+  }
+
+  // ── volumeM (metres, any athlete) ──────────────────────────────────────────
+  if (mCrit.volumeM && !mVolMEvaluated) {
+    const mVolM = mDist * mQty;
+    const [mLo, mHi] = mCrit.volumeM;
+    const mOk = (mLo === null || mVolM >= mLo) && (mHi === null || mVolM <= mHi);
+    mResults.push({
+      key: 'volumeM', label: 'Volume',
+      met: mOk,
+      detail: `${mVolM}m` + describeRange(mLo, mHi, v => v + 'm'),
+    });
   }
 
   // ── distMax / distMin ──────────────────────────────────────────────────────
@@ -289,6 +345,16 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
+
+/** 64.8 → "1:04.8", 32.4 → "32.4", 240 → "4:00". */
+function fmtPace(pSec) {
+  const mRound = Math.round(pSec * 10) / 10;
+  const mM  = Math.floor(mRound / 60);
+  const mS  = mRound - mM * 60;
+  const mTxt = Number.isInteger(mS) ? String(mS) : mS.toFixed(1);
+  if (mM === 0) return mTxt;
+  return `${mM}:${mTxt.padStart(Number.isInteger(mS) ? 2 : 4, '0')}`;
+}
 
 function describeRange(pLo, pHi, pFmt) {
   if (pLo === null && pHi === null) return '';

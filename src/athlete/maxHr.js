@@ -58,7 +58,8 @@ function fmtDate(pIso) {
  * @param {string} [p.savedOn]        date it was saved/measured (YYYY-MM-DD)
  * @param {number} [p.testPeakHr]     latest Max HR test peak
  * @param {string} [p.testOn]         that test's date
- * @param {string} [p.dateOfBirth]    YYYY-MM-DD
+ * @param {number} [p.age]            age in whole years (preferred: staff get the age, never the date of birth)
+ * @param {string} [p.dateOfBirth]    YYYY-MM-DD (used only when no age is given)
  * @param {Date|string} [p.asOf]      for the age calculation (default today)
  * @returns {{ maxHr:number|null, source:'profile'|'test'|'age'|'none', estimated:boolean,
  *             age:number|null, detail:string }}
@@ -66,7 +67,9 @@ function fmtDate(pIso) {
 export function resolveMaxHr(p = {}) {
   const mSaved = Number(p.savedMaxHr);
   const mTest  = Number(p.testPeakHr);
-  const mAge   = ageInYears(p.dateOfBirth, p.asOf);
+  const mGiven = p.age == null || p.age === '' ? NaN : Number(p.age);
+  const mAge   = Number.isInteger(mGiven) && mGiven >= AGE_LIMITS.min && mGiven <= AGE_LIMITS.max
+    ? mGiven : ageInYears(p.dateOfBirth, p.asOf);
 
   if (okHr(mSaved)) {
     const mHow = p.savedSource === 'test' ? 'from a Max HR test' : 'entered by the coach';
@@ -84,7 +87,7 @@ export function resolveMaxHr(p = {}) {
              detail: `≈${mByAge} bpm — estimate (220 − age ${mAge}). Run the Max HR test for a real figure.` };
   }
   return { maxHr: null, source: 'none', estimated: false, age: mAge,
-           detail: 'No max HR — heart-rate zones are off. Add a date of birth or run the Max HR test.' };
+           detail: 'No max HR — heart-rate zones are off. Run the Max HR test (or the athlete can add their date of birth for an estimate).' };
 }
 
 /** Is a typed value usable as a max HR? (for form validation) */

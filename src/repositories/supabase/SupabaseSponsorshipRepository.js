@@ -30,7 +30,7 @@ export class SupabaseSponsorshipRepository extends ISponsorshipRepository {
         organisation_id: person.organisationId,
         email: person.email,
         full_name: person.fullName,
-        date_of_birth: person.dateOfBirth || null,
+        date_of_birth: null,          // never sent: nobody enters another person's date of birth
         guardian_emails: person.guardianEmails || [],
       },
     });
