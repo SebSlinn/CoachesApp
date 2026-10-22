@@ -64,6 +64,7 @@ export default function Dashboard() {
         <DashCard title="Athlete Setup" desc="Manage athlete profiles and times" onClick={() => navigate('/athlete-setup')} />
         <DashCard title="Set Builder" desc="Create and edit training sessions" onClick={() => navigate('/set-builder')} />
         <DashCard title="Groups" desc="Your clubs, squads and sharing groups" onClick={() => navigate('/groups')} />
+        <DashCard title="Training log" desc="Your sessions, notes and check-in code" onClick={() => navigate('/my-training')} />
         {(can('take_register') || can('staff')) && <DashCard title="Registers" desc="Tick swimmers in and sign them out" onClick={() => navigate('/registers')} />}
         {canSponsor && <DashCard title="Sponsorship" desc="Bring new people into SwimZone" onClick={() => navigate('/sponsorship')} />}
       </div>

@@ -9,3 +9,8 @@ window.addEventListener('vite:preloadError', (e) => { if (reloadForNewVersion())
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode><ZoneSchemeProvider><App /></ZoneSchemeProvider></React.StrictMode>
 );
+
+// Keep the app opening with no signal (registers poolside). Production only: in dev it would cache Vite's files.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('/sw.js').catch(() => {}); });
+}

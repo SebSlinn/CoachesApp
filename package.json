@@ -9,12 +9,14 @@
     "prebuild": "node scripts/copy-setformat.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node src/zones/zones.test.mjs && node src/athlete/maxHr.test.mjs && node src/session/protocolFormat.test.mjs && node src/records/eventView.test.mjs && node src/records/testReport.test.mjs && node src/records/testWorkbook.test.mjs && node src/records/testVersions.test.mjs && node tests/services/run.mjs && node supabase/tests/athlete_records.test.mjs && node supabase/tests/athlete_profiles.test.mjs && node supabase/tests/athlete_max_hr.test.mjs && node supabase/tests/ladder_bands.test.mjs && node supabase/tests/move_endurance_runs.test.mjs && node supabase/tests/test_protocols.test.mjs && node supabase/tests/groups_sponsorship.test.mjs && node supabase/tests/registers.test.mjs && node src/hr/hr.test.mjs && node tests/db/run.mjs && node tests/db/run.mjs groups.roundtrip.test.mjs && node tests/db/run.mjs registers.roundtrip.test.mjs"
+    "test": "node src/zones/zones.test.mjs && node src/athlete/maxHr.test.mjs && node src/session/protocolFormat.test.mjs && node src/records/eventView.test.mjs && node src/records/testReport.test.mjs && node src/records/testWorkbook.test.mjs && node src/records/testVersions.test.mjs && node tests/services/run.mjs && node supabase/tests/athlete_records.test.mjs && node supabase/tests/athlete_profiles.test.mjs && node supabase/tests/athlete_max_hr.test.mjs && node supabase/tests/ladder_bands.test.mjs && node supabase/tests/move_endurance_runs.test.mjs && node supabase/tests/test_protocols.test.mjs && node supabase/tests/groups_sponsorship.test.mjs && node supabase/tests/registers.test.mjs && node src/hr/hr.test.mjs && node tests/db/run.mjs && node tests/db/run.mjs groups.roundtrip.test.mjs && node tests/db/run.mjs registers.roundtrip.test.mjs && node tests/db/run.mjs registers.offline.test.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "@supabase/supabase-js": "^2.104.1",
     "exceljs": "^4.4.0",
+    "jsqr": "^1.4.0",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.14.2"

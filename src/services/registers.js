@@ -65,3 +65,30 @@ export const reopenRegister = async (pRegisterId) => repo().reopen(pRegisterId)
 
 // The swimmer's (or guardian's) note. pShare: true = coaches may read it; null = leave as it is.
 export const setRegisterNote = async (pEntryId, pNote, pShare = null) => repo().setNote(pEntryId, pNote, pShare)
+
+// ---- scanning and cards (need signal) ----
+// A code from a reader (types like a keyboard), the camera, or typed. pOrgId: group for a visitor.
+export const scanCode = async (pRegisterId, pCode, pOrgId = null) => {
+  if (!(pCode || '').trim()) return bad('the code is empty')
+  return repo().scan(pRegisterId, pCode.trim(), new Date().toISOString(), pOrgId, newUuid())
+}
+export const getMyQrCode = async (pUserId = null) => repo().qrCode(pUserId)
+export const getGroupQrCodes = async (pOrgId) => repo().groupQrCodes(pOrgId)
+// pKind: 'rfid' | 'barcode' | 'qr' | 'other'
+export const linkCard = async (pUserId, pCode, pKind = 'other', pLabel = null) => {
+  if (!(pCode || '').trim()) return bad('the card code is empty')
+  return repo().linkCard(pUserId, pCode, pKind, pLabel)
+}
+export const revokeCard = async (pCardId) => repo().revokeCard(pCardId)
+export const listCards = async (pUserId = null) => repo().listCards(pUserId)
+
+// ---- the coach's grid ----
+// pFrom/pTo: 'YYYY-MM-DD' (local); pTo is inclusive.
+export const getGroupAttendance = async (pOrgId, pFrom, pTo) => {
+  const mFrom = toIso(pFrom, '00:00')
+  const mToDay = toIso(pTo, '00:00')
+  if (!mFrom || !mToDay) return bad('pick a from and to date')
+  const mTo = new Date(new Date(mToDay).getTime() + 86400000).toISOString()
+  if (mTo <= mFrom) return bad('the end date must be on or after the start date')
+  return repo().attendance(pOrgId, mFrom, mTo)
+}

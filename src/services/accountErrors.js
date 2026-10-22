@@ -21,6 +21,7 @@ const ERROR_TEXT = {
   SIGNED_OUT: 'They\'re already signed out. Undo the sign-out first.',
   CLOSED: 'This register is closed. Reopen it first.',
   STILL_IN: null,  // the detail says how many
+  CARD_IN_USE: 'That card is already linked to someone else. Unlink it from them first.',
   INVALID: null,   // the detail says what's wrong
 }
 

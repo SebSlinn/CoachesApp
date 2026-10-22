@@ -16,6 +16,10 @@ let TYPES = null;   // table -> column -> udt_name
 
 export function attach(db) { DB = db; TYPES = null; }
 export function signIn(userId) { UID = userId; }
+// Pretend the connection is down: every call fails the way supabase-js reports a network failure.
+let OFFLINE = false;
+export function setOffline(pOn) { OFFLINE = !!pOn; }
+const NETWORK_DOWN = { data: null, error: { message: 'TypeError: Failed to fetch', details: '', hint: '', code: '' } };
 
 async function types() {
   if (TYPES) return TYPES;
@@ -175,6 +179,7 @@ async function argTypes(fn) {
 const pgArray = (a) => '{' + a.map((x) => (x === null ? 'NULL' : '"' + String(x).replace(/["\\]/g, '\\$&') + '"')).join(',') + '}';
 
 async function rpc(name, args = {}) {
+  if (OFFLINE) return NETWORK_DOWN;
   const keys = Object.keys(args);
   const T = await argTypes(name);
   // Like PostgREST: a JS array goes to an array argument as an array, anything else object-shaped as jsonb.

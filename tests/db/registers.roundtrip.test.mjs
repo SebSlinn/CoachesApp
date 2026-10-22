@@ -11,7 +11,7 @@ import * as G from '../../src/services/groups.js';
 import * as R from '../../src/services/registers.js';
 import { getMemberships } from '../../src/services/users.js';
 import { hasCapability, describeCapabilities } from '../../src/services/groupLabels.js';
-import { rollCall, registerableGroups, entryStatus, copyOf, todayLocal, toIso } from '../../src/services/registerLabels.js';
+import { rollCall, registerableGroups, entryStatus, copyOf, todayLocal, toIso, attendanceTotals, scanText } from '../../src/services/registerLabels.js';
 import { errorText } from '../../src/services/accountErrors.js';
 
 let pass = 0, fail = 0;
@@ -129,6 +129,25 @@ signIn(U.coach);
 sheet = (await R.getRegisterSheet(reg)).data;
 ok('coach reads the shared note, not the unshared one',
   sheet.entries.find((e) => e.id === sw.id).athlete_note === 'Shoulder sore on fly' && sheet.entries.find((e) => e.id === kid.id).athlete_note == null, sheet.entries);
+
+console.log('\nScanning, cards and the grid (services)');
+signIn(U.coach);
+const third = (await R.createRegister({ orgIds: [A], date: todayLocal(), startTime: '00:02' })).data;
+const swQr = (await R.getMyQrCode(U.swimmer)).data;
+ok('getMyQrCode for a member (coach)', /^SZ/.test(swQr), swQr);
+let s1 = await R.scanCode(third, swQr);
+ok('scanCode → in, in words', s1.data?.result === 'in' && /Swimmer Smith — in/.test(scanText(s1.data)), s1);
+ok('empty code refused before the DB', /INVALID/.test((await R.scanCode(third, '  ')).error?.message));
+ok('unknown card in words', /isn't linked/.test(scanText((await R.scanCode(third, 'abc 999')).data)));
+ok('linkCard + scan by the fob', (await R.linkCard(U.kid, 'fob-77', 'rfid', 'Red fob')).error === null && (await R.scanCode(third, 'FOB-77')).data?.result === 'in');
+ok('CARD_IN_USE in words', /already linked/.test(errorText((await R.linkCard(U.swimmer, 'fob-77')).error)));
+ok('listCards for the kid (coach)', (await R.listCards(U.kid)).data.some((c) => c.code === 'FOB-77'));
+ok('group QR codes for printing', (await R.getGroupQrCodes(A)).data?.length === 1, (await R.getGroupQrCodes(A)).data);
+const grid = (await R.getGroupAttendance(B, todayLocal(), todayLocal())).data;
+ok('grid for Squad B today', grid?.registers?.length >= 2 && grid.athletes.some((a) => a.user_id === U.kid), grid);
+const kidRow = grid.athletes.find((a) => a.user_id === U.kid);
+ok('attendanceTotals: % over booked sessions', attendanceTotals(kidRow.cells).booked >= 1 && attendanceTotals(kidRow.cells).pct !== null, attendanceTotals(kidRow.cells));
+ok('bad dates refused before the DB', /INVALID/.test((await R.getGroupAttendance(A, '', todayLocal())).error?.message));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -15,6 +15,7 @@ import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsReposit
 import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
 import { LocalZoneSchemeRepository } from './local/LocalZoneSchemeRepository';
 import { SupabaseRegisterRepository } from './supabase/SupabaseRegisterRepository';
+import { LocalRegisterStore } from './local/LocalRegisterStore';
 
 let authRepository = null;
 let membershipRepository = null;
@@ -28,6 +29,7 @@ let protocolsRepository = null;
 let athleteProfileRepository = null;
 let zoneSchemeRepository = null;
 let registerRepository = null;
+let registerStore = null;
 
 export function getAuthRepository() {
   if (!authRepository) authRepository = new SupabaseAuthRepository();
@@ -101,4 +103,10 @@ export function getZoneSchemeRepository() {
 export function getRegisterRepository() {
   if (!registerRepository) registerRepository = new SupabaseRegisterRepository();
   return registerRepository;
+}
+
+// The phone's copy of registers for no-signal use (group lists, sheets, queued taps). Added 2026-10-22.
+export function getRegisterStore() {
+  if (!registerStore) registerStore = new LocalRegisterStore();
+  return registerStore;
 }

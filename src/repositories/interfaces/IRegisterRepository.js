@@ -30,4 +30,23 @@ export class IRegisterRepository {
   async close(_registerId, _force) { throw new Error('IRegisterRepository.close not implemented'); }
   async reopen(_registerId) { throw new Error('IRegisterRepository.reopen not implemented'); }
   async setNote(_entryId, _note, _share) { throw new Error('IRegisterRepository.setNote not implemented'); }
+
+  // ---- scanning and cards (online) ----
+  /** → { result: in|out|already_in|already_out|unknown_card, name, entry_id, visitor, code } */
+  async scan(_registerId, _code, _at, _orgId, _clientUuid) { throw new Error('IRegisterRepository.scan not implemented'); }
+  /** The person's SwimZone QR code (made on first ask). */
+  async qrCode(_userId) { throw new Error('IRegisterRepository.qrCode not implemented'); }
+  /** [{ user_id, name, is_junior, code }] for printing a group's cards. */
+  async groupQrCodes(_orgId) { throw new Error('IRegisterRepository.groupQrCodes not implemented'); }
+  async linkCard(_userId, _code, _kind, _label) { throw new Error('IRegisterRepository.linkCard not implemented'); }
+  async revokeCard(_cardId) { throw new Error('IRegisterRepository.revokeCard not implemented'); }
+  async listCards(_userId) { throw new Error('IRegisterRepository.listCards not implemented'); }
+  /** { registers:[…], athletes:[{ user_id, name, is_junior, member, cells:{ registerId: C|P|I|A|Ap|E|N } }] } */
+  async attendance(_orgId, _from, _to) { throw new Error('IRegisterRepository.attendance not implemented'); }
+
+  // ---- offline ----
+  /** { user_id, prepared_at, groups:[{ org_id, name, members[] }], registers:[sheet…] } */
+  async prepare() { throw new Error('IRegisterRepository.prepare not implemented'); }
+  /** One register's queue → { register_id, results[], close, sheet } (see sync_register) */
+  async sync(_payload) { throw new Error('IRegisterRepository.sync not implemented'); }
 }

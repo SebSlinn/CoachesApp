@@ -94,3 +94,52 @@ export function todayLocal(pNow = new Date()) {
   const d = new Date(pNow.getTime() - pNow.getTimezoneOffset() * 60000)
   return d.toISOString().slice(0, 10)
 }
+
+// The coach's attendance grid: one letter per swimmer per register (group_attendance).
+// Colours work as a background with dark text, and the letter carries the meaning on its own.
+export const ATTENDANCE_CODES = [
+  { code: 'C',  label: 'Complete',                 bg: '#c8ecd0', fg: '#0b5a1e' },
+  { code: 'P',  label: 'Partial',                  bg: '#ffe2a8', fg: '#6b4500' },
+  { code: 'I',  label: 'In, not signed out',       bg: '#cfe8f3', fg: '#0d4a63' },
+  { code: 'A',  label: 'Absent',                   bg: '#f6c9c4', fg: '#7a1a10' },
+  { code: 'Ap', label: 'Apologies',                bg: '#f3e1df', fg: '#7a1a10' },
+  { code: 'E',  label: 'Expected (register open)', bg: '#eeeeee', fg: '#444444' },
+  { code: 'N',  label: 'Not booked',               bg: 'transparent', fg: '#9a9a9a' },
+]
+export const ATTENDANCE_CODE = Object.fromEntries(ATTENDANCE_CODES.map((c) => [c.code, c]))
+
+// One swimmer's row → { booked, attended, complete, partial, absent, pct } over the registers they were on.
+// Attended = complete + partial + in-not-signed-out. Booked excludes N (not on it) and E (still open).
+export function attendanceTotals(pCells) {
+  const v = Object.values(pCells || {})
+  const n = (c) => v.filter((x) => x === c).length
+  const booked = v.filter((x) => x !== 'N' && x !== 'E').length
+  const attended = n('C') + n('P') + n('I')
+  return { booked, attended, complete: n('C'), partial: n('P'), absent: n('A') + n('Ap'),
+           pct: booked ? Math.round((100 * attended) / booked) : null }
+}
+
+// What a scan did, in words.
+export function scanText(r) {
+  if (!r) return ''
+  const who = r.name || 'Swimmer'
+  switch (r.result) {
+    case 'in': return `${who} — in${r.visitor ? ' (visitor, not in these groups)' : ''}`
+    case 'out': return `${who} — signed out, full session`
+    case 'already_in': return `${who} is already in (scan again after 10 minutes to sign out)`
+    case 'already_out': return `${who} is already signed out`
+    case 'unknown_card': return `Card ${r.code} isn't linked to anyone yet`
+    default: return who
+  }
+}
+
+// The grid's letter for one entry (same rules as group_attendance in SQL).
+export function entryCode(e, pRegisterStatus) {
+  if (!e) return 'N'
+  if (e.completion === 'full') return 'C'
+  if (e.completion === 'partial') return 'P'
+  if (e.attendance === 'in') return 'I'
+  if (e.attendance === 'apologies') return 'Ap'
+  if (e.attendance === 'absent') return 'A'
+  return (pRegisterStatus ?? e.register_status) === 'closed' ? 'A' : 'E'
+}

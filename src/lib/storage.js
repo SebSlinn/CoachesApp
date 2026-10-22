@@ -13,6 +13,7 @@ export const KEYS = {
   ACTIVE_GROUP:     'swimzone-active-group',
   EDITING_BLOCK:    'swimzone-editing-block',
   ZONE_SCHEME:      'swimzone-zone-scheme',   // coach's zone colour scheme (this device) — 2026-10-14
+  REGISTERS_OFFLINE:'swimzone-registers-offline', // registers: group lists, sheets and queued taps for no-signal use — 2026-10-22
 };
 
 export const storage = {

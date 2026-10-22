@@ -1,4 +1,4 @@
-// registers.test.mjs — take_register capability (20261022120000) + Registers (20261022130000), PGlite.
+// registers.test.mjs — take_register (20261022120000) + Registers (20261022130000) + offline sync (20261022140000), PGlite.
 //
 // Builds the hand-made base tables, applies EVERY migration in order (the two new ones twice,
 // to prove they are idempotent), then checks as real signed-in users:
@@ -8,7 +8,9 @@
 //   • tick in / out full / out partial / undo; latest device time wins; client_uuid dedup; every tap logged;
 //   • sign everyone out, close (refused while someone is still in), reopen;
 //   • the athlete's note: swimmer or guardian writes it; staff read it only when shared;
-//   • strangers and members see nothing of the register; attendance never writes performance_results.
+//   • strangers and members see nothing of the register; attendance never writes performance_results;
+//   • offline: register_prepare, and sync_register (create offline, queued taps in time order, resend = no-op, close);
+//   • scanning: QR codes and linked cards, scan in / out / repeat, visitors by scan only, guests, comments, the attendance grid.
 //
 //   node supabase/tests/registers.test.mjs
 
@@ -16,7 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
 const DIR = 'supabase/migrations/';
-const NEW = ['20261022120000_take_register.sql', '20261022130000_registers.sql'];
+const NEW = ['20261022120000_take_register.sql', '20261022130000_registers.sql', '20261022140000_register_sync.sql', '20261022150000_register_scan_guests.sql'];
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -225,6 +227,122 @@ ok('shared → coach reads it', (await sheet()).entries.find((x) => x.id === ent
 ok('guardian writes the junior\'s note', (await err('parentA', `select public.set_register_note($1,'Sent apologies — school trip')`, [ent('juniorC').id])) === null);
 ok('coach cannot write a swimmer\'s note', /NOT_ALLOWED/.test(await err('coach', `select public.set_register_note($1,'x')`, [ent('adultA').id])));
 ok('another member cannot write it', /NOT_ALLOWED/.test(await err('adultB', `select public.set_register_note($1,'x')`, [ent('adultA').id])));
+
+console.log('\nOffline: prepare and sync');
+const prep = await one('coach', `select public.register_prepare()`);
+ok('prepare: my groups with members', prep.groups.map((g) => g.name).join(',') === 'Squad A,Squad B'
+  && prep.groups[0].members.some((m) => m.athlete_user_id === U.adultA), JSON.stringify(prep.groups.map((g) => [g.name, g.members.length])));
+ok('prepare: staff are not listed as members', prep.groups.every((g) => g.members.every((m) => m.athlete_user_id !== U.helper)));
+ok('prepare: includes recent register sheets', prep.registers.some((r) => r.register.id === R));
+ok('prepare: a member gets no groups', (await one('adultA', `select public.register_prepare()`)).groups.length === 0);
+const offCu = '33333333-3333-4333-8333-333333333333';
+const uu = (n) => `44444444-4444-4444-8444-${String(n).padStart(12, '0')}`;
+const payload = {
+  create: { client_uuid: offCu, org_ids: [A, B], starts_at: t(60), ends_at: null, venue: 'No signal pool', pool_type: '25SC' },
+  ops: [
+    { client_uuid: uu(3), athlete_user_id: U.adultA, action: 'out_partial', at: t(10), detail: { reason: 'left_early', done_pct: 50 } },
+    { client_uuid: uu(1), athlete_user_id: U.adultA, action: 'in', at: t(55) },        // out of order on purpose
+    { client_uuid: uu(2), athlete_user_id: U.juniorC, action: 'in', at: t(54) },
+    { client_uuid: uu(4), athlete_user_id: U.stranger, action: 'in', at: t(53) },      // not a member
+    { client_uuid: uu(5), athlete_user_id: U.juniorC, action: 'out_full', at: t(2) },
+  ],
+  close: { force: false },
+};
+const sync = async (who, p) => one(who, `select public.sync_register($1::jsonb)`, [JSON.stringify(p)]);
+let res = await sync('coach', payload);
+const R2 = res.register_id;
+ok('sync creates the register made offline', !!R2 && R2 !== R);
+ok('taps applied in time order (in before out)', res.sheet.entries.find((e) => e.athlete_user_id === U.adultA).completion === 'partial', JSON.stringify(res.results));
+ok('the non-member tap is refused, the rest go through', res.results.filter((r) => !r.ok).length === 1
+  && /NOT_A_MEMBER/.test(res.results.find((r) => !r.ok).error), JSON.stringify(res.results));
+ok('close in the same sync (everyone in is out)', res.close?.ok === true, JSON.stringify(res.close));
+ok('device times kept', res.sheet.entries.find((e) => e.athlete_user_id === U.juniorC).in_at.slice(0, 16) === t(54).slice(0, 16));
+const nEv = (await svc(`select count(*)::int n from register_events where register_id=$1`, [R2]))[0].n;
+res = await sync('coach', payload);
+ok('sending the same queue again: same register, nothing doubled', res.register_id === R2
+  && (await svc(`select count(*)::int n from register_events where register_id=$1`, [R2]))[0].n <= nEv + 1, nEv);
+ok('helper (A only) cannot sync a new A+B register', /NOT_ALLOWED/.test(await err('helper', `select public.sync_register($1::jsonb)`,
+  [JSON.stringify({ ...payload, create: { ...payload.create, client_uuid: uu(99) } })])));
+const R3 = await one('coach', `select public.create_register($1::uuid[], $2)`, [[A], t(30)]);
+res = await sync('helper', { register_id: R3, ops: [{ client_uuid: uu(10), athlete_user_id: U.adultB, action: 'in', at: t(20) },
+                                                     { client_uuid: uu(11), athlete_user_id: U.late, action: 'apologies', at: t(25) }] });
+ok('sync onto an existing register (helper, own group)', res.results.every((r) => r.ok) && res.sheet.entries.find((e) => e.athlete_user_id === U.adultB).attendance === 'in', JSON.stringify(res.results));
+ok('a stranger cannot sync onto it', /NOT_ALLOWED/.test(await err('stranger', `select public.sync_register($1::jsonb)`, [JSON.stringify({ register_id: R3, ops: [] })])));
+res = await sync('coach', { register_id: R3, ops: [], close: { force: false } });
+ok('close refused in sync is reported, not thrown', res.close?.ok === false && /STILL_IN/.test(res.close.error), JSON.stringify(res.close));
+
+console.log('\nCards and scanning');
+const qrA = await one('coach', `select public.register_qr_code($1)`, [U.adultA]);
+ok('coach gets a member\'s QR code (made on first ask)', /^SZ[0-9A-F]{12}$/.test(qrA), qrA);
+ok('same code next time', (await one('adultA', `select public.register_qr_code()`)) === qrA);
+ok('a stranger cannot see someone\'s code', /NOT_ALLOWED/.test(await err('stranger', `select public.register_qr_code($1)`, [U.adultA])));
+ok('guardian gets the junior\'s code', /^SZ/.test(await one('parentA', `select public.register_qr_code($1)`, [U.juniorC])));
+const cards = (await as('coach', `select * from public.group_register_qr_codes($1)`, [A])).rows;
+ok('printable QR list for the whole group', cards.length >= 3 && cards.every((c) => /^SZ/.test(c.code)), cards.length);
+ok('a member cannot print the group\'s cards', /NOT_ALLOWED/.test(await err('adultA', `select * from public.group_register_qr_codes($1)`, [A])));
+await as('coach', `select public.link_register_card($1,' 04 a1 b2 ','rfid','Blue fob')`, [U.adultB]);
+ok('RFID card linked (code normalised)', (await as('coach', `select * from public.list_register_cards($1)`, [U.adultB])).rows.some((c) => c.code === '04A1B2' && c.kind === 'rfid'));
+ok('the same card for someone else → CARD_IN_USE', /CARD_IN_USE/.test(await err('coach', `select public.link_register_card($1,'04A1B2')`, [U.late])));
+ok('linking it again to the same person is fine', (await err('coach', `select public.link_register_card($1,'04a1b2')`, [U.adultB])) === null);
+const R4 = await one('coach', `select public.create_register($1::uuid[], $2)`, [[A], t(90)]);
+const scan = (who, code, at) => one(who, `select public.scan_register($1,$2,$3)`, [R4, code, at ?? null]);
+let sc = await scan('coach', qrA, t(80));
+ok('scan → in', sc.result === 'in' && sc.name === 'AdultA', JSON.stringify(sc));
+ok('scan again straight away → already in (ignored)', (await scan('coach', qrA, t(78))).result === 'already_in');
+ok('scan 10+ minutes later → signed out, full', (await scan('coach', qrA, t(5))).result === 'out');
+ok('…and then already out', (await scan('coach', qrA, t(4))).result === 'already_out');
+ok('the RFID fob works the same (spaces and case ignored)', (await scan('coach', '04 a1 B2', t(70))).result === 'in');
+ok('unknown card → unknown_card', (await scan('coach', 'NOPE123')).result === 'unknown_card');
+ok('a member cannot scan', /NOT_ALLOWED/.test(await err('adultA', `select public.scan_register($1,$2)`, [R4, qrA])));
+const qrS = await one('stranger', `select public.register_qr_code()`);
+sc = await scan('coach', qrS, t(60));
+ok('someone on SwimZone outside the group → added as a visitor and ticked in', sc.result === 'in' && sc.visitor === true, JSON.stringify(sc));
+ok('the visitor sees it in their own log', (await as('stranger', `select * from public.my_register_entries()`)).rows.length === 1);
+ok('the coach still cannot read the visitor\'s results', !(await one('coach', 'select public.has_log_access($1,$2)', [U.stranger, 'read'])));
+const rg4 = (await svc(`select id from register_groups where register_id=$1`, [R4]))[0].id;
+ok('a visitor can only arrive by scan (not added directly)', /NOT_A_MEMBER/.test(await err(null,
+  `insert into register_entries(register_id, register_group_id, athlete_user_id, kind) values ($1,$2,$3,'visitor')`, [R4, rg4, U.parentA])));
+
+console.log('\nGuests and comments');
+const gid = await one('coach', `select public.add_register_guest($1,'  Trial Tom ')`, [rg4]);
+let sh4 = await one('coach', `select public.register_sheet($1)`, [R4]);
+const gE = sh4.entries.find((e) => e.id === gid);
+ok('guest by typed name, ticked in', gE?.kind === 'guest' && gE.name === 'Trial Tom' && gE.attendance === 'in', JSON.stringify(gE));
+ok('guest has a person_key for the phone', /^guest:/.test(gE.person_key));
+ok('empty guest name refused', /INVALID/.test(await err('coach', `select public.add_register_guest($1,'  ')`, [rg4])));
+ok('a member cannot add guests', /NOT_ALLOWED/.test(await err('adultA', `select public.add_register_guest($1,'X')`, [rg4])));
+await as('coach', `select public.set_register_comment($1,'Pool cold, lane 6 shut')`, [R4]);
+await as('coach', `select public.set_entry_comment($1,'Great turns')`, [sh4.entries.find((e) => e.athlete_user_id === U.adultA).id]);
+sh4 = await one('coach', `select public.register_sheet($1)`, [R4]);
+ok('session comment', sh4.register.comment === 'Pool cold, lane 6 shut');
+ok('swimmer comment', sh4.entries.find((e) => e.athlete_user_id === U.adultA).coach_note === 'Great turns');
+ok('a member cannot comment', /NOT_ALLOWED/.test(await err('adultA', `select public.set_register_comment($1,'x')`, [R4])));
+const gk = 'guest:55555555-5555-4555-8555-000000000001';
+const gsync = { register_id: R4, ops: [
+  { client_uuid: uu(20), athlete_user_id: gk, action: 'guest', at: t(50), detail: { name: 'Offline Olive' } },
+  { client_uuid: uu(21), athlete_user_id: gk, action: 'out_partial', at: t(20), detail: { reason: 'left_early' } },
+  { client_uuid: uu(22), athlete_user_id: U.adultB, action: 'comment', at: t(19), detail: { comment: 'Fob works' } }] };
+res = await sync('coach', gsync);
+const olive = res.sheet.entries.find((e) => e.person_key === gk);
+ok('guest made offline syncs (in, then partial)', olive?.name === 'Offline Olive' && olive.completion === 'partial', JSON.stringify(res.results));
+ok('comment op syncs', res.sheet.entries.find((e) => e.athlete_user_id === U.adultB).coach_note === 'Fob works');
+res = await sync('coach', gsync);
+ok('resend: still one Olive', res.sheet.entries.filter((e) => e.name === 'Offline Olive').length === 1);
+
+console.log('\nAttendance grid');
+await one('coach', `select public.sign_out_all($1)`, [R4]);
+await as('coach', `select public.close_register($1,true)`, [R4]);
+const grid = await one('coach', `select public.group_attendance($1,$2,$3)`, [A, t(60 * 24 * 3), new Date(Date.now() + 86400000).toISOString()]);
+const cell = (who, reg) => grid.athletes.find((a) => a.user_id === U[who])?.cells?.[reg];
+ok('columns = registers with Squad A in the period', grid.registers.length >= 3 && grid.registers.some((r) => r.id === R4), grid.registers.length);
+ok('C = complete', cell('adultA', R4) === 'C', JSON.stringify(grid.athletes.find((a) => a.user_id === U.adultA)));
+ok('P = partial', cell('adultA', R) === 'P' || cell('adultB', R) === 'P', [cell('adultA', R), cell('adultB', R)]);
+ok('N = not booked (on a register they weren\'t on)', grid.athletes.some((a) => Object.values(a.cells).includes('N')));
+ok('A = no-show on a closed register', cell('late', R4) === 'A', cell('late', R4));
+ok('visitor listed, marked not a member', grid.athletes.find((a) => a.user_id === U.stranger)?.member === false);
+ok('guests counted, not listed', grid.registers.find((r) => r.id === R4).guests >= 1 && !grid.athletes.some((a) => a.name === 'Trial Tom'));
+ok('a member cannot see the grid', /NOT_ALLOWED/.test(await err('adultA', `select public.group_attendance($1,$2,$3)`, [A, t(9999), t(0)])));
+ok('staff without take_register (helper switched off) still can, as staff', (await err('helper', `select public.group_attendance($1,$2,$3)`, [A, t(9999), t(0)])) === null);
 
 console.log('\nEvidence');
 const evs = await svc(`select event, count(*)::int n from register_events where register_id=$1 group by event order by event`, [R]);
