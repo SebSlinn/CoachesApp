@@ -13,7 +13,7 @@
 // IMPORT NOTE: zoneCriteria.js has zero imports itself but suggest.js
 // imports from it — both are in zones/ so this is an intra-module import.
 
-import { ACTIVE_CRITERIA } from './zoneCriteria.js';
+import { ACTIVE_CRITERIA, eventPaceFor } from './zoneCriteria.js';
 
 /**
  * Suggest IN and ON time ranges for a given zone, distance, and athlete pace.
@@ -25,12 +25,13 @@ import { ACTIVE_CRITERIA } from './zoneCriteria.js';
  * @param {number|null} pCssValue    Athlete's CSS pace in sec/100m (for CS zone)
  * @param {number|null} [pGoal200Sec] 200m goal time in seconds; types with racePace use it
  *                                   in place of the PB when set (e.g. LT)
+ * @param {Object|null} [pAthlete]   { athleteType, times } — for eventPace types (LP, PL)
  * @returns {Object|null}
  *   inLow, inHigh    — IN time range (seconds)
  *   onLow, onHigh    — ON time range (seconds)
  *   inLowStr etc.    — formatted strings
  */
-function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue, pGoal200Sec) {
+function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue, pGoal200Sec, pAthlete) {
   if (!pPace200Sec || !pDistM || !pZone) return null;
 
   const mSMULT   = { FS: 1.0, BK: 1.045, BR: 1.254, Fly: 1.051, IM: 1.082 };
@@ -43,8 +44,17 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue, pGoal200Se
   // ── Derive IN time range ──────────────────────────────────────────────────
 
   let mInLow, mInHigh;
+  const mEp = mCrit.eventPace
+    ? eventPaceFor(mCrit.eventPace, { ...(pAthlete || {}), pace200Sec: pPace200Sec, goal200Sec: pGoal200Sec }, pStroke)
+    : null;
 
-  if (pZone === 'CS' && pCssValue) {
+  if (mEp) {
+    // LP / PL: race pace for the athlete's event. An open fast end (PL: "max") offers 3% faster.
+    const mPer = mEp.pace100 / 100 * mDist;
+    mInLow  = mPer * (mEp.lo ?? (mEp.hi - 0.05));
+    mInHigh = mPer * (mEp.hi ?? (mEp.lo + 0.05));
+
+  } else if (pZone === 'CS' && pCssValue) {
     // CS: use CSS pace ± margin directly
     const mMargin = mCrit.cssPace || 0.05;
     const mCssTime = (pCssValue / 100) * mDist;
@@ -98,7 +108,7 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue, pGoal200Se
     mRestHigh = mBand[1] ?? mBand[0] ?? 20;
 
   } else if (mCrit.restWork) {
-    const [mRwLo, mRwHi] = mCrit.restWork;
+    const [mRwLo, mRwHi] = mCrit.restWorkByAthleteType?.[pAthlete?.athleteType] || mCrit.restWork;
     // Use mid-IN time as basis for rest calculation
     const mMidIn = (mInLow + mInHigh) / 2;
     mRestLow  = mRwLo !== null ? mMidIn * mRwLo : 0;
@@ -114,8 +124,17 @@ function suggestTimes(pZone, pDistM, pStroke, pPace200Sec, pCssValue, pGoal200Se
 
   // ON = IN + rest, rounded to nearest 5s — unless the type fixes its send-offs (onOptions).
   function mR5(pSec) { return Math.round(pSec / 5) * 5; }
+  const mMidIn = (mInLow + mInHigh) / 2;
   const mOnOptions = Array.isArray(mCrit.onOptions) && mCrit.onOptions.length
-    ? [...mCrit.onOptions].sort((a, b) => a - b) : null;
+    ? [...mCrit.onOptions].sort((a, b) => a - b)
+    : (mCrit.onRestRatiosByAthleteType?.[pAthlete?.athleteType] || mCrit.onRestRatios)?.length
+      // whole-number work:rest send-offs (LP: 1:1 … 1:5); coach-friendly rounding:
+      // nearest 5 s under a minute, nearest 15 s above
+      ? [...new Set((mCrit.onRestRatiosByAthleteType?.[pAthlete?.athleteType] || mCrit.onRestRatios).map(r => {
+          const mOn = mMidIn * (1 + r);
+          return mOn < 60 ? mR5(mOn) : Math.round(mOn / 15) * 15;
+        }))].sort((a, b) => a - b)
+      : null;
   const mOnLow  = mOnOptions ? mOnOptions[0] : mR5(mInLow  + mRestLow);
   let   mOnHigh = mOnOptions ? mOnOptions[mOnOptions.length - 1] : mR5(mInHigh + mRestHigh);
   if (mOnLow === mOnHigh) mOnHigh = mOnLow + 5;

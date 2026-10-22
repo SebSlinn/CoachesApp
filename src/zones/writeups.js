@@ -65,7 +65,7 @@ const WRITEUPS = {
   usedFor: ["Race pace training for 100m and 200m events","Developing the rate of anaerobic energy production","Enhancing glycolytic capacity","Preparing athletes for the lactate demands of competition"],
   primary: ["Increased rate of anaerobic metabolism","Increased MCT-1 and MCT-4 lactate transporter density","Increased maximum sprinting speed"],
   secondary: ["Increased ATP/PC stores","Increased muscular power","Improved neuromuscular coordination at fast speeds","Increased buffering capacity"],
-  setStructure: "300–600m total · 25–75m reps · Rest: 1–3 min (25m), 3–5 min (50–75m)",
+  setStructure: "Race pace for the athlete's event · 25–100m reps (sprinters 25/50, 200 swimmers 50/100) · Rest 1–5× the swim (about 1:2; e.g. 10×50 on 2:30–3:00) · Sprinters 500–1000m",
   },
   LT: {
   la: "12–20 mmol/L", rpe: "19–20", domain: "Severe / Extreme",
@@ -92,7 +92,7 @@ const WRITEUPS = {
   usedFor: ["Raising the lactate production ceiling","Finishing speed for 100m–200m events","Late-season race sharpening"],
   primary: ["Maximal rate of anaerobic glycolysis","Highest achievable blood lactate","Fast-twitch fibre recruitment at maximal effort"],
   secondary: ["Increased buffering capacity","Psychological ceiling-raising"],
-  setStructure: "200–600m total · 50–150m reps all-out · Rest 5–15 min (near-full recovery) · 48–72 h recovery",
+  setStructure: "300–800m of maximum efforts · 75–400m, straight or broken (e.g. 3×200 as 4×50 on 60) · On 10–30 min with active recovery (e.g. 4×100 on 15:00)",
   },
   LR: {
   la: "—", rpe: "—", domain: "Zone 3 / HPE",

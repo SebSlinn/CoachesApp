@@ -47,7 +47,8 @@ export function ClassifierScreenRefactor({
           if (!p200s) return null;
           const candidate = {};
           PICKER_CODES.forEach(z => {
-            candidate[z] = suggestTimes(z, inputs.distM, inputs.stroke, p200s, activeAthlete?.derivedProfile?.css, parseTime(inputs.goal200) || null);
+            candidate[z] = suggestTimes(z, inputs.distM, inputs.stroke, p200s, activeAthlete?.derivedProfile?.css, parseTime(inputs.goal200) || null,
+              { athleteType: inputs.athleteType || activeAthlete?.athleteType || null, times: activeAthlete?.times || {} });
           });
           return candidate;
         } catch(e) { return null; }
@@ -422,11 +423,13 @@ export function ClassifierScreenRefactor({
             : "Load athlete times to calculate CSS — then time suggestions will appear"}
         </div>
       )}
-      {(selectedZone === "LP" || selectedZone === "LT") && singleResult && (() => {
+      {(selectedZone === "LP" || selectedZone === "LT" || selectedZone === "PL") && singleResult && (() => {
         // Driven by the type's criteria (zones/types.js) — LP and LT follow the Training
-        // Zones chart. LP = fast 25–75m with long rest; LT = 200 race pace, 50–200m, on 3:00–5:00.
+        // LP = race pace for the athlete's event, 25–100m, rest 1–5× the swim; LT = 200 race pace,
+        // 50–200m, on 3:00–5:00; PL = max 75–400m efforts on 10–30 min.
         const zc3 = zoneColor(selectedZone);
-        const m = evaluateZoneMatch(selectedZone, singleResult, { distM: inputs.distM, qty: inputs.qty }, {
+        const m = evaluateZoneMatch(selectedZone, singleResult, { distM: inputs.distM, qty: inputs.qty, stroke: inputs.stroke }, {
+          times:       activeAthlete?.times || {},
           pace200Sec:  parseTime(inputs.pace200) || null,
           goal200Sec:  parseTime(inputs.goal200) || null,
           athleteType: inputs.athleteType || activeAthlete?.athleteType || null,

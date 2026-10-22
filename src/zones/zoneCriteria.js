@@ -28,6 +28,20 @@
 //     200 race-pace band: ½ × 200 time + offsetLow to + offsetHigh s/100m. The 200 time is
 //     athleteContext.goal200Sec when set, else pace200Sec. Without either → speed fallback.
 //
+//   eventPace: { sprint|allround|endurance: { event, lo, hi } }
+//     Race pace for the athlete's event, picked by athleteContext.athleteType. Event pace
+//     per 100 = event PB / event × 100 (for 200: goal200Sec, else pace200Sec, else the
+//     200 PB in times). Passes when repPace100 is within [pace × lo, pace × hi] (null = open).
+//     Needs athleteType, pInputs.stroke (FS default) and athleteContext.times[`${event}_${stroke}`].sec.
+//     Without them → speed fallback.
+//
+//   restWorkByAthleteType: { sprint|allround|endurance: [min, max] }
+//     Replaces restWork for that athlete type when athleteContext.athleteType is known.
+//   onRestRatiosByAthleteType: { type: [r, ...] }   (suggestTimes only)
+//
+//   onRestRatios: [r, ...]
+//     Rest:work ratios suggestTimes() offers as send-offs (not evaluated).
+//
 //   onSec: [min, max]
 //     Send-off (start-to-start) seconds = rep time + rest. null = unbounded.
 //   onOptions: [sec, ...]
@@ -184,9 +198,27 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
     });
   }
 
+  // ── eventPace ──────────────────────────────────────────────────────────────
+  // Race pace for the athlete's event (per athlete type).
+  let mEventPaceEvaluated = false;
+  const mEp = mCrit.eventPace ? eventPaceFor(mCrit.eventPace, pAthleteCtx, pInputs?.stroke) : null;
+  if (mEp) {
+    mEventPaceEvaluated = true;
+    const mLo = mEp.lo === null ? null : mEp.pace100 * mEp.lo;
+    const mHi = mEp.hi === null ? null : mEp.pace100 * mEp.hi;
+    const mP  = pSingleResult.repPace100;
+    const mOk = (mLo === null || mP >= mLo - 0.05) && (mHi === null || mP <= mHi + 0.05);
+    mResults.push({
+      key: 'eventPace', label: 'Race pace',
+      met: mOk,
+      detail: `${fmtPace(mP)}/100m` + describeRange(mLo, mHi, v => fmtPace(v) + '/100m') +
+        ` — ${mEp.event}m pace ${fmtPace(mEp.pace100)}/100m`,
+    });
+  }
+
   // ── speed (ratio band fallback) ────────────────────────────────────────────
   // Skip if an athlete-specific pace condition was already evaluated for this zone.
-  const mHasAbsolutePace = mCssPaceEvaluated || mAtPaceEvaluated || mRacePaceEvaluated;
+  const mHasAbsolutePace = mCssPaceEvaluated || mAtPaceEvaluated || mRacePaceEvaluated || mEventPaceEvaluated;
   if (mCrit.speed && !mHasAbsolutePace) {
     const [mLo, mHi] = mCrit.speed;
     const mOk = (mLo === null || mSr >= mLo) && (mHi === null || mSr < mHi);
@@ -219,8 +251,9 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
 
   // ── restWork (ratio) ───────────────────────────────────────────────────────
   // Skip if restSecByDist already evaluated rest (avoid double-counting).
-  if (mCrit.restWork && !mRestSecEvaluated) {
-    const [mLo, mHi] = mCrit.restWork;
+  const mRwBand = mCrit.restWorkByAthleteType?.[pAthleteCtx?.athleteType] || mCrit.restWork;
+  if (mRwBand && !mRestSecEvaluated) {
+    const [mLo, mHi] = mRwBand;
     const mOk = (mLo === null || mRw >= mLo) && (mHi === null || mRw <= mHi);
     mResults.push({
       key: 'restWork', label: 'Rest:Work',
@@ -346,6 +379,22 @@ export function evaluateZoneMatch(pZoneId, pSingleResult, pInputs, pAthleteCtx) 
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
+/**
+ * The race-pace band for this athlete from an eventPace table.
+ * @returns {{event:number, pace100:number, lo:number|null, hi:number|null}|null}
+ */
+function eventPaceFor(pTable, pCtx, pStroke) {
+  const mBand = pTable?.[pCtx?.athleteType];
+  if (!mBand) return null;
+  const mStroke = pStroke || 'FS';
+  let mSec = Number(pCtx?.times?.[`${mBand.event}_${mStroke}`]?.sec) || null;
+  if (mBand.event === 200) {
+    mSec = Number(pCtx?.goal200Sec) || Number(pCtx?.pace200Sec) || mSec;
+  }
+  if (!mSec) return null;
+  return { event: mBand.event, pace100: mSec / mBand.event * 100, lo: mBand.lo ?? null, hi: mBand.hi ?? null };
+}
+
 /** 64.8 → "1:04.8", 32.4 → "32.4", 240 → "4:00". */
 function fmtPace(pSec) {
   const mRound = Math.round(pSec * 10) / 10;
@@ -363,4 +412,4 @@ function describeRange(pLo, pHi, pFmt) {
   return ` (need ${pFmt(pLo)}–${pFmt(pHi)})`;
 }
 
-export { ACTIVE_CRITERIA, ZONE_CRITERIA_SWEETENHAM };
+export { ACTIVE_CRITERIA, ZONE_CRITERIA_SWEETENHAM, eventPaceFor };

@@ -166,20 +166,21 @@ test('PL sits above LT: Urbanchek Orange, Maglischo SP1; 50–100m reps', () => 
   assert.equal(zoneColor('PL', 'urbanchek'), zoneColor('LT', 'urbanchek'));
   assert.equal(resolveZoneStyle('PL', 'maglischo').short, 'SP1');
   assert.ok(TYPES.PL.rank > TYPES.LT.rank && TYPES.LT.rank > TYPES.LP.rank);
-  const r = res({ speedRatio: 0.92, restWorkRatio: 8, workDur: 30 });
-  assert.equal(evaluateZoneMatch('PL', r, { distM: 50, qty: 4 }).isMatch, true);
-  assert.equal(evaluateZoneMatch('PL', r, { distM: 25, qty: 4 }).isMatch, false, 'too short');
-  assert.equal(evaluateZoneMatch('PL', r, { distM: 200, qty: 2 }).isMatch, false, 'too long');
+  // PL (2026-10-22): max 75–400m efforts on 10–30 min. Ratio fallback (no athlete).
+  const r = res({ speedRatio: 0.93, restWorkRatio: 14, workDur: 60 });     // on 15:00
+  assert.equal(evaluateZoneMatch('PL', r, { distM: 100, qty: 4 }).isMatch, true);
+  assert.equal(evaluateZoneMatch('PL', r, { distM: 50, qty: 8 }).isMatch, false, 'too short');
+  assert.equal(evaluateZoneMatch('PL', r, { distM: 800, qty: 1 }).isMatch, false, 'too long');
 });
 test('MVO and PL have working criteria', () => {
   // 10×200 @ 2:20 with 1:30 rest-ish: rw 0.6, 140 s reps, 23 min work, ratio 1.03
   const mMvo = evaluateZoneMatch('MVO', res({ speedRatio: 1.03, restWorkRatio: 0.6, workDur: 140 }), { distM: 200, qty: 10 });
   assert.equal(mMvo.isMatch, true);
-  // 3×100 all-out @ 0.93 with 8 min rest
-  const mPl = evaluateZoneMatch('PL', res({ speedRatio: 0.93, restWorkRatio: 8, workDur: 60 }), { distM: 100, qty: 3 });
+  // 4×200 max on 20:00
+  const mPl = evaluateZoneMatch('PL', res({ speedRatio: 0.99, restWorkRatio: (1200 - 130) / 130, workDur: 130 }), { distM: 200, qty: 4 });
   assert.equal(mPl.isMatch, true);
-  // an HVO-style 15 s sprint is not PL
-  assert.equal(evaluateZoneMatch('PL', res({ speedRatio: 0.82, restWorkRatio: 8, workDur: 12 }), { distM: 25, qty: 8 }).isMatch, false);
+  // max 100s on 4:00 are not PL (that rest is LT territory)
+  assert.equal(evaluateZoneMatch('PL', res({ speedRatio: 0.93, restWorkRatio: 3, workDur: 60 }), { distM: 100, qty: 4 }).isMatch, false);
 });
 
 console.log('suggestTimes');
@@ -243,6 +244,67 @@ test('LT suggestions: IN around ½ × 200, ON 3:00–5:00 in 30 s steps', () => 
     const m = evaluateZoneMatch('LT', mLtRes(65, 100, mOn), { distM: 100, qty: 12 }, mEsmee);
     assert.equal(m.isMatch, true, `on ${mOn}`);
   }
+});
+
+console.log('LP and PL (Al, 2026-10-22)');
+// A sprinter: 100 PB 58.0 → 100 pace 58.0/100, LP band 58.0–60.9 per 100 (50 in 29.0–30.45).
+const mSprinter = { athleteType: 'sprint', pace200Sec: 129.55, times: { '100_FS': { sec: 58.0 } } };
+const mRep = (pIn, pDist, pOn) => ({
+  speedRatio: (pIn / pDist * 100) / 64.775, restWorkRatio: (pOn - pIn) / pIn, workDur: pIn,
+  repPace100: pIn / pDist * 100, base100Pace: 64.775,
+});
+test('LP sprinter: 10×50 @ 30 on 1:30 (≈1:2) is LP; 1000m max', () => {
+  const m = evaluateZoneMatch('LP', mRep(30, 50, 90), { distM: 50, qty: 10, stroke: 'FS' }, mSprinter);
+  assert.equal(m.isMatch, true, JSON.stringify(m.criteria));
+  assert.equal(evaluateZoneMatch('LP', mRep(30, 50, 90), { distM: 50, qty: 24 }, mSprinter).isMatch, false, '1200m too much');
+});
+test("LP sprinter: Sweetenham's 10×50 on 2:30–3:00 still fits (rest ≤ 5×)", () => {
+  assert.equal(evaluateZoneMatch('LP', mRep(30, 50, 150), { distM: 50, qty: 10 }, mSprinter).isMatch, true);
+  assert.equal(evaluateZoneMatch('LP', mRep(30, 50, 180), { distM: 50, qty: 10 }, mSprinter).isMatch, true);
+});
+test('LP: too slow for 100 pace, too short a rest, too long a rep', () => {
+  const mBad = k => evaluateZoneMatch('LP', ...k).criteria.filter(c => !c.met).map(c => c.key);
+  assert.deepEqual(mBad([mRep(33, 50, 99), { distM: 50, qty: 10 }, mSprinter]), ['eventPace']);
+  assert.deepEqual(mBad([mRep(30, 50, 50), { distM: 50, qty: 10 }, mSprinter]), ['restWork']);
+  assert.ok(mBad([mRep(120, 200, 360), { distM: 200, qty: 4 }, mSprinter]).includes('dist'));
+});
+test('LP all-round uses 200 pace (goal first); endurance uses 400 PB', () => {
+  const mAll = { athleteType: 'allround', pace200Sec: 129.55 };
+  assert.equal(evaluateZoneMatch('LP', mRep(33, 50, 99), { distM: 50, qty: 16 }, mAll).isMatch, true);
+  assert.equal(evaluateZoneMatch('LP', mRep(33, 50, 99), { distM: 50, qty: 16 }, { ...mAll, goal200Sec: 124 }).isMatch, false);
+});
+// Al's 4:28 400 swimmer (67/100): the book's 4 × (100 on 2:00, 2 × 50 on 60) at 400 pace.
+const mEnd = { athleteType: 'endurance', pace200Sec: 129.55, times: { '400_FS': { sec: 268 } } };
+test('LP endurance: 400 pace from the 400 PB; 100 on 2:00 (67:53) and 50 on 60 (33:27) fit', () => {
+  const m100 = evaluateZoneMatch('LP', mRep(67, 100, 120), { distM: 100, qty: 4 }, mEnd);
+  assert.equal(m100.criteria.find(c => c.key === 'restWork').met, true);
+  assert.equal(m100.criteria.find(c => c.key === 'eventPace').met, true);
+  const m50 = evaluateZoneMatch('LP', mRep(33.5, 50, 60), { distM: 50, qty: 8 }, mEnd);
+  assert.equal(m50.criteria.find(c => c.key === 'restWork').met, true);
+  // the same rest is too short for a sprinter's LP (needs ≥ 1:1)
+  assert.equal(evaluateZoneMatch('LP', mRep(29, 50, 52), { distM: 50, qty: 16 }, mSprinter)
+    .criteria.find(c => c.key === 'restWork').met, false);
+  // 20 × 50 on 1:15 = 1000m of race pace: a full match
+  assert.equal(evaluateZoneMatch('LP', mRep(33.5, 50, 75), { distM: 50, qty: 20 }, mEnd).isMatch, true);
+});
+test('LP endurance suggestions scale with the swimmer: 100s at 67–69 → 2:00 … 3:30', () => {
+  const s = suggestTimes('LP', 100, 'FS', 129.55, null, null, mEnd);
+  assert.deepEqual(s.onOptions, [120, 135, 150, 165, 210]);
+});
+test('LP suggestions: race pace IN; ON at 1:1 … 1:5', () => {
+  const s = suggestTimes('LP', 50, 'FS', 129.55, null, null, mSprinter);
+  assert.equal(s.inLow, 29); assert.equal(s.inHigh, 30);
+  assert.deepEqual(s.onOptions, [60, 90, 120, 150, 180]);
+});
+test('PL: max 100s on 15:00 for a 100 swimmer; 200s at 200 pace on 20:00 for a 200 swimmer', () => {
+  assert.equal(evaluateZoneMatch('PL', mRep(58.5, 100, 900), { distM: 100, qty: 4 }, mSprinter).isMatch, true);
+  assert.equal(evaluateZoneMatch('PL', mRep(62, 100, 900), { distM: 100, qty: 4 }, mSprinter).isMatch, false, 'not max');
+  assert.equal(evaluateZoneMatch('PL', mRep(129, 200, 1200), { distM: 200, qty: 4 }, { athleteType: 'allround', pace200Sec: 129.55 }).isMatch, true);
+});
+test('PL suggestions: ON 10/15/20/25/30 min', () => {
+  const s = suggestTimes('PL', 100, 'FS', 129.55, null, null, mSprinter);
+  assert.deepEqual(s.onOptions, [600, 900, 1200, 1500, 1800]);
+  assert.ok(s.inLow <= 58 && s.inHigh >= 58);
 });
 
 console.log(`\n${mPass} passed`);
