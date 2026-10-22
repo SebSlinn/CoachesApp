@@ -28,6 +28,7 @@ export const CAPABILITIES = [
   { key: 'manage_members', label: 'Manage members' },
   { key: 'read_results', label: 'Read results' },
   { key: 'add_results', label: 'Add results' },
+  { key: 'take_register', label: 'Take registers' },
 ]
 
 // "reads and adds results", "manages members and reads results", "—"
@@ -38,6 +39,7 @@ export function describeCapabilities(pRow) {
   if (pRow.read_results && pRow.add_results) mParts.push('reads and adds results')
   else if (pRow.read_results) mParts.push('reads results')
   else if (pRow.add_results) mParts.push('adds results (can\'t read them)')
+  if (pRow.take_register) mParts.push('takes registers')
   if (!mParts.length) return ''
   return mParts.length === 1 ? mParts[0] : mParts.slice(0, -1).join(', ') + ' and ' + mParts[mParts.length - 1]
 }
@@ -68,7 +70,7 @@ export function groupsFromMemberships(pMemberships) {
     if (!g) {
       g = { org_id: m.org_id, name: m.org_name, group_type: m.group_type, org_type: m.org_type,
             parent_org_id: m.parent_org_id, description: m.description, roles: [],
-            manage_members: false, read_results: false, add_results: false, is_staff: false,
+            manage_members: false, read_results: false, add_results: false, take_register: false, is_staff: false,
             settings_to_accept: false, waiting: null }
       mByOrg.set(m.org_id, g)
     }
@@ -77,6 +79,7 @@ export function groupsFromMemberships(pMemberships) {
       g.manage_members ||= m.manage_members
       g.read_results ||= m.read_results
       g.add_results ||= m.add_results
+      g.take_register ||= !!m.take_register
       g.is_staff ||= m.is_staff
       g.settings_to_accept ||= m.settings_to_accept
     } else if (!g.waiting) {

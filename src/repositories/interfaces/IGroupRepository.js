@@ -46,7 +46,7 @@ export class IGroupRepository {
 
   // ---- members ----
   async addMemberRole(_orgId, _userId, _role) { throw new Error('IGroupRepository.addMemberRole not implemented'); }
-  /** @param {'manage_members'|'read_results'|'add_results'} _cap  @param {boolean|null} _value null = role default */
+  /** @param {'manage_members'|'read_results'|'add_results'|'take_register'} _cap  @param {boolean|null} _value null = role default */
   async setMemberCapability(_membershipId, _cap, _value) { throw new Error('IGroupRepository.setMemberCapability not implemented'); }
   async removeMembership(_membershipId) { throw new Error('IGroupRepository.removeMembership not implemented'); }
 

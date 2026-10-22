@@ -5,8 +5,8 @@ import { hasCapability } from '../services/groupLabels'
 
 // Who am I, and what can I do?
 //   memberships  my_memberships() rows: active, pending and awaiting-guardian, one per role per group,
-//                each with effective manage_members / read_results / add_results / is_staff
-//   can(cap)     true if any ACTIVE membership gives it: 'manage_members' | 'read_results' | 'add_results' | 'staff'
+//                each with effective manage_members / read_results / add_results / take_register / is_staff
+//   can(cap)     true if any ACTIVE membership gives it: 'manage_members' | 'read_results' | 'add_results' | 'take_register' | 'staff'
 //   isCoach      kept for older callers: can('add_results') via a staff role
 // Roles are data (group_roles), so screens ask about capabilities, never role names.
 export function useAuth() {

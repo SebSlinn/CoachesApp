@@ -164,10 +164,25 @@ class Query {
   }
 }
 
+// Declared input types of a function's arguments, e.g. { p_ids: 'uuid[]', p_starts: 'jsonb' }.
+async function argTypes(fn) {
+  const r = await DB.query(`select p.parameter_name n, p.data_type dt, p.udt_name u
+                              from information_schema.parameters p join information_schema.routines r
+                                on r.specific_name = p.specific_name and r.specific_schema = p.specific_schema
+                             where r.routine_schema = 'public' and r.routine_name = $1 and p.parameter_mode = 'IN'`, [fn]);
+  return Object.fromEntries(r.rows.map((x) => [x.n, x.dt === 'ARRAY' ? x.u.replace(/^_/, '') + '[]' : x.u]));
+}
+const pgArray = (a) => '{' + a.map((x) => (x === null ? 'NULL' : '"' + String(x).replace(/["\\]/g, '\\$&') + '"')).join(',') + '}';
+
 async function rpc(name, args = {}) {
   const keys = Object.keys(args);
-  const params = keys.map((k) => (args[k] !== null && typeof args[k] === 'object' ? JSON.stringify(args[k]) : args[k]));
-  const call = keys.map((k, i) => `${k} => $${i + 1}${args[k] !== null && typeof args[k] === 'object' ? '::jsonb' : ''}`).join(', ');
+  const T = await argTypes(name);
+  // Like PostgREST: a JS array goes to an array argument as an array, anything else object-shaped as jsonb.
+  const isArr = (k) => Array.isArray(args[k]) && /\[\]$/.test(T[k] || '');
+  const params = keys.map((k) => (isArr(k) ? pgArray(args[k])
+    : args[k] !== null && typeof args[k] === 'object' ? JSON.stringify(args[k]) : args[k]));
+  const call = keys.map((k, i) => `${k} => $${i + 1}${isArr(k) ? '::' + T[k]
+    : args[k] !== null && typeof args[k] === 'object' ? '::jsonb' : ''}`).join(', ');
   try {
     await DB.exec(`reset role; select set_config('request.jwt.claim.sub', '${UID || ''}', false);`);
     if (UID) await DB.exec('set role authenticated');

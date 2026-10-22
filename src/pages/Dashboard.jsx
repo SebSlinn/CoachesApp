@@ -10,7 +10,7 @@ import { GROUP_TYPE_LABEL, groupsFromMemberships, statusText } from '../services
 import { S, Badge, Message, useAction } from '../components/AccountsUi'
 
 export default function Dashboard() {
-  const { user, profile, memberships, refreshMemberships } = useAuth()
+  const { user, profile, memberships, refreshMemberships, can } = useAuth()
   const navigate = useNavigate()
   const groups = useMemo(() => groupsFromMemberships(memberships), [memberships])
 
@@ -64,6 +64,7 @@ export default function Dashboard() {
         <DashCard title="Athlete Setup" desc="Manage athlete profiles and times" onClick={() => navigate('/athlete-setup')} />
         <DashCard title="Set Builder" desc="Create and edit training sessions" onClick={() => navigate('/set-builder')} />
         <DashCard title="Groups" desc="Your clubs, squads and sharing groups" onClick={() => navigate('/groups')} />
+        {(can('take_register') || can('staff')) && <DashCard title="Registers" desc="Tick swimmers in and sign them out" onClick={() => navigate('/registers')} />}
         {canSponsor && <DashCard title="Sponsorship" desc="Bring new people into SwimZone" onClick={() => navigate('/sponsorship')} />}
       </div>
 

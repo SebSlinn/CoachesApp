@@ -15,6 +15,8 @@ import RecordsEvent from './pages/RecordsEvent'
 import RecordsSwim from './pages/RecordsSwim'
 import TestResults from './pages/TestResults'
 import Account from './pages/Account'
+import Registers from './pages/Registers'
+import Register from './pages/Register'
 
 export default function App() {
   return (
@@ -91,6 +93,16 @@ export default function App() {
         <Route path="/account" element={
           <ProtectedRoute>
             <Account />
+          </ProtectedRoute>
+        } />
+        <Route path="/registers" element={
+          <ProtectedRoute>
+            <Registers />
+          </ProtectedRoute>
+        } />
+        <Route path="/registers/:registerId" element={
+          <ProtectedRoute>
+            <Register />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/login" replace />} />

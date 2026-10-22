@@ -14,6 +14,7 @@ import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository'
 import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
 import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
 import { LocalZoneSchemeRepository } from './local/LocalZoneSchemeRepository';
+import { SupabaseRegisterRepository } from './supabase/SupabaseRegisterRepository';
 
 let authRepository = null;
 let membershipRepository = null;
@@ -26,6 +27,7 @@ let resultsRepository = null;
 let protocolsRepository = null;
 let athleteProfileRepository = null;
 let zoneSchemeRepository = null;
+let registerRepository = null;
 
 export function getAuthRepository() {
   if (!authRepository) authRepository = new SupabaseAuthRepository();
@@ -92,4 +94,11 @@ export function getAthleteProfileRepository() {
 export function getZoneSchemeRepository() {
   if (!zoneSchemeRepository) zoneSchemeRepository = new LocalZoneSchemeRepository();
   return zoneSchemeRepository;
+}
+
+// ---- Registers (added 2026-10-22) — attendance and sign-out. Server-only for now: the rules
+// (take_register, members only) live in the database. A local outbox can wrap it later (phase 4).
+export function getRegisterRepository() {
+  if (!registerRepository) registerRepository = new SupabaseRegisterRepository();
+  return registerRepository;
 }

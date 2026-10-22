@@ -1,6 +1,6 @@
 //services/accountErrors.js
 // The database refuses with 'CODE: detail'. Turn that into words for the screens.
-// Shared by groups.js, sponsorship.js and logSharing.js. Zero imports.
+// Shared by groups.js, sponsorship.js, logSharing.js and registers.js. Zero imports.
 
 const ERROR_TEXT = {
   NOT_ALLOWED: 'You don\'t have permission to do that.',
@@ -16,6 +16,11 @@ const ERROR_TEXT = {
   ALREADY_SPONSORED: 'That group already has sponsorship.',
   INVITE_INVALID: 'This invite link isn\'t valid, or it has expired. Ask the group for a new one.',
   NOT_FOUND: 'That no longer exists — it may already have been dealt with.',
+  NOT_A_MEMBER: 'Only members of the register\'s groups can be on it. Invite them to the group first.',
+  NOT_IN: 'Tick them in before signing them out.',
+  SIGNED_OUT: 'They\'re already signed out. Undo the sign-out first.',
+  CLOSED: 'This register is closed. Reopen it first.',
+  STILL_IN: null,  // the detail says how many
   INVALID: null,   // the detail says what's wrong
 }
 

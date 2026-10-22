@@ -53,7 +53,7 @@ export class SupabaseGroupRepository extends IGroupRepository {
     if (!supabase) return UNAVAILABLE;
     const { data, error } = await supabase
       .from('group_roles')
-      .select('key, label, manage_members, read_results, add_results, is_staff, sort, retired')
+      .select('key, label, manage_members, read_results, add_results, take_register, is_staff, sort, retired')
       .eq('retired', false)
       .order('sort');
     return { data, error };
