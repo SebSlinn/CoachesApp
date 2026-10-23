@@ -6,7 +6,8 @@
 //   Also their check-in code: the SwimZone QR to show at the pool, and any linked cards or fobs.
 // Talks to services/registers.js and services/logSharing.js (who I'm guardian of).
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { recordsHref } from '../records/athleteLink'
 import QRCode from 'qrcode'
 import { useAuth } from '../hooks/useAuth'
 import {
@@ -42,6 +43,7 @@ export default function MyTraining() {
   }
   useEffect(() => { load() }, [athleteId, days])
 
+  const viewing = { id: athleteId, name: who ? people.find((p) => p.id === who)?.name : (profile?.public_name || profile?.full_name || 'Me') }
   const sessions = (rows || []).filter((x) => x.kind === 'session')
   const t = attendanceTotals(Object.fromEntries(sessions.map((e) => [e.entry_id, e.code])))
   const totalM = (rows || []).reduce((a, x) => a + (x.kind === 'session' ? (x.volume?.m ?? 0) : (x.volume_m ?? 0)), 0)
@@ -70,15 +72,15 @@ export default function MyTraining() {
 
       {rows && rows.length === 0 && <p style={S.muted}>No sessions on a register in this period yet.</p>}
       {(rows || []).map((e) => (e.kind === 'test'
-        ? <TestRow key={'t' + e.effort_id} t={e} />
-        : <LogRow key={e.entry_id} e={e} onSaved={load} />))}
+        ? <TestRow key={'t' + e.effort_id} t={e} who={viewing} />
+        : <LogRow key={e.entry_id} e={e} onSaved={load} who={viewing} />))}
 
       <CheckInCode userId={athleteId} name={who ? people.find((p) => p.id === who)?.name : (profile?.public_name || profile?.full_name || 'Me')} />
     </div>
   )
 }
 
-function LogRow({ e, onSaved }) {
+function LogRow({ e, onSaved, who }) {
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState(e.note || '')
   const [share, setShare] = useState(!!e.share)
@@ -113,6 +115,7 @@ function LogRow({ e, onSaved }) {
       {(e.tests || []).map((t) => (
         <div key={t.effort_id} style={{ ...S.small, marginTop: 4, paddingLeft: 10, borderLeft: '3px solid #30b0c7' }}>
           Test: {t.name} · {t.reps} reps · {metres(t.volume_m)} <span style={S.muted}>(part of this session)</span>
+          <ResultsLink t={t} who={who} />
         </div>
       ))}
       {!open && (
@@ -145,19 +148,28 @@ function LogRow({ e, onSaved }) {
 }
 
 // A Poolside test or set that wasn't swum in any register.
-function TestRow({ t }) {
+function TestRow({ t, who }) {
   return (
     <div style={{ ...S.card, borderStyle: 'dashed' }}>
       <div style={S.row}>
         <Badge kind="role">test</Badge>
         <strong>{t.swum_on && !String(t.at).includes('T00:00:00') ? when(t.at) : new Date(t.swum_on || t.at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</strong>
         <span style={S.small}>{t.name} · {t.reps} reps</span>
+        <ResultsLink t={t} who={who} />
         <span style={{ flex: 1 }} />
         <strong>{metres(t.volume_m)}</strong>
       </div>
       <div style={S.muted}>Not part of a register session.</div>
     </div>
   )
+}
+
+// A library test → its results page (compare runs, charts, downloads). Ad-hoc sets have no page.
+// who: { id, name } of the swimmer whose log this is (me, or a junior I'm guardian of).
+function ResultsLink({ t, who }) {
+  if (!t.protocol_id || !who?.id) return null
+  const to = recordsHref(`/test-sets/results/${t.protocol_id}`, who.id, who.name)
+  return <> · <Link to={to} style={{ fontSize: 13 }}>Results →</Link></>
 }
 
 // The code to show at the pool, and cards/fobs linked to this person.
