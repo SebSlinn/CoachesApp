@@ -149,5 +149,24 @@ const kidRow = grid.athletes.find((a) => a.user_id === U.kid);
 ok('attendanceTotals: % over booked sessions', attendanceTotals(kidRow.cells).booked >= 1 && attendanceTotals(kidRow.cells).pct !== null, attendanceTotals(kidRow.cells));
 ok('bad dates refused before the DB', /INVALID/.test((await R.getGroupAttendance(A, '', todayLocal())).error?.message));
 
+console.log('\nSummaries and the training log (services)');
+signIn(U.coach);
+const shT = (await R.getRegisterSheet(third)).data;
+ok('bad breakdown refused before the DB, in words', /AT 2000/.test((await R.setSessionSummary(shT.groups[0].id, { text: 'x', breakdown: 'AT lots' })).error?.message));
+ok('bad volume refused before the DB', /INVALID/.test((await R.setSessionSummary(shT.groups[0].id, { volumeM: '5.5k' })).error?.message));
+ok('setSessionSummary', (await R.setSessionSummary(shT.groups[0].id, { text: 'Aerobic', volumeM: '5500', breakdown: 'A2 3000, Kick 800' })).error === null);
+const swE = (await R.getRegisterSheet(third)).data.entries.find((e) => e.athlete_user_id === U.swimmer);
+ok('setEntryVolume (coach) and clear it again', (await R.setEntryVolume(swE.id, 4500)).error === null && (await R.setEntryVolume(swE.id, '')).error === null);
+signIn(U.swimmer);
+ok('setMySessionSummary (athlete)', (await R.setMySessionSummary(swE.id, '5000', 'A2 2600')).error === null);
+const logS = (await R.getTrainingLog(U.swimmer)).data;
+const tl = logS.find((x) => x.entry_id === swE.id);
+ok('training log: my figure, the session text', tl?.volume?.m === 5000 && tl.volume.src === 'mine' && tl.session.text === 'Aerobic' && tl.volume.breakdown?.A2 === 2600, tl);
+signIn(U.coach);
+const det = (await R.getCellDetail(swE.id)).data;
+ok('getCellDetail for the coach', det?.volume?.m === 5000 && det.session.volume_m === 5500, det);
+const g2 = (await R.getGroupAttendance(A, todayLocal(), todayLocal())).data;
+ok('grid has volumes', g2.athletes.find((a) => a.user_id === U.swimmer).vols[third] === 5000, g2.athletes);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

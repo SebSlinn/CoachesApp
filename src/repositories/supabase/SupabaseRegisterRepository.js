@@ -54,6 +54,16 @@ export class SupabaseRegisterRepository extends IRegisterRepository {
   }
   async revokeCard(cardId) { return this.#rpc('revoke_register_card', { p_card: cardId }); }
   async listCards(userId) { return this.#rpc('list_register_cards', userId ? { p_user: userId } : {}); }
+  // Summaries and volume
+  async setSessionSummary(rgId, text, volumeM, breakdown) {
+    return this.#rpc('set_session_summary', { p_register_group: rgId, p_text: text ?? null, p_volume_m: volumeM ?? null, p_breakdown: breakdown ?? null });
+  }
+  async setEntryVolume(entryId, volumeM) { return this.#rpc('set_entry_volume', { p_entry: entryId, p_volume_m: volumeM ?? null }); }
+  async setMySessionSummary(entryId, volumeM, breakdown) {
+    return this.#rpc('set_my_session_summary', { p_entry: entryId, p_volume_m: volumeM ?? null, p_breakdown: breakdown ?? null });
+  }
+  async trainingLog(athleteId, from, to) { return this.#rpc('athlete_training_log', { p_athlete: athleteId, p_from: from ?? null, p_to: to ?? null }); }
+  async cellDetail(entryId) { return this.#rpc('register_cell_detail', { p_entry: entryId }); }
   // The coach's grid
   async attendance(orgId, from, to) { return this.#rpc('group_attendance', { p_org: orgId, p_from: from, p_to: to }); }
   async setNote(entryId, note, share) {

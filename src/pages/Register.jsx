@@ -9,13 +9,13 @@
 // Talks only to services/registersOffline.js (+ registers.js for errorText, registerLabels.js for words).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { errorText, scanCode, linkCard } from '../services/registers'
+import { errorText, scanCode, linkCard, setSessionSummary, setEntryVolume } from '../services/registers'
 import {
   openRegister, tap as tapEntry, tapPartial, addSwimmer, swimmersToAdd, tapSignOutAll, tapClose, reopen, flushOne,
   addGuest, commentEntry, commentRegister,
 } from '../services/registersOffline'
 import { isLocalKey } from '../services/registerOffline'
-import { rollCall, entryStatus, when, scanText, PARTIAL_REASONS } from '../services/registerLabels'
+import { rollCall, entryStatus, when, scanText, PARTIAL_REASONS, BREAKDOWN_SUGGESTIONS, formatBreakdown, breakdownText, metres } from '../services/registerLabels'
 import { S, Badge, Message, useAction } from '../components/AccountsUi'
 import ScanBox from '../components/ScanBox'
 
@@ -158,6 +158,8 @@ export default function Register() {
               <span style={S.small}>{c.in}/{c.on} in{c.in ? ` · ${c.out}/${c.in} out` : ''}</span>
               {!g.can_take && <Badge>view only</Badge>}
             </div>
+            <GroupSummary g={g} canEdit={g.can_take && !offline && !isLocalKey(key)}
+              onSave={async (sm) => { const r = await act.run(() => setSessionSummary(g.id, sm), null, errorText); if (r) refresh(); return r }} />
             {mEntries.length === 0 && <p style={S.muted}>No swimmers in this group.</p>}
             {mEntries.map((e) => (
               <EntryRow key={e.id} e={e} canTake={mCan} busy={act.busy}
@@ -170,6 +172,7 @@ export default function Register() {
                 onOutFull={() => tap(e, () => tapEntry(key, e, 'out_full'))}
                 onOutPartial={(p) => tap(e, () => tapPartial(key, e, p))}
                 onComment={(t) => tap(e, () => commentEntry(key, e, t))}
+                onVolume={!offline && !isLocalKey(key) ? async (m) => { const r = await act.run(() => setEntryVolume(e.id, m), null, errorText); if (r) refresh(); return r } : null}
               />
             ))}
             {mCan && (
@@ -211,8 +214,10 @@ export default function Register() {
 }
 
 // ---------------------------------------------------------------------------
-function EntryRow({ e, canTake, busy, justTicked, onTickIn, onAction, onOutFull, onOutPartial, onComment }) {
+function EntryRow({ e, canTake, busy, justTicked, onTickIn, onAction, onOutFull, onOutPartial, onComment, onVolume }) {
   const [menu, setMenu] = useState(false)
+  const [volumeEdit, setVolumeEdit] = useState(false)
+  const [volume, setVolume] = useState('')
   const [commenting, setCommenting] = useState(false)
   const [comment, setComment] = useState('')
   const [partial, setPartial] = useState(false)
@@ -257,8 +262,20 @@ function EntryRow({ e, canTake, busy, justTicked, onTickIn, onAction, onOutFull,
           {!isOut && (e.attendance === 'absent' || e.attendance === 'apologies') && <button style={S.btn} onClick={() => { setMenu(false); onAction('expected') }}>Back to expected</button>}
           {isOut && <button style={S.btn} onClick={() => { setMenu(false); onAction('undo_out') }}>Undo sign-out</button>}
           <button style={S.btn} onClick={() => { setMenu(false); setComment(e.coach_note || ''); setCommenting(true) }}>Comment…</button>
+          {onVolume && e.athlete_user_id && <button style={S.btn} onClick={() => { setMenu(false); setVolume(e.done_m ?? ''); setVolumeEdit(true) }}>Volume…</button>}
           <button style={S.btn} onClick={() => setMenu(false)}>Close</button>
           {e.updated_by_name && <span style={S.muted}>Last changed by {e.updated_by_name}</span>}
+        </div>
+      )}
+      {volumeEdit && (
+        <div style={{ ...S.row, margin: '0 0 8px 40px' }}>
+          <span style={S.small}>{e.name} did</span>
+          <input style={{ ...S.input, minWidth: 90, width: 100 }} inputMode="numeric" value={volume} autoFocus placeholder="metres"
+            onChange={(ev) => setVolume(ev.target.value.replace(/[^0-9]/g, ''))} />
+          <span style={S.small}>m</span>
+          <button style={S.btn} disabled={busy} onClick={async () => { if (await onVolume(volume)) setVolumeEdit(false) }}>Save</button>
+          <button style={S.btn} onClick={async () => { if (await onVolume('')) setVolumeEdit(false) }}>Use the session's</button>
+          <button style={S.btn} onClick={() => setVolumeEdit(false)}>Cancel</button>
         </div>
       )}
       {commenting && (
@@ -434,6 +451,50 @@ function ScanPanel({ registerKey, sheet, onDone }) {
         </div>
       )}
       <Message error={act.error} />
+    </div>
+  )
+}
+
+// The session summary for one group: a short line, total volume, optional breakdown (AT 2000, No1 1600…).
+// Stored once for the group; every swimmer's line reads it. Before or after the session.
+function GroupSummary({ g, canEdit, onSave }) {
+  const [edit, setEdit] = useState(false)
+  const [text, setText] = useState('')
+  const [vol, setVol] = useState('')
+  const [bd, setBd] = useState('')
+  const has = g.summary_text || g.volume_m != null || g.breakdown
+  const open = () => { setText(g.summary_text || ''); setVol(g.volume_m ?? ''); setBd(breakdownText(g.breakdown)); setEdit(true) }
+  if (!edit) {
+    if (!has && !canEdit) return null
+    return (
+      <div style={{ ...S.small, margin: '-2px 0 8px' }}>
+        {g.summary_text && <span>{g.summary_text} </span>}
+        {g.volume_m != null && <strong>{metres(g.volume_m)} </strong>}
+        {g.breakdown && <span style={S.muted}>({formatBreakdown(g.breakdown)}) </span>}
+        {canEdit && <a href="#summary" onClick={(e) => { e.preventDefault(); open() }}>{has ? 'edit' : '+ Session summary (volume, focus)'}</a>}
+      </div>
+    )
+  }
+  return (
+    <div style={{ ...S.panel, margin: '0 0 10px' }}>
+      <input style={{ ...S.input, width: '100%' }} value={text} maxLength={300} placeholder="e.g. AEC Threshold 30BBM 10x400s 4.55"
+        onChange={(e) => setText(e.target.value)} />
+      <div style={{ ...S.row, marginTop: 8 }}>
+        <span style={S.small}>Volume</span>
+        <input style={{ ...S.input, minWidth: 90, width: 100 }} inputMode="numeric" value={vol} placeholder="metres"
+          onChange={(e) => setVol(e.target.value.replace(/[^0-9]/g, ''))} />
+        <input style={{ ...S.input, flex: 1 }} value={bd} placeholder="Breakdown (optional): AT 2000, No1 1600" onChange={(e) => setBd(e.target.value)} />
+      </div>
+      <div style={{ ...S.row, marginTop: 6 }}>
+        {BREAKDOWN_SUGGESTIONS.map((k) => (
+          <button key={k} style={{ ...S.btn, padding: '2px 8px', fontSize: 12 }} onClick={() => setBd((x) => (x.trim() ? x.replace(/[,\s]*$/, '') + ', ' : '') + k + ' ')}>{k}</button>
+        ))}
+      </div>
+      <div style={{ ...S.row, marginTop: 8 }}>
+        <button style={S.primary} onClick={async () => { if (await onSave({ text, volumeM: vol, breakdown: bd })) setEdit(false) }}>Save</button>
+        <button style={S.btn} onClick={() => setEdit(false)}>Cancel</button>
+        <span style={S.muted}>Everyone who attended gets this volume unless someone enters their own figure.</span>
+      </div>
     </div>
   )
 }

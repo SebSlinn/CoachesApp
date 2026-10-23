@@ -1,7 +1,8 @@
 // pages/MyTraining.jsx — /my-training — the athlete's training log (or their junior's, for a guardian).
-//   Every session they were on a register for: when, which group, complete / partial / absent…, how
-//   much they did, the plan (once coaches attach one), and their own note — theirs (or their
-//   guardian's) to write, shown to coaches only if they tick "share".
+//   A timeline: every session they were on a register for (letter, the coach's session summary, their
+//   volume, any Poolside tests swum in it — part of the session, not extra), plus tests outside any
+//   register; their own note and figures — theirs (or their guardian's) to write; the note reaches
+//   coaches only if they tick "share".
 //   Also their check-in code: the SwimZone QR to show at the pool, and any linked cards or fobs.
 // Talks to services/registers.js and services/logSharing.js (who I'm guardian of).
 import { useEffect, useMemo, useState } from 'react'
@@ -9,10 +10,12 @@ import { useNavigate } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { useAuth } from '../hooks/useAuth'
 import {
-  getAthleteRegisterEntries, setRegisterNote, getMyQrCode, listCards, linkCard, revokeCard, errorText,
+  getTrainingLog, setRegisterNote, setMySessionSummary, getMyQrCode, listCards, linkCard, revokeCard, errorText,
 } from '../services/registers'
 import { getLoadableAthletes } from '../services/logSharing'
-import { ATTENDANCE_CODE, attendanceTotals, entryCode, entryStatus, when, todayLocal, toIso } from '../services/registerLabels'
+import {
+  ATTENDANCE_CODE, attendanceTotals, entryStatus, when, todayLocal, toIso, metres, formatBreakdown, breakdownText, VOLUME_SOURCE,
+} from '../services/registerLabels'
 import { S, Badge, Message, Tick, useAction } from '../components/AccountsUi'
 
 const PAGE = { ...S.page, padding: 'clamp(16px, 4vw, 40px)' }
@@ -34,13 +37,14 @@ export default function MyTraining() {
   const load = async () => {
     if (!athleteId) return
     const from = toIso(todayLocal(new Date(Date.now() - days * 86400000)), '00:00')
-    const r = await act.run(() => getAthleteRegisterEntries(athleteId, from, null), null, errorText)
+    const r = await act.run(() => getTrainingLog(athleteId, from, null), null, errorText)
     setRows(r?.data || [])
   }
   useEffect(() => { load() }, [athleteId, days])
 
-  const cells = Object.fromEntries((rows || []).map((e) => [e.entry_id, entryCode(e)]))
-  const t = attendanceTotals(cells)
+  const sessions = (rows || []).filter((x) => x.kind === 'session')
+  const t = attendanceTotals(Object.fromEntries(sessions.map((e) => [e.entry_id, e.code])))
+  const totalM = (rows || []).reduce((a, x) => a + (x.kind === 'session' ? (x.volume?.m ?? 0) : (x.volume_m ?? 0)), 0)
 
   return (
     <div style={PAGE}>
@@ -60,11 +64,14 @@ export default function MyTraining() {
         ))}
         <span style={{ flex: 1 }} />
         {t.booked > 0 && <span style={S.small}><strong>{t.pct}%</strong> attended · {t.complete} complete · {t.partial} partial · {t.absent} missed</span>}
+        {totalM > 0 && <span style={S.small}> · <strong>{metres(totalM)}</strong></span>}
       </div>
       <Message error={act.error} />
 
       {rows && rows.length === 0 && <p style={S.muted}>No sessions on a register in this period yet.</p>}
-      {(rows || []).map((e) => <LogRow key={e.entry_id} e={e} onSaved={load} />)}
+      {(rows || []).map((e) => (e.kind === 'test'
+        ? <TestRow key={'t' + e.effort_id} t={e} />
+        : <LogRow key={e.entry_id} e={e} onSaved={load} />))}
 
       <CheckInCode userId={athleteId} name={who ? people.find((p) => p.id === who)?.name : (profile?.public_name || profile?.full_name || 'Me')} />
     </div>
@@ -72,43 +79,83 @@ export default function MyTraining() {
 }
 
 function LogRow({ e, onSaved }) {
+  const [open, setOpen] = useState(false)
   const [note, setNote] = useState(e.note || '')
   const [share, setShare] = useState(!!e.share)
-  const [open, setOpen] = useState(false)
+  const [vol, setVol] = useState(e.mine?.volume_m ?? '')
+  const [bd, setBd] = useState(breakdownText(e.mine?.breakdown))
   const act = useAction()
-  const c = ATTENDANCE_CODE[entryCode(e)]
-  const dirty = note !== (e.note || '') || share !== !!e.share
-  const save = async () => { if (await act.run(() => setRegisterNote(e.entry_id, note, share), 'Saved.', errorText)) onSaved() }
+  const c = ATTENDANCE_CODE[e.code] || ATTENDANCE_CODE.E
+  const reset = () => { setNote(e.note || ''); setShare(!!e.share); setVol(e.mine?.volume_m ?? ''); setBd(breakdownText(e.mine?.breakdown)) }
+  const save = async () => {
+    const a = await act.run(() => setRegisterNote(e.entry_id, note, share), null, errorText)
+    if (!a) return
+    const changed = String(vol) !== String(e.mine?.volume_m ?? '') || bd !== breakdownText(e.mine?.breakdown)
+    if (changed && !(await act.run(() => setMySessionSummary(e.entry_id, vol, bd), null, errorText))) return
+    setOpen(false); onSaved()
+  }
   return (
     <div style={S.card}>
       <div style={S.row}>
         <span title={c.label} style={{ display: 'inline-flex', minWidth: 28, height: 26, alignItems: 'center', justifyContent: 'center',
           borderRadius: 6, background: c.bg, color: c.fg, fontWeight: 700 }}>{c.code}</span>
-        <strong>{when(e.starts_at)}</strong>
+        <strong>{when(e.at)}</strong>
         <span style={S.muted}>{e.group_name}{e.venue ? ' · ' + e.venue : ''}</span>
-        {e.kind === 'visitor' && <Badge kind="role">visitor</Badge>}
+        {e.entry_kind === 'visitor' && <Badge kind="role">visitor</Badge>}
         <span style={{ flex: 1 }} />
-        <span style={S.small}>{entryStatus(e) || c.label}</span>
+        {e.volume?.m != null && <strong title={VOLUME_SOURCE[e.volume.src]}>{metres(e.volume.m)}</strong>}
       </div>
-      {e.plan_title && <div style={{ ...S.small, marginTop: 4 }}>Plan: {e.plan_title}{e.plan_summary?.volumeM ? ` · ${e.plan_summary.volumeM} m` : ''}</div>}
+      {(e.session?.text || e.session?.plan_title) && <div style={{ ...S.small, marginTop: 4 }}>{e.session.text || e.session.plan_title}</div>}
+      <div style={{ ...S.muted, marginTop: 2 }}>
+        {[entryStatus(e) || c.label, e.volume?.breakdown ? formatBreakdown(e.volume.breakdown) : null,
+          e.volume?.src === 'mine' ? 'your figures' : null].filter(Boolean).join(' · ')}
+      </div>
+      {(e.tests || []).map((t) => (
+        <div key={t.effort_id} style={{ ...S.small, marginTop: 4, paddingLeft: 10, borderLeft: '3px solid #30b0c7' }}>
+          Test: {t.name} · {t.reps} reps · {metres(t.volume_m)} <span style={S.muted}>(part of this session)</span>
+        </div>
+      ))}
       {!open && (
         <div style={{ ...S.small, marginTop: 6 }}>
           {e.note ? <span>📝 {e.note} {e.share && <Badge>shared with coaches</Badge>} </span> : null}
-          <a href="#note" onClick={(ev) => { ev.preventDefault(); setOpen(true) }}>{e.note ? 'edit note' : 'Add a note'}</a>
+          <a href="#note" onClick={(ev) => { ev.preventDefault(); reset(); setOpen(true) }}>{e.note || e.mine?.volume_m != null ? 'edit' : 'Add a note or my figures'}</a>
         </div>
       )}
       {open && (
         <div style={{ marginTop: 8 }}>
-          <textarea style={{ ...S.input, width: '100%', minHeight: 70 }} value={note} placeholder="How did it go? Times, how it felt…"
+          <textarea style={{ ...S.input, width: '100%', minHeight: 64 }} value={note} placeholder="How did it go? Times, how it felt…"
             onChange={(ev) => setNote(ev.target.value)} />
           <Tick checked={share} onChange={setShare}>Share this note with my coaches</Tick>
-          <div style={S.row}>
-            <button style={S.primary} disabled={!dirty || act.busy} onClick={save}>Save</button>
-            <button style={S.btn} onClick={() => { setOpen(false); setNote(e.note || ''); setShare(!!e.share) }}>Close</button>
+          <div style={{ ...S.row, marginTop: 4 }}>
+            <span style={S.small}>I did</span>
+            <input style={{ ...S.input, minWidth: 80, width: 90 }} inputMode="numeric" value={vol} placeholder="metres"
+              onChange={(ev) => setVol(ev.target.value.replace(/[^0-9]/g, ''))} />
+            <input style={{ ...S.input, flex: 1 }} value={bd} placeholder="Breakdown (optional): AT 1800, Kick 600" onChange={(ev) => setBd(ev.target.value)} />
           </div>
-          <Message error={act.error} ok={act.ok} />
+          <div style={S.muted}>Leave blank to use the session's figures{e.session?.volume_m != null ? ` (${metres(e.session.volume_m)})` : ''}.</div>
+          <div style={{ ...S.row, marginTop: 6 }}>
+            <button style={S.primary} disabled={act.busy} onClick={save}>Save</button>
+            <button style={S.btn} onClick={() => { setOpen(false); reset() }}>Cancel</button>
+          </div>
+          <Message error={act.error} />
         </div>
       )}
+    </div>
+  )
+}
+
+// A Poolside test or set that wasn't swum in any register.
+function TestRow({ t }) {
+  return (
+    <div style={{ ...S.card, borderStyle: 'dashed' }}>
+      <div style={S.row}>
+        <Badge kind="role">test</Badge>
+        <strong>{t.swum_on && !String(t.at).includes('T00:00:00') ? when(t.at) : new Date(t.swum_on || t.at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</strong>
+        <span style={S.small}>{t.name} · {t.reps} reps</span>
+        <span style={{ flex: 1 }} />
+        <strong>{metres(t.volume_m)}</strong>
+      </div>
+      <div style={S.muted}>Not part of a register session.</div>
     </div>
   )
 }

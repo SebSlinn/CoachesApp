@@ -44,6 +44,15 @@ export class IRegisterRepository {
   /** { registers:[…], athletes:[{ user_id, name, is_junior, member, cells:{ registerId: C|P|I|A|Ap|E|N } }] } */
   async attendance(_orgId, _from, _to) { throw new Error('IRegisterRepository.attendance not implemented'); }
 
+  // ---- summaries and volume (online) ----
+  async setSessionSummary(_rgId, _text, _volumeM, _breakdown) { throw new Error('IRegisterRepository.setSessionSummary not implemented'); }
+  async setEntryVolume(_entryId, _volumeM) { throw new Error('IRegisterRepository.setEntryVolume not implemented'); }
+  async setMySessionSummary(_entryId, _volumeM, _breakdown) { throw new Error('IRegisterRepository.setMySessionSummary not implemented'); }
+  /** The athlete's timeline: [{ kind: session|test, at, … }] newest first (athlete_training_log). */
+  async trainingLog(_athleteId, _from, _to) { throw new Error('IRegisterRepository.trainingLog not implemented'); }
+  /** One grid cell's details for the coach (register_cell_detail). */
+  async cellDetail(_entryId) { throw new Error('IRegisterRepository.cellDetail not implemented'); }
+
   // ---- offline ----
   /** { user_id, prepared_at, groups:[{ org_id, name, members[] }], registers:[sheet…] } */
   async prepare() { throw new Error('IRegisterRepository.prepare not implemented'); }

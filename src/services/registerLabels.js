@@ -143,3 +143,34 @@ export function entryCode(e, pRegisterStatus) {
   if (e.attendance === 'absent') return 'A'
   return (pRegisterStatus ?? e.register_status) === 'closed' ? 'A' : 'E'
 }
+
+// ---- summaries and volume ----
+// Suggested breakdown labels: zone codes, stroke roles and kinds of work. Others are allowed.
+export const BREAKDOWN_SUGGESTIONS = ['A1', 'A2', 'A3', 'AT', 'CS', 'MVO', 'LT', 'LP', 'PL', 'HVO', 'Free', 'No1', 'No2', 'IM', 'Kick', 'Pull', 'Drill']
+
+// 'AT 2000, No1 1600' (commas, semicolons or new lines; "AT: 2000" and "AT=2000" too) → { value: { AT: 2000, No1: 1600 } | null, error }
+export function parseBreakdown(pText) {
+  const out = {}
+  const parts = String(pText || '').split(/[,;\n]+/).map((x) => x.trim()).filter(Boolean)
+  for (const p of parts) {
+    const m = p.match(/^([A-Za-z0-9 ]{1,12}?)\s*[:=]?\s*(\d{1,5})\s*m?$/)
+    if (!m) return { value: null, error: `"${p}" — write it as a label and metres, e.g. AT 2000` }
+    const n = Number(m[2])
+    if (n > 50000) return { value: null, error: `${m[1]}: at most 50000 m` }
+    out[m[1].trim()] = n
+  }
+  const keys = Object.keys(out)
+  if (keys.length > 12) return { value: null, error: 'at most 12 breakdown figures' }
+  return { value: keys.length ? out : null, error: null }
+}
+
+// { AT: 2000, No1: 1600 } → 'AT 2000 · No1 1600'
+export const formatBreakdown = (pB) => Object.entries(pB || {}).map(([k, v]) => `${k} ${v}`).join(' · ')
+// → 'AT 2000, No1 1600' for an edit box
+export const breakdownText = (pB) => Object.entries(pB || {}).map(([k, v]) => `${k} ${v}`).join(', ')
+
+// 5500 → '5,500 m'; null → ''
+export const metres = (pM) => (pM == null ? '' : `${Number(pM).toLocaleString('en-GB')} m`)
+
+// entry_volume().src in words
+export const VOLUME_SOURCE = { mine: 'your figure', coach: "coach's figure", session_pct: '% of the session', session: 'the session' }

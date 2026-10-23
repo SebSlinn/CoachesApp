@@ -10,6 +10,7 @@
 //   • the athlete's note: swimmer or guardian writes it; staff read it only when shared;
 //   • strangers and members see nothing of the register; attendance never writes performance_results;
 //   • offline: register_prepare, and sync_register (create offline, queued taps in time order, resend = no-op, close);
+//   • summaries: one per group per session, coach/athlete figures, volume order, tests inside sessions, grid volumes, drill-down;
 //   • scanning: QR codes and linked cards, scan in / out / repeat, visitors by scan only, guests, comments, the attendance grid.
 //
 //   node supabase/tests/registers.test.mjs
@@ -18,7 +19,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
 const DIR = 'supabase/migrations/';
-const NEW = ['20261022120000_take_register.sql', '20261022130000_registers.sql', '20261022140000_register_sync.sql', '20261022150000_register_scan_guests.sql'];
+const NEW = ['20261022120000_take_register.sql', '20261022130000_registers.sql', '20261022140000_register_sync.sql', '20261022150000_register_scan_guests.sql', '20261023120000_register_summaries.sql'];
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -344,10 +345,78 @@ ok('guests counted, not listed', grid.registers.find((r) => r.id === R4).guests 
 ok('a member cannot see the grid', /NOT_ALLOWED/.test(await err('adultA', `select public.group_attendance($1,$2,$3)`, [A, t(9999), t(0)])));
 ok('staff without take_register (helper switched off) still can, as staff', (await err('helper', `select public.group_attendance($1,$2,$3)`, [A, t(9999), t(0)])) === null);
 
+console.log('\nSession summaries and volume');
+const rgA4 = (await svc(`select id from register_groups where register_id=$1`, [R4]))[0].id;
+ok('a member cannot write the session summary', /NOT_ALLOWED/.test(await err('adultA', `select public.set_session_summary($1,'x',100)`, [rgA4])));
+ok('bad breakdown label refused', /INVALID/.test(await err('coach', `select public.set_session_summary($1,'x',5000,'{"A/T":10}'::jsonb)`, [rgA4])));
+ok('volume over 50 km refused', /INVALID/.test(await err('coach', `select public.set_session_summary($1,'x',60000)`, [rgA4])));
+ok('13 breakdown figures refused', /INVALID/.test(await err('coach', `select public.set_session_summary($1,'x',5000,$2::jsonb)`,
+  [rgA4, JSON.stringify(Object.fromEntries(Array.from({ length: 13 }, (_, i) => ['Z' + i, 10])))])));
+await as('coach', `select public.set_session_summary($1,' AEC Threshold 30BBM 10x400 ',5000,'{"AT":2000,"No1":1600,"":5}'::jsonb)`, [rgA4]);
+const g4 = (await svc(`select summary_text, volume_m, breakdown from register_groups where id=$1`, [rgA4]))[0];
+ok('summary stored once for the group (text trimmed, empty label dropped)', g4.summary_text === 'AEC Threshold 30BBM 10x400' && g4.volume_m === 5000
+  && JSON.stringify(g4.breakdown) === JSON.stringify({ AT: 2000, No1: 1600 }), JSON.stringify(g4));
+ok('the sheet shows it on the group', (await one('coach', `select public.register_sheet($1)`, [R4])).groups[0].volume_m === 5000);
+const e4 = async (who) => (await svc(`select id from register_entries where register_id=$1 and athlete_user_id=$2`, [R4, U[who]]))[0]?.id;
+const vol = async (who) => one('coach', `select public.entry_volume($1)`, [await e4(who)]);
+let v4 = await vol('adultA');
+ok('attended, no figures → the session volume', v4.m === 5000 && v4.src === 'session' && v4.breakdown?.AT === 2000, JSON.stringify(v4));
+ok('absent → no volume', (await vol('late')).m === null);
+await as('coach', `select public.set_entry_volume($1,4200)`, [await e4('adultB')]);
+ok('coach\'s figure for one swimmer', (await vol('adultB')).m === 4200 && (await vol('adultB')).src === 'coach');
+ok('a member cannot set a swimmer\'s volume', /NOT_ALLOWED/.test(await err('adultA', `select public.set_entry_volume($1,1)`, [await e4('adultB')])));
+await as('adultA', `select public.set_my_session_summary($1,4800,'{"AT":1800}'::jsonb)`, [await e4('adultA')]);
+v4 = await vol('adultA');
+ok('the athlete\'s own figure wins', v4.m === 4800 && v4.src === 'mine' && v4.breakdown?.AT === 1800, JSON.stringify(v4));
+ok('…and keeps their note untouched', (await as('adultA', `select note from register_notes where entry_id=$1`, [await e4('adultA')])).rows[0]?.note == null);
+ok('someone else cannot set my figure', /NOT_ALLOWED/.test(await err('adultB', `select public.set_my_session_summary($1,1)`, [await e4('adultA')])));
+const rgR = (await svc(`select id, org_id from register_groups where register_id=$1 order by sort`, [R]));
+await as('coach', `select public.set_session_summary($1,'Speed',3000)`, [rgR[0].id]);
+ok('partial with metres → that figure', (await one('coach', `select public.entry_volume($1)`, [ent('adultB').id])).m === 1800);
+
+console.log('\nTests inside sessions (training log)');
+const today = (await svc(`select (now() at time zone 'Europe/London')::date d`))[0].d;
+async function effort(who, firstAt, reps, dist, name, day) {
+  const id = (await svc(`insert into set_efforts(athlete_user_id, swum_on, set_json) values ($1, $2, $3::jsonb) returning id`,
+    [U[who], day ?? today, JSON.stringify({ fmt: 'swimzone.set/1', name, blocks: [] })]))[0].id;
+  for (let i = 0; i < reps; i++) {
+    await svc(`insert into performance_results(athlete_user_id, swum_on, stroke, dist_m, time_sec, kind, effort, effort_id, rep_no, started_at)
+               values ($1,$2,'FS',$3,70,'training','submaximal',$4,$5,$6)`,
+      [U[who], day ?? today, dist, id, i + 1, firstAt ? new Date(Date.parse(firstAt) + i * 120000).toISOString() : null]);
+  }
+  return id;
+}
+const ef1 = await effort('adultA', t(75), 30, 100, 'Threshold 30x100');           // 3000 m, inside R4
+const ef2 = await effort('adultA', null, 4, 50, 'Home pool 4x50', '2026-01-15'); // no register that day
+const logA = await one('adultA', `select public.athlete_training_log($1, $2, null)`, [U.adultA, '2026-01-01T00:00:00Z']);
+const s4 = logA.find((x) => x.kind === 'session' && x.register_id === R4);
+ok('the test sits inside the session it was swum in', s4?.tests?.length === 1 && s4.tests[0].effort_id === ef1 && s4.tests[0].volume_m === 3000, JSON.stringify(s4?.tests));
+ok('session volume stays the total (test is part of it)', s4.volume.m === 4800 && s4.test_volume_m === 3000);
+ok('a test outside any register is its own line', logA.some((x) => x.kind === 'test' && x.effort_id === ef2 && x.volume_m === 200));
+ok('…and is not counted twice', logA.filter((x) => x.kind === 'test' && x.effort_id === ef1).length === 0);
+ok('the log carries the group summary and letter', s4.session.text === 'AEC Threshold 30BBM 10x400' && s4.code === 'C');
+ok('timeline is newest first', logA.every((x, i) => i === 0 || logA[i - 1].at >= x.at));
+ok('guardian reads the junior\'s log', Array.isArray(await one('parentA', `select public.athlete_training_log($1)`, [U.juniorC])));
+ok('a coach cannot read the athlete\'s log page (it\'s theirs)', /NOT_ALLOWED/.test(await err('coach', `select public.athlete_training_log($1)`, [U.adultA])));
+ok('the matcher is internal', /permission denied/.test(await err('coach', `select * from public.athlete_efforts_matched($1, current_date, current_date)`, [U.adultA])));
+
+console.log('\nGrid volumes and drill-down');
+const grid2 = await one('coach', `select public.group_attendance($1,$2,$3)`, [A, t(60 * 24 * 3), new Date(Date.now() + 86400000).toISOString()]);
+const rowA = grid2.athletes.find((a) => a.user_id === U.adultA);
+ok('cell volume: C 4800 (her own figure)', rowA.cells[R4] === 'C' && rowA.vols[R4] === 4800, JSON.stringify({ c: rowA.cells[R4], v: rowA.vols[R4] }));
+ok('total per swimmer over the period', rowA.total_m >= 4800);
+ok('register column carries the session volume', grid2.registers.find((r) => r.id === R4).volume_m === 5000);
+ok('entry ids for the drill-down', rowA.entries[R4] === await e4('adultA'));
+let det = await one('coach', `select public.register_cell_detail($1)`, [await e4('adultA')]);
+ok('drill-down: summary, volume, tests (coach reads results)', det.session.volume_m === 5000 && det.volume.m === 4800 && det.tests?.length === 1, JSON.stringify(det));
+det = await one('helper', `select public.register_cell_detail($1)`, [await e4('adultA')]);
+ok('poolside assistant: no tests (can\'t read results)', det.tests === null);
+ok('stranger: refused', /NOT_ALLOWED/.test(await err('stranger', `select public.register_cell_detail($1)`, [await e4('adultA')])));
+
 console.log('\nEvidence');
 const evs = await svc(`select event, count(*)::int n from register_events where register_id=$1 group by event order by event`, [R]);
 ok('every tap is in register_events', evs.reduce((a, r) => a + r.n, 0) >= 15, evs.map((r) => `${r.event}:${r.n}`).join(' '));
-ok('attendance never writes performance_results', (await svc(`select count(*)::int n from performance_results`))[0].n === 0);
+ok('attendance never writes performance_results (only the test sets inserted above exist)', (await svc(`select count(*)::int n from performance_results where effort_id is null`))[0].n === 0);
 ok('internal fill function is not callable by users', /permission denied/.test(await err('coach', `select public.register_fill_group($1,$2,9)`, [R, A])));
 
 console.log(`\n${pass} passed, ${fail} failed`);

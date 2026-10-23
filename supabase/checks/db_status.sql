@@ -96,6 +96,44 @@ select * from (
                      'select count(*) as n from public.set_efforts where protocol_id is not null',
                      false, true, '')))[1]::text::int = 0 then 'OK — safe to apply'
               else 'BLOCKER — rows reference a protocol that does not exist yet' end, null
+  -- ---- later migrations (one row each; MISSING = run that file) -------------
+  union all
+  select 37, 'protocols', 'v_swim_metrics / v_length_metrics views (20261005120000_hr_export_views)',
+         case when to_regclass('public.v_swim_metrics') is not null and to_regclass('public.v_length_metrics') is not null then 'OK' else 'MISSING' end, null
+  union all
+  select 38, 'metrics', 'athlete_profiles table (20261006120000_athlete_profiles)',
+         case when to_regclass('public.athlete_profiles') is not null then 'OK' else 'MISSING' end, null
+  union all
+  select 39, 'protocols', 'params_without_labels() (20261009140000_ladder_level_names)',
+         case when exists (select 1 from pg_proc where proname = 'params_without_labels') then 'OK' else 'MISSING' end, null
+  union all
+  select 40, 'records', 'performance_results.started_at + fill_rep_start_times() (20261009150000_rep_start_times)',
+         case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'performance_results' and column_name = 'started_at') and exists (select 1 from pg_proc where proname = 'fill_rep_start_times') then 'OK' else 'MISSING' end, null
+  union all
+  select 41, 'accounts', 'users.public_name + user_display_names() (20261011120000_user_display_name)',
+         case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'users' and column_name = 'public_name') and exists (select 1 from pg_proc where proname = 'user_display_names') then 'OK' else 'MISSING' end, null
+  union all
+  select 42, 'metrics', 'athlete_profiles.max_hr (20261014120000_athlete_max_hr)',
+         case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'athlete_profiles' and column_name = 'max_hr') then 'OK' else 'MISSING' end, null
+  union all
+  select 43, 'accounts', 'user_birthdates (20261016120000_private_birthdates)',
+         case when to_regclass('public.user_birthdates') is not null then 'OK' else 'MISSING' end, null
+  -- ---- registers (run in this order) -----------------------------------------
+  union all
+  select 60, 'registers', 'group_roles.take_register (20261022120000_take_register)',
+         case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'group_roles' and column_name = 'take_register') then 'OK' else 'MISSING' end, null
+  union all
+  select 61, 'registers', 'registers / register_entries / register_events (20261022130000_registers)',
+         case when to_regclass('public.registers') is not null and to_regclass('public.register_events') is not null then 'OK' else 'MISSING' end, null
+  union all
+  select 62, 'registers', 'sync_register() (20261022140000_register_sync)',
+         case when exists (select 1 from pg_proc where proname = 'sync_register') then 'OK' else 'MISSING' end, null
+  union all
+  select 63, 'registers', 'register_cards + scan_register() (20261022150000_register_scan_guests)',
+         case when to_regclass('public.register_cards') is not null and exists (select 1 from pg_proc where proname = 'scan_register') then 'OK' else 'MISSING' end, null
+  union all
+  select 64, 'registers', 'session summaries: register_groups.volume_m (20261023120000_register_summaries)',
+         case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'register_groups' and column_name = 'volume_m') then 'OK' else 'MISSING' end, null
 
   -- ---- data -----------------------------------------------------------------
   union all

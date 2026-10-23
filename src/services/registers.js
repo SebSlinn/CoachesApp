@@ -3,7 +3,7 @@
 // RepositoryFactory; the database enforces every rule (take_register, members only).
 // Words and pure helpers live in registerLabels.js. Plan: claude-docs/teams/REGISTERS-PLAN.md.
 import { getRegisterRepository } from '../repositories/RepositoryFactory'
-import { ACTIONS, PARTIAL_REASONS, toIso } from './registerLabels'
+import { ACTIONS, PARTIAL_REASONS, toIso, parseBreakdown } from './registerLabels'
 export { errorText } from './accountErrors'
 
 const repo = () => getRegisterRepository()
@@ -92,3 +92,36 @@ export const getGroupAttendance = async (pOrgId, pFrom, pTo) => {
   if (mTo <= mFrom) return bad('the end date must be on or after the start date')
   return repo().attendance(pOrgId, mFrom, mTo)
 }
+
+// ---- summaries and volume (need signal) ----
+const volumeOrNull = (v) => {
+  if (v === '' || v == null) return { ok: true, v: null }
+  const n = Number(v)
+  return Number.isInteger(n) && n >= 0 && n <= 50000 ? { ok: true, v: n } : { ok: false }
+}
+// The coach's summary for one group on one register. pSummary: { text, volumeM, breakdown: 'AT 2000, No1 1600' | {…} }
+export const setSessionSummary = async (pRegisterGroupId, pSummary = {}) => {
+  const v = volumeOrNull(pSummary.volumeM)
+  if (!v.ok) return bad('volume must be whole metres, 0–50000')
+  const b = typeof pSummary.breakdown === 'string' ? parseBreakdown(pSummary.breakdown) : { value: pSummary.breakdown || null }
+  if (b.error) return bad(b.error)
+  return repo().setSessionSummary(pRegisterGroupId, (pSummary.text || '').trim() || null, v.v, b.value)
+}
+// The coach's figure for one swimmer ('' or null = back to the session's).
+export const setEntryVolume = async (pEntryId, pVolumeM) => {
+  const v = volumeOrNull(pVolumeM)
+  if (!v.ok) return bad('volume must be whole metres, 0–50000')
+  return repo().setEntryVolume(pEntryId, v.v)
+}
+// The swimmer's (or guardian's) own figures for one session.
+export const setMySessionSummary = async (pEntryId, pVolumeM, pBreakdown = null) => {
+  const v = volumeOrNull(pVolumeM)
+  if (!v.ok) return bad('volume must be whole metres, 0–50000')
+  const b = typeof pBreakdown === 'string' ? parseBreakdown(pBreakdown) : { value: pBreakdown || null }
+  if (b.error) return bad(b.error)
+  return repo().setMySessionSummary(pEntryId, v.v, b.value)
+}
+// The athlete's timeline (sessions with their tests, and tests outside any register). pFrom/pTo ISO or null.
+export const getTrainingLog = async (pAthleteId, pFrom = null, pTo = null) => repo().trainingLog(pAthleteId, pFrom, pTo)
+// The coach's drill-down for one grid cell.
+export const getCellDetail = async (pEntryId) => repo().cellDetail(pEntryId)
