@@ -178,6 +178,19 @@ export function buildRunView(pProtocol, pEffort) {
     }
   }
 
+  // Flushes (2026-10-25): swims tagged in Poolside as active recovery between reps.
+  // They take no rep number — afterRepNo places each one (0 = before rep 1) — so
+  // rep 7 is rep 7 whether or not a flush came after rep 5. The rest after a rep
+  // that a flush followed includes the flush (it IS the rest, done swimming).
+  const flushes = (cond.recoveries || []).map((f) => ({
+    afterRepNo: Number(f.afterRepNo) || 0, distM: num(f.distM), stroke: f.stroke || null,
+    timeSec: num(f.timeSec), startedAt: f.startedAt || null,
+  })).sort((a, b) => a.afterRepNo - b.afterRepNo);
+  for (const x of reps) {
+    const f = flushes.filter((y) => y.afterRepNo === x.repNo);
+    if (f.length) x.flushAfter = f;
+  }
+
   // Use the stored summary only if THIS test's analyser wrote it; otherwise (none
   // saved, an error, or a run moved over from another test) recalculate from the reps.
   const stored = pEffort.summary;
@@ -209,6 +222,7 @@ export function buildRunView(pProtocol, pEffort) {
     summary,
     summaryRows: summaryRows(summary, pProtocol?.analyser),
     reps,
+    flushes,
     // which optional columns this run actually has, so empty ones are hidden
     has: ['sc', 'sr', 'hrStart', 'hrMin', 'hrAvg', 'hrPeak', 'hrEnd', 'hrRec30', 'hrCoverage', 'hr', 'lactate', 'rpe', 'targetSec', 'vsTargetSec', 'restSec', 'note']
       .filter((k) => reps.some((r) => r[k] != null && r[k] !== '')),
@@ -273,8 +287,24 @@ export function compareRuns(pRunViews) {
     const planned = runs.map((rv) => rv.planSwims && rv.planSwims[n]).find(Boolean) || '';
     reps.push({ repNo: n, swim: any ? any.swim : planned, extra: !!any && cells.every((c) => !c || c.extra), times, best });
   }
+  // rows: the reps with each run's flushes inline, for display. A flush row sits after
+  // rep N (or before rep 1) and holds a time only for the runs that flushed there, so
+  // the rep rows stay aligned across runs. `reps` (reps only) is unchanged for stats.
+  const flushTimes = (after) => runs.map((rv) => {
+    const f = (rv.flushes || []).filter((x) => x.afterRepNo === after);
+    if (!f.length) return null;
+    const t = f.map((x) => x.timeSec).filter((x) => x != null);
+    return { count: f.length, timeSec: t.length ? r2(t.reduce((a, b) => a + b, 0)) : null, distM: f.reduce((a, x) => a + (x.distM || 0), 0) || null };
+  });
+  const rows = [];
+  const pushFlush = (after) => {
+    const cells = flushTimes(after);
+    if (cells.some(Boolean)) rows.push({ kind: 'flush', key: `flush-${after}`, afterRepNo: after, cells, times: cells.map((c) => (c ? c.timeSec : null)) });
+  };
+  pushFlush(0);
+  for (const r of reps) { rows.push({ kind: 'rep', key: `rep-${r.repNo}`, ...r }); pushFlush(r.repNo); }
   const levels = new Set(runs.map((r) => r.level).filter(Boolean));
-  return { runs, labels: runLabels(runs), summary, reps, levelsDiffer: levels.size > 1 };
+  return { runs, labels: runLabels(runs), summary, reps, rows, levelsDiffer: levels.size > 1 };
 }
 
 // ── CSV ───────────────────────────────────────────────────────────────────────
@@ -285,7 +315,8 @@ export const CSV_COLUMNS = [
   ['athlete', (m) => m.athleteName], ['test', (m) => m.testName], ['test_key', (m) => m.testKey], ['test_version', (m) => m.testVersion],
   ['run_date', (m, rv) => rv.swumOn], ['level', (m, rv) => rv.levelLabel || rv.level || ''], ['settings', (m, rv) => rv.paramText],
   ['pool', (m, rv) => rv.poolType || ''], ['location', (m, rv) => rv.location],
-  ['rep', (m, rv, r) => r.repNo], ['block', (m, rv, r) => r.block ?? ''], ['extra_rep', (m, rv, r) => (r.extra ? 'yes' : '')],
+  ['rep', (m, rv, r) => (r.flush ? '' : r.repNo)], ['block', (m, rv, r) => r.block ?? ''], ['extra_rep', (m, rv, r) => (r.extra ? 'yes' : '')],
+  ['flush_after_rep', (m, rv, r) => (r.flush ? r.afterRepNo : '')],
   ['distance_m', (m, rv, r) => r.distM], ['stroke', (m, rv, r) => r.stroke || ''], ['interval', (m, rv, r) => r.interval],
   ['target_sec', (m, rv, r) => r.targetSec], ['time_sec', (m, rv, r) => r.timeSec], ['time', (m, rv, r) => fmtTime(r.timeSec)],
   ['vs_target_sec', (m, rv, r) => r.vsTargetSec], ['rest_after_sec', (m, rv, r) => r.restSec], ['rest_from', (m, rv, r) => r.restFrom || ''],
@@ -305,7 +336,13 @@ export function toCsv(pMeta, pRunViews) {
   };
   const lines = [CSV_COLUMNS.map(([h]) => h).join(',')];
   const runs = pRunViews.slice().sort((a, b) => (a.swumOn < b.swumOn ? -1 : 1));
-  for (const rv of runs) for (const r of rv.reps) lines.push(CSV_COLUMNS.map(([, f]) => q(f(pMeta, rv, r))).join(','));
+  const flushRow = (f) => ({ flush: true, afterRepNo: f.afterRepNo, distM: f.distM, stroke: f.stroke, timeSec: f.timeSec,
+    startedAt: f.startedAt, interval: '', lengths: [], note: 'flush (active recovery)' });
+  const line = (rv, r) => lines.push(CSV_COLUMNS.map(([, f]) => q(f(pMeta, rv, r))).join(','));
+  for (const rv of runs) {
+    for (const f of (rv.flushes || []).filter((x) => x.afterRepNo === 0)) line(rv, flushRow(f));
+    for (const r of rv.reps) { line(rv, r); for (const f of r.flushAfter || []) line(rv, flushRow(f)); }
+  }
   return '﻿' + lines.join('\r\n') + '\r\n';
 }
 

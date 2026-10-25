@@ -65,6 +65,33 @@ ok('row starts with athlete, test, run', lines[1].startsWith('Esme Slinn,100s La
 ok('settings column', /,Level 1 — 20×100 on 1:30,/.test(lines[1]));
 ok('note with comma is quoted', toCsv({}, [{ ...cmp.runs[0], reps: [{ ...cmp.runs[0].reps[0], note: 'tired, slow turn' }] }]).includes('"tired, slow turn"'));
 
+console.log('\nflushes (2026-10-25): inline, reps stay aligned');
+{
+  const base = ladderRuns[1];
+  // same run twice: one with a flush after rep 5, one with two flushes after rep 5 and one before rep 1
+  const flushed = { ...base, id: 'run-f', swumOn: '2026-10-24', conditions: { ...(base.conditions || {}), recoveries: [
+    { afterRepNo: 5, distM: 50, stroke: 'FS', timeSec: 45.2, startedAt: '2026-10-24T08:10:00Z' },
+  ] } };
+  const flushed2 = { ...base, id: 'run-g', swumOn: '2026-10-25', conditions: { ...(base.conditions || {}), recoveries: [
+    { afterRepNo: 0, distM: 100, timeSec: 90 },
+    { afterRepNo: 5, distM: 50, timeSec: 40 }, { afterRepNo: 5, distM: 50, timeSec: 41.5 },
+  ] } };
+  const vf = buildRunView(ladderProtocol, flushed);
+  ok('flushes read from conditions.recoveries', vf.flushes.length === 1 && vf.flushes[0].afterRepNo === 5 && vf.flushes[0].timeSec === 45.2, vf.flushes);
+  ok('flush hangs off the rep it follows; reps keep their numbers', vf.reps[4].flushAfter?.length === 1 && vf.reps[5].repNo === 6 && vf.reps.length === 20);
+  const cf = compareRuns([buildRunView(ladderProtocol, base), vf, buildRunView(ladderProtocol, flushed2)]);
+  const kinds = cf.rows.map((r) => (r.kind === 'flush' ? 'f' + r.afterRepNo : r.repNo));
+  ok('rows: flush before rep 1, reps 1–5, flush, rep 6…', kinds.slice(0, 8).join() === 'f0,1,2,3,4,5,f5,6', kinds.slice(0, 8));
+  const f5 = cf.rows.find((r) => r.kind === 'flush' && r.afterRepNo === 5);
+  ok('flush row: blank for the run without one, summed for two', f5.cells[0] === null && f5.cells[1].timeSec === 45.2 && f5.cells[2].timeSec === 81.5 && f5.cells[2].count === 2, f5.cells);
+  ok('rep 7 sits next to rep 7 in every run', cf.rows.filter((r) => r.kind === 'rep' && r.repNo === 7).length === 1 && cf.reps.length === 20);
+  ok('stats rows (cmp.reps) carry no flushes', cf.reps.every((r) => r.repNo >= 1));
+  const fcsv = toCsv({}, [vf]).replace(/^﻿/, '').trim().split('\r\n');
+  const hdr = fcsv[0].split(',');
+  const fl = fcsv.findIndex((l) => l.split(',')[hdr.indexOf('flush_after_rep')] === '5');
+  ok('CSV: flush row straight after rep 5, no rep number', fl === 6 && fcsv[fl].split(',')[hdr.indexOf('rep')] === '' && fcsv[fl - 1].split(',')[hdr.indexOf('rep')] === '5', [fl, fcsv[fl]]);
+}
+
 console.log('\nformatting');
 ok('times', fmtTime(31.2) === '31.20' && fmtTime(72.456) === '1:12.46' && fmtTime(59.999) === '1:00.00' && fmtTime(null) === '');
 ok('deltas', fmtDelta(0.42) === '+0.42' && fmtDelta(-1.2) === '−1.20' && fmtDelta(0) === '±0.00');

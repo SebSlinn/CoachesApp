@@ -118,6 +118,9 @@ select * from (
   union all
   select 43, 'accounts', 'user_birthdates (20261016120000_private_birthdates)',
          case when to_regclass('public.user_birthdates') is not null then 'OK' else 'MISSING' end, null
+  union all
+  select 44, 'accounts', 'user_settings: zone colours saved to the account (20261023130000_user_settings)',
+         case when to_regclass('public.user_settings') is not null then 'OK' else 'MISSING' end, null
   -- ---- registers (run in this order) -----------------------------------------
   union all
   select 60, 'registers', 'group_roles.take_register (20261022120000_take_register)',

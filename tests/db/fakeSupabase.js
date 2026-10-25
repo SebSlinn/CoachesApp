@@ -100,6 +100,7 @@ class Query {
   }
 
   async run() {
+    if (OFFLINE) return NETWORK_DOWN;
     const T = await types();
     try {
       await DB.exec(`reset role; select set_config('request.jwt.claim.sub', '${UID || ''}', false);`);

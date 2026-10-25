@@ -9,9 +9,10 @@
 // Outside a provider the hook still works and returns the default scheme,
 // so a component can never crash or go colourless for want of a provider.
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, resolveZoneStyle, groupColor } from '../zones/schemes.js';
-import { loadZoneScheme, saveZoneScheme, listZoneSchemes } from '../services/zoneSchemeService.js';
+import { loadZoneScheme, saveZoneScheme, listZoneSchemes, syncZoneScheme } from '../services/zoneSchemeService.js';
+import { onAuthChange } from '../services/auth';
 
 function makeApi(pScheme, pSetScheme) {
   return {
@@ -32,6 +33,15 @@ export function ZoneSchemeProvider({ children }) {
   const setScheme = useCallback((pChoice) => {
     const { data } = saveZoneScheme(pChoice);
     setSchemeState(data);
+  }, []);
+  // The account's choice follows the coach between devices: fetch it now and whenever someone signs in.
+  useEffect(() => {
+    let live = true;
+    const pull = () => syncZoneScheme().then((r) => { if (live && r.changed) setSchemeState(r.data); });
+    pull();
+    // (deferred: supabase-js mustn't be called from inside its own auth callback)
+    const sub = onAuthChange((event) => { if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') setTimeout(pull, 0); });
+    return () => { live = false; sub?.data?.subscription?.unsubscribe?.(); };
   }, []);
   const api = useMemo(() => makeApi(scheme, setScheme), [scheme, setScheme]);
   return <ZoneSchemeContext.Provider value={api}>{children}</ZoneSchemeContext.Provider>;

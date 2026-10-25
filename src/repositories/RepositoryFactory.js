@@ -13,7 +13,7 @@ import { SupabaseSponsorshipRepository } from './supabase/SupabaseSponsorshipRep
 import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository';
 import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
 import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
-import { LocalZoneSchemeRepository } from './local/LocalZoneSchemeRepository';
+import { SupabaseZoneSchemeRepository } from './supabase/SupabaseZoneSchemeRepository';
 import { SupabaseRegisterRepository } from './supabase/SupabaseRegisterRepository';
 import { LocalRegisterStore } from './local/LocalRegisterStore';
 
@@ -91,10 +91,10 @@ export function getAthleteProfileRepository() {
 }
 
 // ---- Zone colour scheme (added 2026-10-14) — the coach's display choice
-// (contracts/ZONES.md). This device only for now; a Supabase version (per coach,
-// with a club default) replaces it here once Accounts adds the column/table.
+// (contracts/ZONES.md). Saved to the account (user_settings, 2026-10-23) with a copy on the
+// device for the first render and for offline; sync() brings the account's choice down.
 export function getZoneSchemeRepository() {
-  if (!zoneSchemeRepository) zoneSchemeRepository = new LocalZoneSchemeRepository();
+  if (!zoneSchemeRepository) zoneSchemeRepository = new SupabaseZoneSchemeRepository();
   return zoneSchemeRepository;
 }
 

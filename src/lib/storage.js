@@ -12,7 +12,9 @@ export const KEYS = {
   SELECTED_ELEMENT: 'swimzone-selected-element',
   ACTIVE_GROUP:     'swimzone-active-group',
   EDITING_BLOCK:    'swimzone-editing-block',
-  ZONE_SCHEME:      'swimzone-zone-scheme',   // coach's zone colour scheme (this device) — 2026-10-14
+  ZONE_SCHEME:      'swimzone-zone-scheme',   // coach's zone colour scheme (device copy; the account's is user_settings) — 2026-10-14
+  ZONE_SCHEME_PENDING:'swimzone-zone-scheme-pending', // a scheme change not yet saved to the account — 2026-10-23
+  ZONE_SCHEME_OWNER:'swimzone-zone-scheme-owner', // whose account the device copy belongs to — 2026-10-23
   REGISTERS_OFFLINE:'swimzone-registers-offline', // registers: group lists, sheets and queued taps for no-signal use — 2026-10-22
 };
 

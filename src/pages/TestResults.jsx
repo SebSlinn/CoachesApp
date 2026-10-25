@@ -264,8 +264,19 @@ export default function TestResults() {
                   {cmp.labels.map((l) => <th key={l} style={{ ...S.th, textAlign: 'right', whiteSpace: 'nowrap' }}>{l}</th>)}
                 </tr></thead>
                 <tbody>
-                  {cmp.reps.map((row) => (
-                    <tr key={row.repNo}>
+                  {cmp.rows.map((row) => row.kind === 'flush' ? (
+                    // a flush between reps: inline, so rep N stays next to rep N in every run
+                    <tr key={row.key}>
+                      <td style={{ ...S.td, color: INK_3 }} />
+                      <td style={{ ...S.td, color: INK_3, fontStyle: 'italic', whiteSpace: 'nowrap' }}>flush</td>
+                      {row.cells.map((c, i) => (
+                        <td key={i} style={{ ...S.td, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: INK_3, fontStyle: 'italic' }}>
+                          {c ? `${c.distM ? c.distM + ' ' : ''}${c.timeSec != null ? fmtTime(c.timeSec) : ''}${c.count > 1 ? ` (${c.count})` : ''}` : ''}
+                        </td>
+                      ))}
+                    </tr>
+                  ) : (
+                    <tr key={row.key}>
                       <td style={{ ...S.td, color: INK_3 }}>{row.repNo}</td>
                       <td style={{ ...S.td, color: INK_2, whiteSpace: 'nowrap' }}>{row.swim}{row.extra ? ' (extra)' : ''}</td>
                       {row.times.map((t, i) => {
@@ -278,7 +289,7 @@ export default function TestResults() {
                 </tbody>
               </table>
             </div>
-            <p style={{ ...S.muted, fontSize: 10, marginTop: 6 }}>Green is the fastest run for that rep.</p>
+            <p style={{ ...S.muted, fontSize: 10, marginTop: 6 }}>Green is the fastest run for that rep.{cmp.rows.some((r) => r.kind === 'flush') ? ' Flush rows are active recovery between reps: they take no rep number, so the reps stay lined up.' : ''}</p>
           </section>
         </>
       )}
@@ -357,6 +368,7 @@ function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
             {has('note') && <th style={S.th}>Note</th>}
           </tr></thead>
           <tbody>
+            {(run.flushes || []).filter((f) => f.afterRepNo === 0).map((f, i) => <FlushRow key={`f0-${i}`} f={f} span={cols.length + (has('note') ? 1 : 0)} />)}
             {run.reps.map((r) => {
               const isOpen = openRep === r.repNo && r.lengths.length;
               const lowHr = r.hrCoverage != null && r.hrCoverage < 0.8;
@@ -381,6 +393,7 @@ function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
                       </td>
                     </tr>
                   ) : null}
+                  {(r.flushAfter || []).map((f, i) => <FlushRow key={`f-${i}`} f={f} span={cols.length + (has('note') ? 1 : 0)} />)}
                 </Fragment>
               );
             })}
@@ -391,6 +404,18 @@ function RunDetail({ run, label, openRep, setOpenRep, addedByText }) {
         {anyLengths ? 'Click a rep to see its lengths. ' : ''}{!has('restSec') ? '' : run.reps.some((r) => r.restFrom === 'measured') ? 'Rest after is from finishing a rep to starting the next, from the Poolside start times. ' : run.reps.some((r) => r.restFrom === 'send-off') ? 'Rest after (≈) is estimated as send-off minus swim time: this run was saved without start times; re-import its Poolside file in Test Sets to measure it. ' : ''}{has('restSec') ? 'None after the last rep.' : ''}{has('hrCoverage') ? ' Amber HR cover means the sensor dropped out for part of the rep.' : ''}
       </p>
     </section>
+  );
+}
+
+// A flush (active recovery between reps) inline in the rep table. No rep number.
+function FlushRow({ f, span }) {
+  return (
+    <tr>
+      <td style={{ ...S.td, ...DENSE, color: INK_3, fontStyle: 'italic' }}>flush</td>
+      <td colSpan={span} style={{ ...S.td, ...DENSE, color: INK_3, fontStyle: 'italic' }}>
+        {[f.distM ? `${f.distM}m` : null, f.timeSec != null ? fmtTime(f.timeSec) : null, 'active recovery — counted in the rest, not as a rep'].filter(Boolean).join(' · ')}
+      </td>
+    </tr>
   );
 }
 

@@ -57,3 +57,12 @@ export function saveZoneScheme(pChoice) {
 export function listZoneSchemes() {
   return { data: Object.values(BUILT_IN_SCHEMES), error: null };
 }
+
+/**
+ * Bring the scheme saved on the account to this device (at sign-in / app start).
+ * @returns {Promise<{ data: Object, changed: boolean, error: Object|null }>}  data = the scheme now in force
+ */
+export async function syncZoneScheme() {
+  const r = await getZoneSchemeRepository().sync();
+  return { data: loadZoneScheme().data, changed: !!r?.data?.changed, error: r?.error || null };
+}
