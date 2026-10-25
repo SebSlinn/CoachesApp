@@ -121,6 +121,13 @@ select * from (
   union all
   select 44, 'accounts', 'user_settings: zone colours saved to the account (20261023130000_user_settings)',
          case when to_regclass('public.user_settings') is not null then 'OK' else 'MISSING' end, null
+  union all
+  select 45, 'accounts', 'open sign-up switch: is_open_signup() + self_signups (20261025120000_open_signup)',
+         case when to_regclass('public.self_signups') is not null and exists (select 1 from pg_proc where proname = 'is_open_signup')
+              then 'OK' else 'MISSING' end,
+         case when to_regclass('public.system_settings') is not null then
+           (xpath('/row/v/text()', query_to_xml('select coalesce((select value::text from public.system_settings where key = ''open_signup''), ''not set'') as v',
+             false, true, '')))[1]::text end
   -- ---- registers (run in this order) -----------------------------------------
   union all
   select 60, 'registers', 'group_roles.take_register (20261022120000_take_register)',

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { isSignupOpen } from '../services/signup'
 import { signIn, requestPasswordReset } from '../services/auth'
 
 export default function Login() {
@@ -8,6 +9,8 @@ export default function Login() {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [notice, setNotice] = useState(null)
+  const [signupOpen, setSignupOpen] = useState(false)
+  useEffect(() => { isSignupOpen().then((r) => setSignupOpen(!!r.data)) }, [])
   const navigate = useNavigate()
   // Back to where you were going (e.g. an invite link), else the Dashboard.
   const from = useLocation().state?.from
@@ -75,6 +78,7 @@ export default function Login() {
         Forgot password?
       </button>
       {notice && <p style={{ color: '#6c6' }}>{notice}</p>}
+      {signupOpen && <p style={{ marginTop: 20 }}>New to SwimZone? <Link to="/signup">Create an account</Link></p>}
     </div>
   )
 }

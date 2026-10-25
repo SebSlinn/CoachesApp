@@ -6,6 +6,7 @@ import { getLoadableAthletes, respondToGuardianship, setJuniorDateOfBirth } from
 import { getAccountStatus, setMyDateOfBirth } from '../services/users'
 import { getPendingRequests, approveMembership, approveJuniorMembership, errorText } from '../services/groups'
 import { canSponsor as fetchCanSponsor } from '../services/sponsorship'
+import { isSignupOpen, addMyChild } from '../services/signup'
 import { GROUP_TYPE_LABEL, groupsFromMemberships, statusText } from '../services/groupLabels'
 import { S, Badge, Message, useAction } from '../components/AccountsUi'
 
@@ -19,11 +20,12 @@ export default function Dashboard() {
   const [athletes, setAthletes] = useState([])
   const [requests, setRequests] = useState([])
   const [canSponsor, setCanSponsor] = useState(false)
+  const [signupOpen, setSignupOpen] = useState(false)
   const [status, setStatus] = useState(null)
 
   const load = useCallback(async () => {
-    const [a, r, c, st] = await Promise.all([getLoadableAthletes(), getPendingRequests(), fetchCanSponsor(), getAccountStatus()])
-    setAthletes(a.data || []); setRequests(r.data || []); setCanSponsor(!!c.data); setStatus(st.data || null)
+    const [a, r, c, st, so] = await Promise.all([getLoadableAthletes(), getPendingRequests(), fetchCanSponsor(), getAccountStatus(), isSignupOpen()])
+    setAthletes(a.data || []); setRequests(r.data || []); setCanSponsor(!!c.data); setStatus(st.data || null); setSignupOpen(!!so.data)
   }, [])
   useEffect(() => { if (user) load() }, [user, load])
 
@@ -57,6 +59,8 @@ export default function Dashboard() {
           {requests.map((r) => <RequestRow key={r.kind + r.id} r={r} onDone={async () => { await load(); await refreshMemberships() }} />)}
         </div>
       )}
+
+      {(signupOpen || canSponsor) && status && !status.is_junior && <AddMyChild hasDob={!!status.has_date_of_birth} onDone={load} />}
 
       {/* Navigation cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
@@ -192,6 +196,46 @@ function DashCard({ title, desc, onClick }) {
       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{title}</div>
       <div style={{ fontSize: 13, color: '#666' }}>{desc}</div>
+    </div>
+  )
+}
+
+// A parent adds their child: name, date of birth, an email for them. They get an email to set a
+// password; the parent is their guardian straight away. Then join them to the club with its invite link.
+function AddMyChild({ hasDob, onDone }) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const [dob, setDob] = useState('')
+  const [email, setEmail] = useState('')
+  const act = useAction()
+  const add = async () => {
+    const r = await act.run(() => addMyChild({ fullName: name, dateOfBirth: dob, email }),
+      () => `${name.trim()} is added. They'll get an email to set a password. Now open your club's invite link and choose to join ${name.trim()}.`, errorText)
+    if (r) { setName(''); setDob(''); setEmail(''); onDone() }
+  }
+  return (
+    <div style={{ ...S.card, marginBottom: 20 }}>
+      <div style={S.row}>
+        <strong>Add my child</strong>
+        <span style={S.muted}>Give them their own SwimZone account; you look after it as their guardian.</span>
+        <span style={{ flex: 1 }} />
+        <button style={S.btn} onClick={() => setOpen(!open)}>{open ? 'Close' : 'Add a child'}</button>
+      </div>
+      {open && !hasDob && <p style={{ ...S.small, marginTop: 8 }}>First add your own date of birth above — it's needed to look after a child's account.</p>}
+      {open && hasDob && (
+        <div style={{ marginTop: 8 }}>
+          <div style={S.row}>
+            <input style={S.input} value={name} placeholder="Child's full name" onChange={(e) => setName(e.target.value)} />
+            <input style={{ ...S.input, minWidth: 150 }} type="date" value={dob} onChange={(e) => setDob(e.target.value)} aria-label="Child's date of birth" />
+          </div>
+          <div style={{ ...S.row, marginTop: 6 }}>
+            <input style={{ ...S.input, flex: 1 }} type="email" value={email} placeholder="An email for them (e.g. you+sam@gmail.com)" onChange={(e) => setEmail(e.target.value)} />
+            <button style={S.primary} disabled={act.busy || !name.trim() || !dob || !email.trim()} onClick={add}>{act.busy ? 'Adding…' : 'Add'}</button>
+          </div>
+          <p style={S.muted}>No email of their own? Use yours with +name before the @ (you+sam@gmail.com) — it arrives in your inbox, and each child still has their own account.</p>
+        </div>
+      )}
+      <Message error={act.error} ok={act.ok} />
     </div>
   )
 }

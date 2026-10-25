@@ -3,7 +3,7 @@
 // sponsorship. This page shows the sponsorship tree you can see:
 //   • groups whose sponsorship you can use → add a new person, sponsor another group
 //   • groups below yours                   → suspend / restore (cascades down the branch)
-//   • root                                 → daily limits
+//   • root                                 → daily limits, the Open sign-up switch (+ link and parent instructions)
 // Someone who already has an account joins with an invite link instead (Groups).
 // Talks only to services/sponsorship.js.
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -14,6 +14,8 @@ import {
   setDailyAddLimit, setGroupDailyLimit, addPerson, errorText,
 } from '../services/sponsorship'
 import { groupsFromMemberships } from '../services/groupLabels'
+import { isSignupOpen, setSignupOpen, getRecentSignups } from '../services/signup'
+import { parentInstructions } from '../services/signupLabels'
 import { S, Badge, Message, Tick, useAction } from '../components/AccountsUi'
 
 export default function Sponsorship() {
@@ -53,6 +55,7 @@ export default function Sponsorship() {
           {usable.length > 0 && <AddPerson usable={usable} onDone={load} />}
           {usable.length > 0 && <SponsorGroup usable={usable} candidates={myGroups} onDone={load} />}
           {root && <RootLimits />}
+          {root && <OpenSignup />}
         </>
       )}
     </div>
@@ -176,6 +179,65 @@ function RootLimits() {
         <input style={{ ...S.input, minWidth: 80, width: 80 }} type="number" min="0" value={limit} onChange={(e) => setLimit(e.target.value)} />
         <button style={S.btn} disabled={!limit || act.busy} onClick={() => act.run(() => setDailyAddLimit(limit), 'Saved.', errorText)}>Set</button>
         <Message error={act.error} ok={act.ok} />
+      </div>
+    </>
+  )
+}
+
+// Root: let people join without an invite (parents sign up, then add their children).
+function OpenSignup() {
+  const [open, setOpen] = useState(null)
+  const [recent, setRecent] = useState([])
+  const [copied, setCopied] = useState('')
+  const act = useAction()
+  const link = (typeof window !== 'undefined' ? window.location.origin : '') + '/signup'
+  const text = parentInstructions(link)
+  const load = async () => {
+    const [o, r] = await Promise.all([isSignupOpen(), getRecentSignups(30)])
+    setOpen(!!o.data); setRecent(r.data || [])
+  }
+  useEffect(() => { load() }, [])
+  const flip = async () => { if (await act.run(() => setSignupOpen(!open), null, errorText)) load() }
+  const copy = async (pText, pWhat) => {
+    try { await navigator.clipboard.writeText(pText); setCopied(pWhat) } catch { setCopied('') }
+    setTimeout(() => setCopied(''), 2500)
+  }
+  return (
+    <>
+      <h3 style={S.h3}>Root: open sign-up</h3>
+      <div style={S.card}>
+        <div style={S.row}>
+          {open === null ? <span style={S.muted}>Loading…</span> : open
+            ? <Badge kind="staff">Open — anyone with the link can join</Badge>
+            : <Badge>Closed — invite only</Badge>}
+          <span style={{ flex: 1 }} />
+          {open !== null && <button style={open ? S.btn : S.primary} disabled={act.busy} onClick={flip}>{open ? 'Close sign-up' : 'Open sign-up'}</button>}
+        </div>
+        <p style={S.muted}>While open, parents create their own account at the link below, then add their children (name, date of birth, an email) from the Dashboard and join the club with its invite link. Limits: 30 sign-ups a day across SwimZone, 6 children per parent a day.</p>
+        {open && (
+          <>
+            <div style={{ ...S.row, marginTop: 6 }}>
+              <input style={{ ...S.input, flex: 1 }} value={link} readOnly onFocus={(e) => e.target.select()} />
+              <button style={S.btn} onClick={() => copy(link, 'link')}>Copy link</button>
+              <button style={S.btn} onClick={() => copy(text, 'instructions')}>Copy instructions</button>
+              {copied && <span style={S.ok}>Copied the {copied}.</span>}
+            </div>
+            <textarea style={{ ...S.input, width: '100%', minHeight: 180, marginTop: 8, fontSize: 13 }} value={text} readOnly />
+            <p style={S.muted}>Paste these into an email or a club message. Add your club's invite link (Groups → your group → invite links) in step 5.</p>
+          </>
+        )}
+        <Message error={act.error} />
+        {recent.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <strong style={S.small}>Signed up in the last 30 days ({recent.length})</strong>
+            {recent.slice(0, 30).map((r) => (
+              <div key={r.user_id} style={S.small}>
+                {new Date(r.created_at).toLocaleDateString('en-GB')} · {r.name || '—'} <span style={S.muted}>{r.email}</span>
+                {r.kind === 'child' && <span style={S.muted}> — child of {r.added_by_name}</span>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </>
   )

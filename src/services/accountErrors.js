@@ -16,6 +16,7 @@ const ERROR_TEXT = {
   ALREADY_SPONSORED: 'That group already has sponsorship.',
   INVITE_INVALID: 'This invite link isn\'t valid, or it has expired. Ask the group for a new one.',
   NOT_FOUND: 'That no longer exists — it may already have been dealt with.',
+  SIGNUP_CLOSED: null,   // the detail says what to do
   NOT_A_MEMBER: 'Only members of the register\'s groups can be on it. Invite them to the group first.',
   NOT_IN: 'Tick them in before signing them out.',
   SIGNED_OUT: 'They\'re already signed out. Undo the sign-out first.',

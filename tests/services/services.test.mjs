@@ -3,6 +3,8 @@ import * as P from '../../src/services/protocols.js';
 import * as R from '../../src/services/results.js';
 import * as A from '../../src/services/athleteService.js';
 import { ladderProtocol } from '../fixtures/ladderRuns.mjs';
+import * as SU from '../../src/services/signup.js';
+import { parentInstructions, ageOn } from '../../src/services/signupLabels.js';
 let pass = 0, fail = 0;
 const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  ✗ ') + n + (c ? '' : '  → ' + JSON.stringify(x))); };
 
@@ -187,6 +189,22 @@ console.log('\nladder test: level chosen per run');
   eff.summary = null;
   await R.reanalyseSetResults(lc.data.id, 'sam');
   ok('recomputing keeps the level (read back from the run)', eff.summary && eff.summary.level === 'L2' && eff.summary.prescribed === 25, eff.summary);
+}
+
+console.log('\nOpen sign-up (checks before the server)');
+{
+  ok('no name refused', /INVALID/.test((await SU.signUp({ email: 'a@b.com' })).error?.message));
+  ok('bad email refused', /INVALID/.test((await SU.signUp({ fullName: 'A', email: 'nope' })).error?.message));
+  await SU.signUp({ fullName: '  Mum Smith ', email: ' MUM@X.com ', website: '' });
+  ok('name trimmed, email lower-cased', store.signups?.[0]?.fullName === 'Mum Smith' && store.signups[0].email === 'mum@x.com', store.signups);
+  const kidDob = `${new Date().getFullYear() - 10}-01-15`;
+  ok('child: date of birth needed', /INVALID/.test((await SU.addMyChild({ fullName: 'Sam', email: 'p+sam@x.com' })).error?.message));
+  ok('child: 18+ refused', /INVALID/.test((await SU.addMyChild({ fullName: 'Sam', email: 'p+sam@x.com', dateOfBirth: '1990-01-01' })).error?.message));
+  ok('child: email needed', /INVALID/.test((await SU.addMyChild({ fullName: 'Sam', email: '', dateOfBirth: kidDob })).error?.message));
+  ok('child: sent on', (await SU.addMyChild({ fullName: 'Sam', email: 'P+Sam@x.com', dateOfBirth: kidDob })).error === null && store.children?.[0]?.email === 'p+sam@x.com');
+  ok('ageOn counts birthdays', ageOn('2016-12-31', new Date('2026-12-30')) === 9 && ageOn('2016-12-31', new Date('2026-12-31')) === 10);
+  const txt = parentInstructions('https://swimzone.example/signup');
+  ok('instructions carry the link and the +name tip', txt.includes('https://swimzone.example/signup') && txt.includes('+sam'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed\n`);

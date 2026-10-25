@@ -16,6 +16,7 @@ import RecordsEvent from './pages/RecordsEvent'
 import RecordsSwim from './pages/RecordsSwim'
 import TestResults from './pages/TestResults'
 import Account from './pages/Account'
+import Signup from './pages/Signup'
 import Registers from './pages/Registers'
 import Register from './pages/Register'
 import Attendance from './pages/Attendance'
@@ -28,6 +29,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/set-password" element={<SetPassword />} />
+        <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={
           <ProtectedRoute>
             <Dashboard />

@@ -51,3 +51,13 @@ export function getAthleteProfileRepository() {
     async getAge(a) { return { data: store.dobs[a] ? ageInYears(store.dobs[a]) : null, error: null }; },
   };
 }
+// Open sign-up: records what reached the repository (the Edge Function is tested in the DB suite).
+export function getSignupRepository() {
+  return {
+    async isOpen() { return { data: !!store.signupOpen, error: null }; },
+    async setOpen(o) { store.signupOpen = !!o; return { data: !!o, error: null }; },
+    async recent() { return { data: [], error: null }; },
+    async signUp(p) { (store.signups ||= []).push(p); return { data: { ok: true }, error: null }; },
+    async addChild(c) { (store.children ||= []).push(c); return { data: { ok: true }, error: null }; },
+  };
+}

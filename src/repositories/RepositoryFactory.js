@@ -14,6 +14,7 @@ import { SupabaseResultsRepository } from './supabase/SupabaseResultsRepository'
 import { SupabaseProtocolsRepository } from './supabase/SupabaseProtocolsRepository';
 import { SupabaseAthleteProfileRepository } from './supabase/SupabaseAthleteProfileRepository';
 import { SupabaseZoneSchemeRepository } from './supabase/SupabaseZoneSchemeRepository';
+import { SupabaseSignupRepository } from './supabase/SupabaseSignupRepository';
 import { SupabaseRegisterRepository } from './supabase/SupabaseRegisterRepository';
 import { LocalRegisterStore } from './local/LocalRegisterStore';
 
@@ -29,6 +30,7 @@ let protocolsRepository = null;
 let athleteProfileRepository = null;
 let zoneSchemeRepository = null;
 let registerRepository = null;
+let signupRepository = null;
 let registerStore = null;
 
 export function getAuthRepository() {
@@ -109,4 +111,11 @@ export function getRegisterRepository() {
 export function getRegisterStore() {
   if (!registerStore) registerStore = new LocalRegisterStore();
   return registerStore;
+}
+
+// ---- Open sign-up (added 2026-10-25) — root's switch, parents signing up, adding a child.
+// Server-only: the rules live in the database and the self-signup Edge Function.
+export function getSignupRepository() {
+  if (!signupRepository) signupRepository = new SupabaseSignupRepository();
+  return signupRepository;
 }
