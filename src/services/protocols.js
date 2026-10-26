@@ -20,7 +20,8 @@ const DEFINITION_FIELDS = ['key', 'set', 'measures', 'params', 'analyser']
 
 // The library as a picker wants it: the LATEST version of each test, global
 // first then club-private, alphabetical. pOpts.allVersions = true returns every
-// version (for history / comparing across versions).
+// version (for history / comparing across versions). Retired tests (any version of
+// the key retired) are left out unless pOpts.includeRetired.
 // Each protocol gains `scope`: 'global' | 'club'.
 export const listProtocols = async (pOpts = {}) => {
   const { data, error } = await repo().list({ key: pOpts.key })
@@ -35,12 +36,28 @@ export const listProtocols = async (pOpts = {}) => {
     }
     mOut = [...mLatest.values()]
   }
+  if (!pOpts.includeRetired) {
+    const mRetired = new Set(mAll.filter((p) => p.retired).map((p) => `${p.ownerOrgId || ''}|${p.key}`))
+    mOut = mOut.filter((p) => !mRetired.has(`${p.ownerOrgId || ''}|${p.key}`))
+  }
   mOut.sort((a, b) => (a.scope === b.scope ? 0 : a.scope === 'global' ? -1 : 1)
     || a.name.localeCompare(b.name) || b.version - a.version)
   return { data: mOut, error: null }
 }
 
 export const getProtocol = async (pId) => repo().get(pId)
+
+// Hide a test from the picker (or bring it back). Results are kept. Retires every
+// version of the key. Root for the global library; a group's staff for its own tests.
+export const setProtocolRetired = async (pProtocol, pRetired) => {
+  const { data, error } = await repo().list({ key: pProtocol.key })
+  if (error) return { data: null, error }
+  for (const p of (data || []).filter((x) => (x.ownerOrgId || null) === (pProtocol.ownerOrgId || null))) {
+    const r = await repo().update(p.id, { retired: !!pRetired })
+    if (r.error) return r
+  }
+  return { data: { retired: !!pRetired }, error: null }
+}
 
 // Add a new test (version 1). pOrgId null = the global library (root only);
 // otherwise a club you coach/administer.

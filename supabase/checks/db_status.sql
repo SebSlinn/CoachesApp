@@ -128,6 +128,10 @@ select * from (
          case when to_regclass('public.system_settings') is not null then
            (xpath('/row/v/text()', query_to_xml('select coalesce((select value::text from public.system_settings where key = ''open_signup''), ''not set'') as v',
              false, true, '')))[1]::text end
+  union all
+  select 46, 'protocols', 'test_protocols.retired (20261026120000_test_library_tidy)',
+         case when exists (select 1 from information_schema.columns where table_schema = 'public'
+                            and table_name = 'test_protocols' and column_name = 'retired') then 'OK' else 'MISSING' end, null
   -- ---- registers (run in this order) -----------------------------------------
   union all
   select 60, 'registers', 'group_roles.take_register (20261022120000_take_register)',

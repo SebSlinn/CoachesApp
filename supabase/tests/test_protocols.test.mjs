@@ -19,6 +19,7 @@ import { PGlite } from '@electric-sql/pglite';
 const AR_MIGRATION = 'supabase/migrations/20260927120000_athlete_records.sql';
 const DD_MIGRATION = 'supabase/migrations/20260928120000_drop_import_dedup.sql';
 const TP_MIGRATION = process.argv[2] || 'supabase/migrations/20260929120000_test_protocols.sql';
+const RT_MIGRATION = 'supabase/migrations/20261026120000_test_library_tidy.sql';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -189,6 +190,23 @@ async function run() {
   const again = await throws(() => db.exec(readFileSync(TP_MIGRATION, 'utf8')));
   const seeded2 = (await db.query(`select count(*)::int n from public.test_protocols`)).rows[0].n;
   ok('re-applying the migration is a no-op', again === null && seeded2 === 7, again || `n=${seeded2}`);
+
+  console.log('\nLibrary tidy-up (20261026120000)');
+  for (const k of [1, 2]) await db.exec(readFileSync(RT_MIGRATION, 'utf8'));
+  const lib = (await db.query(`select key, version, retired, set_json, params, measures, analyser from public.test_protocols where owner_org_id is null order by key, version`)).rows;
+  const live = lib.filter((p) => !p.retired).map((p) => p.key);
+  ok('retired: turn set, CSS, double distance, max HR (applied twice, no error)',
+    ['turn-20x100', 'css-400-200', 'double-distance-400', 'max-hr'].every((k) => lib.some((p) => p.key === k && p.retired)), lib.map((p) => p.key + (p.retired ? '(r)' : '')));
+  ok('still offered: 10×400, step, efficiency, ANP, ANC', ['t10x400', 'step-7x200', 'eff-8x50', 'anp-100s', 'anc-50s'].every((k) => live.includes(k)), live);
+  const eff = lib.filter((p) => p.key === 'eff-8x50');
+  const effLines = eff[eff.length - 1].set_json.blocks[0].lines;
+  ok('efficiency (unused) rewritten in place as the book: 8×50, PB+15 … PB+1 on 2:30',
+    eff.length === 1 && effLines.length === 8 && effLines.map((l) => l.targetRule.plusFrom).join() === '15,13,11,9,7,5,3,1' && effLines[0].interval.onTime === '2:30', effLines);
+  ok('…recording time, strokes, rate and HR', [...eff[0].measures].sort().join() === 'hr,sc,sr,time');
+  const anc = lib.find((p) => p.key === 'anc-50s');
+  ok('ANC: 2 sets of 10×50 on 1:00, stroke chosen per run', anc.set_json.blocks[0].repeats === 2 && anc.set_json.blocks[0].lines[0].qty === 10 && anc.params.stroke.kind === 'stroke' && anc.analyser === 'blocks');
+  const anp = lib.find((p) => p.key === 'anp-100s');
+  ok('ANP: 5×100 max on long rest, No1 stroke', anp.set_json.blocks[0].lines[0].qty === 5 && anp.params.rest.default === 180 && anp.set_json.blocks[0].lines[0].strokeParam === 'stroke');
   const dup = await throws(() => db.query(`insert into public.test_protocols (key,version,name,set_json)
     values ('step-7x200',1,'dup',$1::jsonb)`, [clubSet]));
   ok('duplicate (global, key, version) rejected', dup && /unique|duplicate/i.test(dup), dup);
@@ -202,7 +220,7 @@ async function run() {
   console.log('\nVisibility (RLS)');
   for (const [who, id] of Object.entries(U)) {
     const n = await as(id, async () => (await db.query(`select count(*)::int n from public.test_protocols where owner_org_id is null`)).rows[0].n);
-    ok(`${who} sees the global library`, n === 7, `saw ${n}`);
+    ok(`${who} sees the global library (7 seeded + ANP + ANC; retired ones still readable)`, n === 9, `saw ${n}`);
   }
 
   console.log('\nEdit rights (RLS)');
@@ -253,6 +271,10 @@ async function run() {
   ok('locked protocol cannot be unlocked', unlock && /LOCKED/.test(unlock), unlock);
   const rename = await throws(() => db.query(`update public.test_protocols set name='7×200 Step (renamed)' where id=$1`, [step.id]));
   ok('renaming a locked protocol is allowed', rename === null, rename);
+  const retire = await throws(() => db.query(`update public.test_protocols set retired = true where id=$1`, [step.id]));
+  ok('a used protocol can be retired (hidden, results kept)', retire === null, retire);
+  await db.query(`update public.test_protocols set retired = false where id=$1`, [step.id]);
+
   const delLocked = await throws(() => db.query(`delete from public.test_protocols where id=$1`, [step.id]));
   ok('a used protocol cannot be deleted (FK restrict)', !!delLocked);
   const v2 = await throws(() => db.query(`insert into public.test_protocols (key,version,name,set_json,measures,params,analyser)

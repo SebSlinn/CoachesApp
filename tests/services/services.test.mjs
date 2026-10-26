@@ -119,6 +119,13 @@ const v2 = await P.newVersion(c1.data.id, { params: { sendOff: { label: 'Send-of
 ok('newVersion creates v2 with the same key', v2.data?.version === 2 && v2.data.key === 'step-mini', v2);
 ok('list shows only the latest version by default', (await P.listProtocols()).data.find((p) => p.key === 'step-mini' && p.scope === 'global').version === 2);
 ok('allVersions shows both', (await P.listProtocols({ allVersions: true })).data.filter((p) => p.key === 'step-mini' && p.scope === 'global').length === 2);
+const rt = await P.setProtocolRetired({ key: 'step-mini', ownerOrgId: null }, true);
+ok('retire: every global version of the key', !rt.error && store.protocols.filter((p) => p.key === 'step-mini' && !p.ownerOrgId).every((p) => p.retired), rt);
+ok('retired test hidden from the picker', !(await P.listProtocols()).data.some((p) => p.key === 'step-mini' && p.scope === 'global'));
+ok("…but not the club's own test with the same key", (await P.listProtocols()).data.some((p) => p.key === 'step-mini' && p.scope === 'club'));
+ok('includeRetired shows it', (await P.listProtocols({ includeRetired: true })).data.some((p) => p.key === 'step-mini' && p.scope === 'global'));
+await P.setProtocolRetired({ key: 'step-mini', ownerOrgId: null }, false);
+ok('un-retire brings it back', (await P.listProtocols()).data.some((p) => p.key === 'step-mini' && p.scope === 'global'));
 
 console.log('\nreanalyse');
 store.efforts[0].summary = null;

@@ -11,7 +11,7 @@
 //   toCsv(meta, runViews)           → tidy CSV, one row per rep per run
 //
 // Pure: no React, no Supabase, no Excel library. Tested by testReport.test.mjs.
-import { analyse, expandReps, paramValueLabel } from '../session/protocolFormat.js';
+import { analyse, expandReps, paramValueLabel, editableRepLines, REPS_PARAM } from '../session/protocolFormat.js';
 import { parseSetTime } from '../session/setFormat.js';
 import { lapSplits } from './eventView.js';
 
@@ -50,6 +50,8 @@ export const SUMMARY_FIELDS = {
     F('n', 'Reps timed', 'num'),
     F('meanSec', 'Average rep', 'time', { better: 'low' }),
     F('fastestSec', 'Fastest rep', 'time', { better: 'low' }),
+    F('bestVsPbSec', 'Fastest vs PB', 'delta', { better: 'low' }),
+    F('meanVsPbSec', 'Average vs PB', 'delta', { better: 'low' }),
     F('slowestSec', 'Slowest rep', 'time', { better: 'low' }),
     F('spreadSec', 'Spread, slowest − fastest', 'sec', { better: 'low' }),
     F('sdSec', 'Consistency (std dev)', 'sec', { better: 'low' }),
@@ -91,6 +93,8 @@ export const SUMMARY_FIELDS = {
     F('meanSwolf', 'Average SWOLF', 'num', { better: 'low' }),
     F('meanSc', 'Average stroke count', 'num', { better: 'low' }),
     F('meanSec', 'Average rep', 'time', { better: 'low' }),
+    F('lastSec', 'Last swim (flat out)', 'time', { better: 'low' }),
+    F('lastVsTargetSec', 'Last swim vs target (PB+1)', 'delta', { better: 'low' }),
   ],
   maxhr: [
     F('peakHr', 'Peak heart rate', 'num', { unit: 'bpm' }),
@@ -199,6 +203,10 @@ export function buildRunView(pProtocol, pEffort) {
     : analyse(pProtocol?.analyser, (pEffort.reps || []).map((r) => ({ ...r, ...(plan.get(Number(r.repNo)) ? { blockIdx: plan.get(Number(r.repNo)).blockIdx, lineIdx: plan.get(Number(r.repNo)).lineIdx, blockRepeat: plan.get(Number(r.repNo)).blockRepeat } : {}) })), { set, params });
 
   const paramText = Object.entries(params).map(([k, v]) => {
+    if (k === REPS_PARAM) {   // reps changed for this run: "Reps: 5×400"
+      const lines = editableRepLines(pProtocol?.set || set, pProtocol?.params);
+      return 'Reps: ' + Object.entries(v || {}).map(([id, n]) => { const e = lines.find((x) => x.id === id); return e ? `${n}×${e.distM}` : `${n}`; }).join(', ');
+    }
     const def = pProtocol?.params?.[k];
     return def?.kind === 'level' ? paramValueLabel(def, v) : `${def?.label || k}: ${paramValueLabel(def, v)}`;
   }).join(', ');

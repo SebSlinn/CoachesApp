@@ -20,7 +20,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listProtocols, prescribeForAthletes, getTestHistory } from '../services/protocols';
 import { ingestPoolsideSetResult } from '../services/results';
-import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel } from '../session/protocolFormat';
+import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel, editableRepLines, REPS_PARAM, MAX_EDIT_REPS } from '../session/protocolFormat';
 import { resolveAthleteMaxHr } from '../services/athleteService.js';
 import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
@@ -88,6 +88,29 @@ function intervalLabel(iv) {
   return r > 0 ? `${r >= 60 && r % 60 === 0 ? `${r / 60} min` : `${r} s`} rest` : '—';
 }
 
+// How many reps on one line for this run (5 of 10×400 for a younger group, 12 instead
+// of 8×50…). Blank or the test's own number = as written. Poolside also lets you stop
+// early or add extra reps on the day; this just makes the plan match from the start.
+function RepsBox({ line, value, onChange }) {
+  const [text, setText] = useState(value != null ? String(value) : String(line.qty));
+  useEffect(() => { setText(value != null ? String(value) : String(line.qty)); }, [value, line.qty]);
+  const commit = () => {
+    const n = Number(text);
+    if (!text.trim() || !Number.isInteger(n) || n < 1 || n > MAX_EDIT_REPS) { setText(String(value ?? line.qty)); return; }
+    onChange(n);
+  };
+  const what = `${line.distM} ${STROKE_NAME[line.stroke] || line.stroke || ''}`.trim();
+  return (
+    <label style={{ display: 'block' }}>
+      <span style={C.label}>Reps · {what}{line.note ? ` (${line.note})` : ''}</span>
+      <input style={{ ...C.select, width: 70 }} type="number" min={1} max={MAX_EDIT_REPS} value={text}
+        onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+        title={`The test has ${line.qty}. Change it for this run only.`} />
+      {value != null && value !== line.qty && <span style={{ ...C.muted, fontSize: 10, marginLeft: 6 }}>test: {line.qty}</span>}
+    </label>
+  );
+}
+
 // One headline per analyser for the "previous runs" list. pProtocol (optional)
 // names ladder levels ("Club 2") from its level options.
 function headline(summary, pProtocol) {
@@ -109,7 +132,7 @@ function headline(summary, pProtocol) {
     case 'blocks': return summary.dropOffSec != null ? `drop-off ${summary.dropOffSec > 0 ? '+' : ''}${summary.dropOffSec} s/rep` : '—';
     case 'swolf': return `best SWOLF ${summary.bestSwolf ?? '—'} · mean ${summary.meanSwolf ?? '—'}`;
     case 'maxhr': return `peak HR ${summary.peakHr ?? '—'}`;
-    default: return summary.meanSec ? `mean ${fmtClock(summary.meanSec)} · spread ${summary.spreadSec} s` : '—';
+    default: return summary.meanSec ? `mean ${fmtClock(summary.meanSec)} · spread ${summary.spreadSec} s${summary.bestVsPbSec != null ? ` · best ${summary.bestVsPbSec > 0 ? '+' : ''}${summary.bestVsPbSec} s vs PB` : ''}` : '—';
   }
 }
 
@@ -313,6 +336,14 @@ export default function TestSets() {
                         })}
                       </select>
                     </label>
+                  ))}
+                  {editableRepLines(protocol.set, protocol.params).filter((e) => e.qty > 1).map((e) => (
+                    <RepsBox key={e.id} line={e} value={chosen[REPS_PARAM]?.[e.id]}
+                      onChange={(n) => setChosen((c) => {
+                        const r = { ...(c[REPS_PARAM] || {}) };
+                        if (n == null || n === e.qty) delete r[e.id]; else r[e.id] = n;
+                        return { ...c, [REPS_PARAM]: r };
+                      })} />
                   ))}
                   <label style={{ display: 'block' }}>
                     <span style={C.label}>Targets from</span>

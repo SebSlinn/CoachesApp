@@ -8,7 +8,8 @@ import { IProtocolsRepository } from '../interfaces/IProtocolsRepository';
 
 const UNAVAILABLE = { data: null, error: { message: 'Supabase is not configured' } };
 
-const COLUMNS = 'id, key, version, name, description, owner_org_id, set_json, measures, params, analyser, locked, created_by, created_at, updated_at';
+// '*' rather than a list, so the app keeps working before 20261026120000_test_library_tidy adds `retired`.
+const COLUMNS = '*';
 
 const FIELD_TO_COLUMN = {
   key: 'key',
@@ -20,6 +21,7 @@ const FIELD_TO_COLUMN = {
   measures: 'measures',
   params: 'params',
   analyser: 'analyser',
+  retired: 'retired',
 };
 
 function toRow(p) {
@@ -44,6 +46,7 @@ function fromRow(row) {
     params: row.params || {},
     analyser: row.analyser,
     locked: row.locked,
+    retired: !!row.retired,
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

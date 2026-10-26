@@ -12,6 +12,7 @@ import {
   validateProtocol, resolveParams, expandReps, prescribe, prescribeGroup,
   cleanMetrics, lineMeasures, checkConstraints, analyse, ANALYSERS,
   buildHandoff, encodeHandoff, decodeHandoff, levelOption, paramValueLabel, LADDER_MIN_REST_SEC,
+  editableRepLines, REPS_PARAM,
 } from './protocolFormat.js';
 
 let pass = 0, fail = 0;
@@ -212,6 +213,49 @@ async function run() {
   ok('L3: fade uses the same 5-rep windows (comparable with L1)', a3.first5MeanSec === 76.4 && a3.last5MeanSec === 81.4 && a3.fadeSec === 5, a3);
   const a2 = analyse('ladder', swim(18, 74, 0, 40), { set: L2.set, params: { level: 'L2' } });
   ok('L2 stopped at 18 of 25 → not completed, not held', a2.completed === false && a2.held === false && a2.swum === 18 && a2.prescribed === 25, a2);
+
+  console.log('\nReps changed for one run (2026-10-26)');
+  const aec = { key: 'aec', name: 'AEC', analyser: 'series', measures: ['time', 'hr'],
+    params: { sendOff: { kind: 'onTime', label: 'Send-off', default: '5:00', options: ['4:55', '5:00'] } },
+    set: { fmt: 'swimzone.set/1', blocks: [{ repeats: 1, lines: [{ type: 'swim', qty: 10, distM: 400, stroke: 'FS', interval: { type: 'fixed', onTime: '5:00', param: 'sendOff' }, targetRule: { base: 'A3' } }] }] } };
+  ok('a plain line is editable', editableRepLines(aec.set, aec.params).map((e) => `${e.id}:${e.qty}`).join() === '0.0:10');
+  ok('a level-controlled line is not (its reps are the level)', editableRepLines(lad.set, lad.params).length === 0);
+  const five = resolveParams(aec.set, aec.params, { sendOff: '4:55', [REPS_PARAM]: { '0.0': 5 } });
+  ok('5 of 10×400: the set has 5, send-off still applied', five.set.blocks[0].lines[0].qty === 5 && five.set.blocks[0].lines[0].interval.onTime === '4:55', five.set.blocks[0].lines[0]);
+  ok('…and the change is recorded with the run', five.params[REPS_PARAM]?.['0.0'] === 5 && five.params.sendOff === '4:55', five.params);
+  ok('the test itself is untouched', aec.set.blocks[0].lines[0].qty === 10);
+  ok('prescription has 5 reps', prescribe(aec, { chosen: { [REPS_PARAM]: { '0.0': 5 } }, athlete }).athletes[0].reps.length === 5);
+  ok('more than written works too (12×)', prescribe(aec, { chosen: { [REPS_PARAM]: { '0.0': 12 } } }).reps.length === 12);
+  const same = resolveParams(aec.set, aec.params, { [REPS_PARAM]: { '0.0': 10, '9.9': 3 } });
+  ok('unchanged or unknown lines leave no trace', !(REPS_PARAM in same.params), same.params);
+  ok('silly numbers are ignored', resolveParams(aec.set, aec.params, { [REPS_PARAM]: { '0.0': 0 } }).set.blocks[0].lines[0].qty === 10
+    && resolveParams(aec.set, aec.params, { [REPS_PARAM]: { '0.0': 500 } }).set.blocks[0].lines[0].qty === 10);
+  ok('level still sets the ladder reps', resolveParams(lad.set, lad.params, { level: 'L2', [REPS_PARAM]: { '0.0': 3 } }).set.blocks[0].lines[0].qty === 25);
+  const hand5 = buildHandoff(prescribe(aec, { chosen: { [REPS_PARAM]: { '0.0': 5 } }, athlete }), 'a1');
+  ok('Poolside gets 5 reps and the edited set', hand5.reps.length === 5 && hand5.set.blocks[0].lines[0].qty === 5 && hand5.params[REPS_PARAM]['0.0'] === 5);
+
+  console.log('\nNo1 stroke + the 2026-10-26 library (definitions read from the migration)');
+  const sql = readFileSync('supabase/migrations/20261026120000_test_library_tidy.sql', 'utf8');
+  const js = [...sql.matchAll(/\$j\$(.*?)\$j\$/gs)].map((m) => JSON.parse(m[1]));
+  const effDef = { key: 'eff-8x50', name: 'Eff', analyser: 'swolf', measures: ['time', 'sc', 'sr', 'hr'], set: js[0], params: js[1] };
+  const anpDef = { key: 'anp-100s', name: 'ANP', analyser: 'series', measures: ['time', 'splits', 'hr'], set: js[2], params: js[3] };
+  const ancDef = { key: 'anc-50s', name: 'ANC', analyser: 'blocks', measures: ['time', 'sc', 'hr'], set: js[4], params: js[5] };
+  for (const d of [effDef, anpDef, ancDef]) ok(`${d.key} is a valid test`, validateProtocol(d) === null, validateProtocol(d));
+  const bk = { id: 'b1', name: 'Bea', pbByEvent: { FS50: 30, BK50: 34, FS100: 62, BK100: 70 } };
+  const effBk = prescribe(effDef, { chosen: { stroke: 'BK' }, athlete: bk }).athletes[0].reps;
+  ok('efficiency in backstroke: targets from the 50 back PB (34 + 15 … 34 + 1)', effBk.every((r) => r.stroke === 'BK') && effBk[0].targetTime === '0:49' && effBk[7].targetTime === '0:35', effBk.map((r) => r.targetTime));
+  ok('default stroke is free', prescribe(effDef, { athlete: bk }).athletes[0].reps[0].stroke === 'FS');
+  ok('a stroke not offered falls back to the default', resolveParams(anpDef.set, anpDef.params, { stroke: 'Kick' }).params.stroke === 'FS');
+  ok('stroke shows by name', paramValueLabel(anpDef.params.stroke, 'BR') === 'Breast');
+  const anp8 = prescribe(anpDef, { chosen: { stroke: 'BK', [REPS_PARAM]: { '0.0': 8 } }, athlete: bk });
+  ok('ANP: 8 reps of back on the day, stroke + reps recorded', anp8.athletes[0].reps.length === 8 && anp8.params.stroke === 'BK' && anp8.params[REPS_PARAM]['0.0'] === 8);
+  ok('ANC: 20 reps (2 × 10)', prescribe(ancDef, {}).reps.length === 20);
+  ok('ANC: reps box edits each set of 10', editableRepLines(ancDef.set, ancDef.params).length === 1 && prescribe(ancDef, { chosen: { [REPS_PARAM]: { '0.0': 8 } } }).reps.length === 16);
+  ok('strokeParam must name a stroke param', validateProtocol({ ...anpDef, params: { rest: anpDef.params.rest } }) !== null);
+  const vsPb = analyse('series', [62, 64, 66].map((x, i) => ({ repNo: i + 1, distM: 100, timeSec: x, pbAtSwim: 60 })));
+  ok('series compares with PB (best +2, mean +4)', vsPb.bestVsPbSec === 2 && vsPb.meanVsPbSec === 4, vsPb);
+  const effRun = analyse('swolf', [44, 42, 40, 38, 36, 35, 34, 32.5].map((x, i) => ({ repNo: i + 1, distM: 50, timeSec: x, targetTime: String(46 - 2 * i), metrics: { sc: 10 + i, sr: 20 + 3 * i, hr: 120 + 8 * i } })));
+  ok('efficiency: per swim strokes, rate, HR and vs target; last swim vs PB+1', effRun.reps[7].sr === 41 && effRun.reps[7].hr === 176 && effRun.lastSec === 32.5 && effRun.lastVsTargetSec === 0.5, effRun.reps[7]);
 
   console.log(`\n${pass} passed, ${fail} failed\n`);
   process.exit(fail ? 1 : 0);

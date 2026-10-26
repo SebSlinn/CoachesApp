@@ -30,7 +30,13 @@ export const METRIC_KEYS = ['sc', 'sr', 'hr', 'rpe', 'lactate'];
  */
 export const HR_SENSOR_KEYS = ['hrStart', 'hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
 const STORED_METRIC_KEYS = METRIC_KEYS.concat(HR_SENSOR_KEYS);
-export const PARAM_KINDS = ['onTime', 'restSec', 'level'];
+export const PARAM_KINDS = ['onTime', 'restSec', 'level', 'stroke'];
+// A 'stroke' param (2026-10-26) lets "No1 stroke" tests be swum in the swimmer's own
+// stroke: the coach picks it for the run, and lines opt in with line.strokeParam = "<name>".
+// Targets then come from the PB for that stroke. e.g.
+//   { kind:'stroke', label:'Stroke (No1)', default:'FS', options:['FS','BK','BR','Fly'] }
+export const PARAM_STROKES = ['FS', 'BK', 'BR', 'Fly', 'IM'];
+const STROKE_LABEL = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM' };
 // A 'level' param picks one rung of a ladder, which sets BOTH how many reps a
 // line has and its send-off (or rest), e.g.
 //   { kind:'level', label:'Level', default:'L1', options:[
@@ -86,6 +92,7 @@ function validParamValue(kind, v, def) {
   if (kind === 'onTime') return Number.isFinite(parseSetTime(v)) && parseSetTime(v) > 0;
   if (kind === 'restSec') return Number.isFinite(Number(v)) && Number(v) >= 0;
   if (kind === 'level') return !!(def && Array.isArray(def.options) && def.options.some((o) => o && o.value === v));
+  if (kind === 'stroke') return PARAM_STROKES.includes(v) && (!def || !Array.isArray(def.options) || !def.options.length || def.options.includes(v));
   return false;
 }
 
@@ -99,6 +106,7 @@ export function paramValueLabel(def, v) {
   if (!def) return String(v);
   if (def.kind === 'level') { const o = levelOption(def, v); return o ? (o.label || o.value) : String(v); }
   if (def.kind === 'restSec') { const n = Number(v); return n >= 60 && n % 60 === 0 ? `${n / 60} min` : `${n} s`; }
+  if (def.kind === 'stroke') return STROKE_LABEL[v] || String(v);
   return String(v);
 }
 
@@ -130,7 +138,7 @@ export function validateProtocol(p) {
   const params = p.params || {};
   if (typeof params !== 'object' || Array.isArray(params)) return 'params must be an object';
   for (const [name, def] of Object.entries(params)) {
-    if (!def || !PARAM_KINDS.includes(def.kind)) return `param "${name}": kind must be onTime, restSec or level`;
+    if (!def || !PARAM_KINDS.includes(def.kind)) return `param "${name}": kind must be onTime, restSec, level or stroke`;
     if (def.kind === 'level') {
       if (!Array.isArray(def.options) || !def.options.length) return `param "${name}": a level param needs its levels as options`;
       for (const o of def.options) { const e = validLevelOption(o); if (e) return `param "${name}": ${e}`; }
@@ -148,9 +156,12 @@ export function validateProtocol(p) {
       const where = `block ${b} line ${i}`;
       if (ln.measures && (!Array.isArray(ln.measures) || ln.measures.some((m) => !PROTOCOL_MEASURES.includes(m))))
         return `${where}: measures must be from: ${PROTOCOL_MEASURES.join(', ')}`;
+      if (ln.strokeParam != null && params[ln.strokeParam]?.kind !== 'stroke')
+        return `${where}: strokeParam "${ln.strokeParam}" must name a stroke param`;
       const pn = ln.interval && ln.interval.param;
       if (pn) {
         if (!params[pn]) return `${where}: interval.param "${pn}" is not a protocol param`;
+        if (params[pn].kind === 'stroke') return `${where}: interval.param "${pn}" is a stroke param — use strokeParam`;
         const want = ln.interval.type === 'fixed' ? 'onTime' : 'restSec';
         if (params[pn].kind === 'level') {
           if (params[pn].options.some((o) => o[want] == null || o[want] === ''))
@@ -167,10 +178,32 @@ export function validateProtocol(p) {
 // Params → a resolved (still generic) set
 // ---------------------------------------------------------------------------
 
+// Reps edited for one run (2026-10-26): chosen._reps = { 'blockIdx.lineIdx': qty }.
+// Any swim line can be shortened or lengthened on the day (5 of 10×400 for a younger
+// group, 8 → 12×50) — except a line a level param controls, whose reps ARE the level.
+// Stored in conditions.params._reps only when it differs from the test.
+export const REPS_PARAM = '_reps';
+export const MAX_EDIT_REPS = 60;
+
+/** Swim lines whose reps a coach may change for a run → [{ id:'b.l', qty, distM, stroke, note }]. */
+export function editableRepLines(set, paramDefs = {}) {
+  const out = [];
+  for (const [b, block] of (set?.blocks || []).entries()) {
+    for (const [l, ln] of (block.lines || []).entries()) {
+      if ((ln.type || 'swim') !== 'swim') continue;
+      const pn = ln.interval && ln.interval.param;
+      if (pn && paramDefs?.[pn]?.kind === 'level') continue;
+      out.push({ id: `${b}.${l}`, qty: Math.max(1, Number(ln.qty) || 1), distM: Number(ln.distM), stroke: ln.stroke, note: ln.note || '' });
+    }
+  }
+  return out;
+}
+
 /**
  * Apply per-run params to a set. `chosen` is { name: value }; anything missing
  * or invalid falls back to the param's default. Returns { set, params } where
  * params is what was actually used (store it in conditions.params).
+ * chosen._reps (see REPS_PARAM) changes the number of reps on editable lines.
  */
 export function resolveParams(set, paramDefs = {}, chosen = {}) {
   const used = {};
@@ -183,9 +216,11 @@ export function resolveParams(set, paramDefs = {}, chosen = {}) {
   const out = JSON.parse(JSON.stringify(set));
   for (const block of out.blocks || []) {
     for (const ln of block.lines || []) {
+      if (ln.strokeParam && paramDefs?.[ln.strokeParam]?.kind === 'stroke' && ln.strokeParam in used) ln.stroke = used[ln.strokeParam];
       const pn = ln.interval && ln.interval.param;
       if (!pn || !(pn in used)) continue;
       const def = paramDefs[pn];
+      if (def.kind === 'stroke') continue;
       if (def.kind === 'level') {
         const o = levelOption(def, used[pn]);
         ln.qty = Number(o.qty);
@@ -194,6 +229,18 @@ export function resolveParams(set, paramDefs = {}, chosen = {}) {
       } else if (def.kind === 'onTime') ln.interval.onTime = used[pn];
       else ln.interval.restSec = used[pn];
     }
+  }
+  const wanted = chosen && chosen[REPS_PARAM];
+  if (wanted && typeof wanted === 'object') {
+    const changed = {};
+    for (const e of editableRepLines(set, paramDefs)) {
+      const n = Number(wanted[e.id]);
+      if (!Number.isInteger(n) || n < 1 || n > MAX_EDIT_REPS || n === e.qty) continue;
+      const [b, l] = e.id.split('.').map(Number);
+      out.blocks[b].lines[l].qty = n;
+      changed[e.id] = n;
+    }
+    if (Object.keys(changed).length) used[REPS_PARAM] = changed;
   }
   return { set: out, params: used };
 }
@@ -396,8 +443,11 @@ export const ANALYSERS = {
     v: 1,
     label: 'Series — mean, spread, drift',
     run(reps) {
+      // vs PB (2026-10-26, additive): for max-effort sets — "10–15 s off PB isn't a max effort"
+      const vs = timed(reps).map((r) => t(r) - Number(r.pbAtSwim)).filter(Number.isFinite);
       return { ...seriesStats(reps), meanHr: meanMetric(reps, 'hr'), meanRpe: meanMetric(reps, 'rpe'),
-               meanSc: meanMetric(reps, 'sc') };
+               meanSc: meanMetric(reps, 'sc'),
+               ...(vs.length ? { bestVsPbSec: round(Math.min(...vs)), meanVsPbSec: round(mean(vs)) } : {}) };
     },
   },
 
@@ -510,14 +560,19 @@ export const ANALYSERS = {
     v: 1,
     label: 'Efficiency — SWOLF',
     run(reps) {
-      const per = timed(reps).map((r) => {
-        const sc = met(r, 'sc');
+      const per = timed(reps).slice().sort((a, b) => a.repNo - b.repNo).map((r) => {
+        const sc = met(r, 'sc'), sr = met(r, 'sr'), hr = met(r, 'hr'), tgt = parseSetTime(r.targetTime);
+        // stroke rate, HR and vs-target added 2026-10-26 (the book's recording sheet); additive
         return { repNo: r.repNo, timeSec: round(t(r)), sc: Number.isFinite(sc) ? sc : null,
-                 swolf: Number.isFinite(sc) ? round(t(r) + sc, 1) : null };
+                 swolf: Number.isFinite(sc) ? round(t(r) + sc, 1) : null,
+                 sr: Number.isFinite(sr) ? sr : null, hr: Number.isFinite(hr) ? hr : null,
+                 vsTargetSec: Number.isFinite(tgt) ? round(t(r) - tgt) : null };
       });
       const sw = nums(per.map((p) => p.swolf));
+      const last = per.length ? per[per.length - 1] : null;
       return { reps: per, bestSwolf: sw.length ? Math.min(...sw) : null, meanSwolf: round(mean(sw), 1),
-               meanSc: meanMetric(reps, 'sc'), meanSec: round(mean(per.map((p) => p.timeSec))) };
+               meanSc: meanMetric(reps, 'sc'), meanSec: round(mean(per.map((p) => p.timeSec))),
+               lastSec: last ? last.timeSec : null, lastVsTargetSec: last ? last.vsTargetSec : null };
     },
   },
 

@@ -25,12 +25,12 @@ const STICKY_TH = { position: 'sticky', top: 0, background: '#20203a', zIndex: 1
 // The results worth seeing at a glance, per analyser; the rest sit behind "All results".
 const KEY_RESULTS = {
   ladder: ['held', 'per100Sec', 'fadeSec', 'minRestSec', 'repsInsideSendOff'],
-  series: ['meanSec', 'fastestSec', 'spreadSec', 'driftSecPerRep'],
+  series: ['meanSec', 'fastestSec', 'bestVsPbSec', 'spreadSec', 'driftSecPerRep'],
   step: ['pace100At4mmolSec', 'peakHr', 'lastStepSec'],
   css: ['cssPer100Sec', 't400Sec', 't200Sec'],
   'double-distance': ['timeSec', 'vsTargetSec', 'fadeSec'],
   blocks: ['dropOffSec', 'dropOffSc'],
-  swolf: ['bestSwolf', 'meanSwolf', 'meanSec'],
+  swolf: ['bestSwolf', 'meanSwolf', 'lastSec', 'lastVsTargetSec'],
   maxhr: ['peakHr', 'peakRepNo'],
 };
 const btn = (primary) => ({ padding: '8px 14px', borderRadius: 6, cursor: 'pointer', fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
