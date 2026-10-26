@@ -16,6 +16,10 @@ export class SupabaseSignupRepository extends ISignupRepository {
     if (!supabase) return UNAVAILABLE;
     const { data, error } = await supabase.functions.invoke('self-signup', { body });
     if (!error) return { data, error: null };
+    // Couldn't reach the function at all (not deployed, crashed on start, or no connection).
+    if (error.name === 'FunctionsFetchError' || error.name === 'FunctionsRelayError') {
+      return { data: null, error: { message: 'SIGNUP_UNAVAILABLE: ' + error.message } };
+    }
     // The function replies { error: 'CODE: message' } — surface that, not the generic HTTP text.
     let message = error.message;
     try {
