@@ -319,7 +319,7 @@ export default function AthleteSetup() {
     // Max HR in use + the coach's zone scheme → Poolside colours heart rate by zone.
     const mHr = effectiveMaxHr({ value: maxHrInput, source: maxHrSrc, on: maxHrOn, basis: hrBasis });
     if (mHr.maxHr) { mParams.set('mhr', String(mHr.maxHr)); if (mHr.estimated) mParams.set('mhre', '1'); }
-    if (zoneScheme?.builtIn && zoneScheme.id !== 'sweetenham') mParams.set('zs', zoneScheme.id);
+    if (zoneScheme?.builtIn) mParams.set('zs', zoneScheme.id);   // always: Poolside's default may differ
     window.open('/poolside/?' + mParams.toString(), '_blank');
   }
 

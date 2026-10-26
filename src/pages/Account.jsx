@@ -1,12 +1,14 @@
 // src/pages/Account.jsx — /account
-// Your own account: set the public name others see on results you add ("Added
-// by …"), and your full name. Email is sign-in only and never shown to others.
+// Your own account: names (the public name others see on results you add, "Added
+// by …"), date of birth (private; add once, corrections via SwimZone), sign-in
+// (email, last sign-in, change password), qualifications and zone colours.
 // Self-edit only — RLS (sz_users_self_update) allows a user to change just their
-// own users row; date of birth is locked by a trigger, not editable here.
+// own users row; the date of birth goes through set_my_date_of_birth.
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { getProfile, updateProfile } from '../services/users';
+import { getProfile, updateProfile, getAccountStatus, getMyDateOfBirth, setMyDateOfBirth } from '../services/users';
+import { setPassword } from '../services/auth';
 import ZoneSchemePicker from '../components/ZoneSchemePicker.jsx';
 import { getMyQualifications, addQualification, removeQualification, errorText } from '../services/groups';
 
@@ -76,14 +78,105 @@ export default function Account() {
             {status && <span style={{ fontSize: 13, color: status.startsWith('Could not') ? '#c00' : '#060' }}>{status}</span>}
           </div>
 
+          <DateOfBirth label={label} help={help} input={input} />
+
+          <SignIn user={user} label={label} help={help} input={input} />
+
           <Qualifications userId={user.id} label={label} help={help} input={input} />
 
           <label style={label}>Zone colours</label>
           <ZoneSchemePicker />
-          <p style={help}>How zones are coloured on the Classifier and Set Builder. Changes take effect straight away and are saved on this device. Your sets and results are not changed.</p>
+          <p style={help}>How zones are coloured on the Classifier and Set Builder. Changes take effect straight away and follow you to any device you sign in on. Your sets and results are not changed.</p>
         </>
       )}
     </div>
+  );
+}
+
+const fmtDate = (d) => (d ? new Date(d.length === 10 ? d + 'T12:00:00' : d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+const fmtWhen = (d) => (d ? new Date(d).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+
+// Date of birth: private (only you and a guardian see it; coaches see an age). Added once;
+// a mistake is corrected by SwimZone (root), so a junior can't make themselves an adult.
+function DateOfBirth({ label, help, input }) {
+  const [dob, setDob] = useState(undefined);      // undefined = loading, null = none
+  const [junior, setJunior] = useState(false);
+  const [entry, setEntry] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    const [d, st] = await Promise.all([getMyDateOfBirth(), getAccountStatus()]);
+    setDob(d.error ? null : d.data);
+    setJunior(!!st.data?.is_junior);
+  };
+  useEffect(() => { load(); }, []);
+
+  async function add() {
+    setBusy(true); setMsg(null);
+    const { error } = await setMyDateOfBirth(entry);
+    setBusy(false);
+    if (error) { setMsg(String(error.message || '').replace(/^[A-Z_]+:\s*/, '')); return; }
+    setEntry(''); load();
+  }
+
+  return (
+    <>
+      <label style={label}>Date of birth</label>
+      {dob === undefined && <p style={help}>Loading…</p>}
+      {dob && <p style={{ fontSize: 14, margin: 0 }}>{fmtDate(dob)}</p>}
+      {dob === null && junior && <p style={help}>Not recorded yet — your parent or guardian adds it.</p>}
+      {dob === null && !junior && (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input style={{ ...input, flex: 1 }} type="date" value={entry} onChange={(e) => setEntry(e.target.value)} aria-label="Your date of birth" />
+          <button onClick={add} disabled={busy || !entry}>{busy ? 'Saving…' : 'Add'}</button>
+        </div>
+      )}
+      {msg && <p style={{ ...help, color: '#c00' }}>{msg}</p>}
+      <p style={help}>Private: only you{junior ? ' and your guardian' : ''} can see it — coaches see your age, not the date. Needed to look after a child's account. It can only be added once; if it's wrong, ask SwimZone to correct it.</p>
+    </>
+  );
+}
+
+// Sign-in: the email you sign in with, when you last signed in, and a new password.
+function SignIn({ user, label, help, input }) {
+  const [pw, setPw] = useState('');
+  const [pw2, setPw2] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  async function change() {
+    setMsg(null);
+    if (pw !== pw2) { setMsg({ err: true, text: "The two passwords don't match." }); return; }
+    setBusy(true);
+    const { error } = await setPassword(pw);
+    setBusy(false);
+    if (error) {
+      const t = /reauth|recent/i.test(error.message || '')
+        ? 'For safety, sign out and back in, then change it straight away (or use "Forgot password?" on the sign-in page).'
+        : error.message;
+      setMsg({ err: true, text: t });
+      return;
+    }
+    setPw(''); setPw2(''); setMsg({ err: false, text: 'Password changed. Use the new one next time you sign in.' });
+  }
+
+  return (
+    <>
+      <label style={label}>Signing in</label>
+      <p style={{ fontSize: 13, margin: 0, color: '#999' }}>
+        Last signed in {fmtWhen(user.last_sign_in_at)} · account created {fmtDate(user.created_at)}
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        <input style={{ ...input, flex: 1, minWidth: 160 }} type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+          placeholder="New password (8+ characters)" autoComplete="new-password" />
+        <input style={{ ...input, flex: 1, minWidth: 160 }} type="password" value={pw2} onChange={(e) => setPw2(e.target.value)}
+          placeholder="Type it again" autoComplete="new-password" />
+        <button onClick={change} disabled={busy || pw.length < 8 || !pw2}>{busy ? 'Saving…' : 'Change password'}</button>
+      </div>
+      {msg && <p style={{ ...help, color: msg.err ? '#c00' : '#060' }}>{msg.text}</p>}
+      <p style={help}>To change your sign-in email, ask SwimZone. Forgotten your password? Sign out and use "Forgot password?" on the sign-in page.</p>
+    </>
   );
 }
 

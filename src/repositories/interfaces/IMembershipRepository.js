@@ -24,6 +24,10 @@ export class IMembershipRepository {
     throw new Error('IMembershipRepository.getAccountStatus not implemented');
   }
   /** Add my own date of birth, once (private: only me and a guardian can read it). */
+  /** My own date of birth → 'YYYY-MM-DD' or null (user_birthdates; RLS: me or my guardian). */
+  async getMyDateOfBirth() {
+    throw new Error('IMembershipRepository.getMyDateOfBirth not implemented');
+  }
   async setMyDateOfBirth(_date) {
     throw new Error('IMembershipRepository.setMyDateOfBirth not implemented');
   }

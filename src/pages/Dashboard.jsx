@@ -43,7 +43,7 @@ export default function Dashboard() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
         <h2 style={{ margin: 0 }}>SwimZone</h2>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => navigate('/account')}>Account</button>
+          <button onClick={() => navigate('/account')}>My account</button>
           <button onClick={handleSignOut}>Sign Out</button>
         </div>
       </div>

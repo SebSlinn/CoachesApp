@@ -49,6 +49,13 @@ export class SupabaseMembershipRepository extends IMembershipRepository {
     return { data, error };
   }
 
+  async getMyDateOfBirth() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: null };
+    const { data, error } = await supabase.from('user_birthdates').select('date_of_birth').eq('user_id', user.id).maybeSingle();
+    return { data: data?.date_of_birth ?? null, error };
+  }
+
   async setMyDateOfBirth(date) {
     const { data, error } = await supabase.rpc('set_my_date_of_birth', { p_date_of_birth: date });
     return { data, error };

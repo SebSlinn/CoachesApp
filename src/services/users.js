@@ -33,6 +33,9 @@ export const updateProfile = async (userId, changes) => {
 // About me: { has_date_of_birth, is_junior, is_adult, juniors_missing_date_of_birth }
 export const getAccountStatus = async () => getMembershipRepository().getAccountStatus()
 
+// My own date of birth → 'YYYY-MM-DD' or null. Only I and a guardian can read it.
+export const getMyDateOfBirth = async () => getMembershipRepository().getMyDateOfBirth()
+
 // My date of birth, once ('YYYY-MM-DD'). Private: only I and a guardian can read it;
 // coaches see my age. Optional for adults — needed to be a guardian.
 export const setMyDateOfBirth = async (pDate) => {

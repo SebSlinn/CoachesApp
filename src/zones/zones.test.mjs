@@ -5,7 +5,7 @@ import {
   TYPES, TYPE_CODES, ALL_TYPE_CODES, PRESCRIBABLE_CODES, ENERGY_MODEL_CODES, GROUPS, typesInGroup, hrTargetRange, formatHrBand,
 } from './types.js';
 import {
-  BUILT_IN_SCHEMES, resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, UNKNOWN_COLOR, withAlpha,
+  BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, UNKNOWN_COLOR, withAlpha,
 } from './schemes.js';
 import { evaluateZoneMatch, ACTIVE_CRITERIA } from './zoneCriteria.js';
 import { ZONES, ZONE_COLORS, ZONE_WRITEUPS, ZONE_GROUPS } from './constants.js';
@@ -60,18 +60,24 @@ test('TYPES is frozen (codes are permanent)', () => {
 });
 
 console.log('schemes');
-test('default scheme = exactly the colours SwimZone has always shown', () => {
+test('default scheme is Urbanchek (2026-10-26)', () => {
+  assert.equal(DEFAULT_SCHEME_ID, 'urbanchek');
+  assert.equal(zoneColor('AT'), '#1E88E5');
+  assert.equal(resolveZoneStyle('AT').name, 'AT / Blue');
+  assert.equal(Object.keys(BUILT_IN_SCHEMES)[0], 'urbanchek', 'listed first in the picker');
+});
+test('SwimZone classic (sweetenham) = exactly the colours SwimZone showed before', () => {
   // old ZONE_COLORS / sbZoneColor / Classifier zoneColors (CS teal) + PL banner colour
   const mOld = { HVO: '#FF2D55', LT: '#FF5500', LP: '#FF9500', AT: '#FFCC00', A3: '#34C759', A2: '#30B0C7', A1: '#007AFF',
                  CS: '#30B0C7', PL: '#CC2200' };
-  for (const [c, col] of Object.entries(mOld)) assert.equal(zoneColor(c), col, c);
+  for (const [c, col] of Object.entries(mOld)) assert.equal(zoneColor(c, 'sweetenham'), col, c);
   // old ZONE_GROUPS header colours
-  assert.deepEqual([1, 2, 3, 4, 5].map(z => groupColor(z)), ['#30B0C7', '#FFCC00', '#FF9500', '#FF5500', '#FF2D55']);
+  assert.deepEqual([1, 2, 3, 4, 5].map(z => groupColor(z, 'sweetenham')), ['#30B0C7', '#FFCC00', '#FF9500', '#FF5500', '#FF2D55']);
   // old ZONES text colours and names
-  assert.equal(resolveZoneStyle('AT').text, '#1a1a2e');
-  for (const c of ['HVO', 'LT', 'LP', 'A3', 'A2', 'A1']) assert.equal(resolveZoneStyle(c).text, '#fff', c);
-  assert.equal(resolveZoneStyle('AT').name, 'AT / Anaerobic Threshold');
-  assert.equal(resolveZoneStyle('HVO').name, 'HVO / ATP-CP');
+  assert.equal(resolveZoneStyle('AT', 'sweetenham').text, '#1a1a2e');
+  for (const c of ['HVO', 'LT', 'LP', 'A3', 'A2', 'A1']) assert.equal(resolveZoneStyle(c, 'sweetenham').text, '#fff', c);
+  assert.equal(resolveZoneStyle('AT', 'sweetenham').name, 'AT / Anaerobic Threshold');
+  assert.equal(resolveZoneStyle('HVO', 'sweetenham').name, 'HVO / ATP-CP');
   assert.equal(withAlpha('#30B0C7', 0.12), 'rgba(48,176,199,0.12)');
 });
 test('Zone 3 types share one colour in every built-in scheme', () => {
@@ -116,7 +122,7 @@ test('copyScheme is an editable deep copy; sanitiseScheme drops junk', () => {
   const s = sanitiseScheme({ id: 'mine', types: { AT: { color: 'red', label: 'Thresh' }, ZZ: { color: '#000000' } }, groups: { 9: { color: '#000000' } } });
   assert.deepEqual(s.types, { AT: { label: 'Thresh' } });
   assert.deepEqual(s.groups, {});
-  assert.equal(sanitiseScheme(null).id, 'sweetenham');
+  assert.equal(sanitiseScheme(null).id, DEFAULT_SCHEME_ID);
 });
 
 console.log('back-compat');

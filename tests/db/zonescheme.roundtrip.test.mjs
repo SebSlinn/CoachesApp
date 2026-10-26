@@ -45,20 +45,20 @@ const settle = () => new Promise((r) => setTimeout(r, 50));   // save() sends in
 
 console.log('\nChoose on one device, see it on another');
 useDevice('one'); signIn(U.al);
-saveZoneScheme('urbanchek'); await settle();
-ok('saved to the account', (await account('al'))?.id === 'urbanchek', await account('al'));
+saveZoneScheme('sweetenham'); await settle();
+ok('saved to the account', (await account('al'))?.id === 'sweetenham', await account('al'));
 useDevice('two');
-ok('another device starts on the default', loadZoneScheme().data.id === 'sweetenham');
+ok('another device starts on the default (Urbanchek)', loadZoneScheme().data.id === 'urbanchek');
 let r = await syncZoneScheme();
-ok('sign in there → the account\'s colours arrive', r.changed && r.data.id === 'urbanchek', r);
-ok('…and stay on that device', loadZoneScheme().data.id === 'urbanchek');
+ok('sign in there → the account\'s colours arrive', r.changed && r.data.id === 'sweetenham', r);
+ok('…and stay on that device', loadZoneScheme().data.id === 'sweetenham');
 r = await syncZoneScheme();
 ok('nothing to change next time', r.changed === false);
 saveZoneScheme(null); await settle();
 ok('back to the default is saved too', (await account('al')) == null);
 useDevice('one');
 r = await syncZoneScheme();
-ok('…and reaches the first device', r.changed && r.data.id === 'sweetenham');
+ok('…and reaches the first device', r.changed && r.data.id === 'urbanchek');
 
 console.log('\nA choice made before this change is kept');
 useDevice('shared'); signIn(null);
@@ -70,7 +70,7 @@ ok('empty account takes this device\'s choice', r.changed === false && (await ac
 console.log('\nA shared device');
 signIn(U.other);
 r = await syncZoneScheme();
-ok('someone else signs in: they don\'t get the last person\'s colours', r.changed && r.data.id === 'sweetenham', r);
+ok('someone else signs in: they don\'t get the last person\'s colours', r.changed && r.data.id === 'urbanchek', r);
 ok('…and their account isn\'t given them', (await account('other')) === undefined);
 signIn(U.newcoach);
 r = await syncZoneScheme();
