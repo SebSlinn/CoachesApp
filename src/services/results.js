@@ -299,7 +299,7 @@ export const ingestPoolsideSetResult = async (pEnvelope, pOpts = {}) => {
     conditions: pEnvelope.conditions || {},
     reps: pEnvelope.reps,
     hrStream: pEnvelope.hrStream || null,
-    source: 'stopwatch',
+    source: pEnvelope.source === 'manual' ? 'manual' : 'stopwatch',   // typed in on /poolside/entry.html
   })
   if (r.error) return r
   return { data: { ...r.data, athleteId: mAthleteId, athleteName: pEnvelope.athleteName || '', missing: pEnvelope.missing || [] }, error: null }

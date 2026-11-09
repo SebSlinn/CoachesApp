@@ -31,6 +31,11 @@ run2.eachRow((row) => { if (row.getCell(1).value === 'Rep') row.eachCell((c) => 
 ok('run sheet shows only the columns it has (HR yes, lactate no)', header.includes('HR peak') && !header.some((h) => /Lactate/.test(h)), header);
 const data = wb.getWorksheet('Data');
 ok('data table: one row per rep per run', data.getTable('TestReps') && data.rowCount === 1 + 20 + 20 + 24, data.rowCount);
+const repsAvgN = []; reps.eachRow((row) => { if (String(row.getCell(2).value || '').startsWith('Average, reps')) repsAvgN.push(row.getCell(2).value); });
+ok('runs of different lengths (20, 20, 25 reps): an average over the reps all of them did', repsAvgN.join() === 'Average, reps 1–20', repsAvgN);
+const same = await buildTestWorkbook(meta, views.slice(0, 2), { ExcelJS });
+const sameN = []; same.getWorksheet('Reps compared').eachRow((row) => { if (String(row.getCell(2).value || '').startsWith('Average, reps')) sameN.push(1); });
+ok('…not when every run did the same number', sameN.length === 0);
 const buf = await wb.xlsx.writeBuffer();
 ok('writes a non-empty .xlsx', buf.byteLength > 10000, buf.byteLength);
 if (process.argv[2]) { await wb.xlsx.writeFile(process.argv[2]); console.log('  wrote ' + process.argv[2]); }

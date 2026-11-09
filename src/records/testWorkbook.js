@@ -204,7 +204,28 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
       ['Slowest', 'MAX', TIME_FMT, (ts) => Math.max(...ts)],
       ['Spread (s)', 'SPREAD', SEC_FMT, (ts) => Math.max(...ts) - Math.min(...ts)],
     ];
+    // Runs of different lengths (6×1000 one week, 4 the next): also an average over the
+    // reps every run did, 1–N, so the comparison is like for like (2026-11-09).
+    const swumN = runs.map((rv, i) => { let n = 0; cmp.reps.forEach((x, k) => { if (x.times[i] != null) n = k + 1; }); return n; });
+    const commonN = Math.min(...swumN);
+    if (nRuns > 1 && commonN > 0 && swumN.some((n) => n !== commonN)) {
+      stats.splice(1, 0, [`Average, reps 1–${commonN}`, 'AVG_N', TIME_FMT, null]);
+    }
     stats.forEach(([label, fn, fmt, calc], si) => {
+      if (fn === 'AVG_N') {
+        ws.getCell(r, 2).value = label;
+        style(ws.getCell(r, 2), { bold: true });
+        runs.forEach((rv, i) => {
+          const col = colL(3 + i), rng = `${col}${first}:${col}${first + commonN - 1}`;
+          const ts = cmp.reps.slice(0, commonN).map((x) => x.times[i]).filter((x) => x != null);
+          const c = ws.getCell(r, 3 + i);
+          if (!ts.length) { c.value = null; return; }
+          c.value = { formula: `AVERAGE(${rng})`, result: ts.reduce((a, b) => a + b, 0) / ts.length / DAY };
+          style(c, { bold: true, align: 'right', fmt });
+        });
+        r++;
+        return;
+      }
       ws.getCell(r, 2).value = label;
       style(ws.getCell(r, 2), { bold: true, border: si === 0 });
       runs.forEach((rv, i) => {
@@ -222,10 +243,11 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
     });
     r++;
     ws.mergeCells(r, 1, r, Math.max(4, 2 + nRuns));
-    ws.getCell(r, 1).value = 'Green is the fastest run for that rep. Reps beyond a shorter level are left blank; "not timed" means the rep was in the set but has no time.';
+    ws.getCell(r, 1).value = 'Green is the fastest run for that rep. Reps beyond a shorter level or a shorter run are left blank; "not timed" means the rep was in the set but has no time.' +
+      (stats.some((x) => x[1] === 'AVG_N') ? ` The runs did different numbers of reps, so "Average, reps 1–${commonN}" compares the reps they all did.` : '');
     style(ws.getCell(r, 1), { color: MUTED, italic: true, wrap: true });
-    ws.getRow(r).height = 28;
-    ws.getColumn(1).width = 6; ws.getColumn(2).width = 14;
+    ws.getRow(r).height = stats.some((x) => x[1] === 'AVG_N') ? 42 : 28;
+    ws.getColumn(1).width = 6; ws.getColumn(2).width = stats.some((x) => x[1] === 'AVG_N') ? 18 : 14;
     for (let i = 0; i < nRuns; i++) ws.getColumn(3 + i).width = 18;
     ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9, printTitlesRow: `${head}:${head}` };
   }

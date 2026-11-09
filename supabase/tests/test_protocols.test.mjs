@@ -20,6 +20,8 @@ const AR_MIGRATION = 'supabase/migrations/20260927120000_athlete_records.sql';
 const DD_MIGRATION = 'supabase/migrations/20260928120000_drop_import_dedup.sql';
 const TP_MIGRATION = process.argv[2] || 'supabase/migrations/20260929120000_test_protocols.sql';
 const RT_MIGRATION = 'supabase/migrations/20261026120000_test_library_tidy.sql';
+const K4_MIGRATION = 'supabase/migrations/20261109120000_add_4x1000.sql';
+const K6_MIGRATION = 'supabase/migrations/20261109130000_1000s_six_reps.sql';
 
 let pass = 0, fail = 0;
 function ok(name, cond, extra) {
@@ -207,6 +209,16 @@ async function run() {
   ok('ANC: 2 sets of 10×50 on 1:00, stroke chosen per run', anc.set_json.blocks[0].repeats === 2 && anc.set_json.blocks[0].lines[0].qty === 10 && anc.params.stroke.kind === 'stroke' && anc.analyser === 'blocks');
   const anp = lib.find((p) => p.key === 'anp-100s');
   ok('ANP: 5×100 max on long rest, No1 stroke', anp.set_json.blocks[0].lines[0].qty === 5 && anp.params.rest.default === 180 && anp.set_json.blocks[0].lines[0].strokeParam === 'stroke');
+  console.log('\n4×1000 on 12:30 (20261109120000)');
+  for (const k of [1, 2]) await db.exec(readFileSync(K4_MIGRATION, 'utf8'));
+  const k4 = (await db.query(`select * from public.test_protocols where owner_org_id is null and key = 'end-4x1000'`)).rows;
+  const k4l = k4[0] && k4[0].set_json.blocks[0].lines[0];
+  ok('4×1000 FS on 12:30, send-off per run, series analyser (applied twice → one row)',
+    k4.length === 1 && k4l.qty === 4 && k4l.distM === 1000 && k4l.interval.onTime === '12:30' && k4[0].params.sendOff.default === '12:30' && k4[0].analyser === 'series' && !k4[0].retired, k4);
+  for (const k of [1, 2]) await db.exec(readFileSync(K6_MIGRATION, 'utf8'));
+  const k6 = (await db.query(`select * from public.test_protocols where owner_org_id is null and key in ('end-4x1000','end-1000s')`)).rows;
+  ok('…then 6×1000 (unused, so changed in place: one row, key end-1000s, applied twice)',
+    k6.length === 1 && k6[0].key === 'end-1000s' && k6[0].id === k4[0].id && k6[0].set_json.blocks[0].lines[0].qty === 6 && k6[0].name === '6×1000 on 12:30', k6);
   const dup = await throws(() => db.query(`insert into public.test_protocols (key,version,name,set_json)
     values ('step-7x200',1,'dup',$1::jsonb)`, [clubSet]));
   ok('duplicate (global, key, version) rejected', dup && /unique|duplicate/i.test(dup), dup);
@@ -220,7 +232,7 @@ async function run() {
   console.log('\nVisibility (RLS)');
   for (const [who, id] of Object.entries(U)) {
     const n = await as(id, async () => (await db.query(`select count(*)::int n from public.test_protocols where owner_org_id is null`)).rows[0].n);
-    ok(`${who} sees the global library (7 seeded + ANP + ANC; retired ones still readable)`, n === 9, `saw ${n}`);
+    ok(`${who} sees the global library (7 seeded + ANP + ANC + 4×1000; retired ones still readable)`, n === 10, `saw ${n}`);
   }
 
   console.log('\nEdit rights (RLS)');

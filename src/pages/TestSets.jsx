@@ -223,7 +223,8 @@ export default function TestSets() {
   // Open Poolside in set mode for one swimmer. The window is opened first,
   // synchronously, so the browser treats it as a direct result of the click
   // (encoding is async and would otherwise trip popup blockers).
-  async function timeInPoolside(pAthleteId) {
+  // pPage: '/poolside/' (time it live) or '/poolside/entry.html' (type in results you already have).
+  async function timeInPoolside(pAthleteId, pPage = '/poolside/') {
     const mWin = window.open('', '_blank');
     try {
       // The swimmer's max HR (saved → Max HR test → 220 − age) and the coach's zone
@@ -233,11 +234,11 @@ export default function TestSets() {
         hr: mHr && mHr.maxHr ? { maxHr: mHr.maxHr, source: mHr.source, estimated: mHr.estimated } : null,
         zoneScheme: zoneScheme.builtIn ? { id: zoneScheme.id } : zoneScheme,
       });
-      const mUrl = '/poolside/#run=' + (await encodeHandoff(mHandoff));
+      const mUrl = pPage + '#run=' + (await encodeHandoff(mHandoff));
       if (mWin) mWin.location.href = mUrl; else window.location.assign(mUrl);
     } catch (e) {
       if (mWin) mWin.close();
-      setImportMsg({ ok: false, text: 'Could not open Poolside: ' + (e.message || e) });
+      setImportMsg({ ok: false, text: 'Could not open ' + (pPage.includes('entry') ? 'results entry' : 'Poolside') + ': ' + (e.message || e) });
     }
   }
 
@@ -251,19 +252,42 @@ export default function TestSets() {
       setImportMsg({ ok: false, text: 'That is a plain Poolside session (single swims) — import it in Athlete Setup. Test files come from a test opened with "Time in Poolside".' });
       return;
     }
+    setImportMsg(await saveSetResult(mEnv));
+  }
+
+  // A swimzone.setresult/1 (Poolside file, or the by-hand page) → saved run.
+  // Returns { ok, text } for the message line. Idempotent by sessionId.
+  async function saveSetResult(mEnv) {
     const { data, error } = await ingestPoolsideSetResult(mEnv, { expectAthleteId: handoff?.id, fallbackAthleteId: handoff?.id });
-    if (error) { setImportMsg({ ok: false, text: error.message || 'Save failed' }); return; }
+    if (error) return { ok: false, text: error.message || 'Save failed' };
     const mWho = data.athleteName || 'the swimmer';
-    setImportMsg({ ok: true, text: data.alreadyPresent
+    const mMsg = { ok: true, text: data.alreadyPresent
       ? (data.startsFilled
         ? `Already saved — added the start times for ${data.startsFilled} rep${data.startsFilled === 1 ? '' : 's'}, so rest for this ${mEnv.protocolName || 'test'} is now measured.`
         : `Already saved — this ${mEnv.protocolName || 'test'} for ${mWho} is on record.`)
       : `Saved ${data.reps} rep${data.reps === 1 ? '' : 's'} of ${mEnv.protocolName || 'the test'} for ${mWho}` +
         (data.missing && data.missing.length ? ` (rep${data.missing.length > 1 ? 's' : ''} ${data.missing.join(', ')} not timed)` : '') +
-        (data.summary ? ` — ${headline(data.summary, protocols.find((p) => p.key === mEnv.protocolKey) || protocol)}` : '') + '.' });
+        (data.summary ? ` — ${headline(data.summary, protocols.find((p) => p.key === mEnv.protocolKey) || protocol)}` : '') + '.' };
     if (mEnv.protocolId && protocols.some((p) => p.id === mEnv.protocolId)) setSelectedId(mEnv.protocolId);
     setRunsTick((n) => n + 1);
+    return mMsg;
   }
+
+  // Results typed in on /poolside/entry.html come back here by postMessage
+  // (same origin only) and save exactly like an imported file; the page is told
+  // what happened. Re-bound when the swimmer/test changes so it saves to them.
+  useEffect(() => {
+    if (!handoff) return undefined;
+    async function onMessage(e) {
+      if (e.origin !== window.location.origin || !e.data || e.data.type !== 'swimzone:setresult') return;
+      const mEnv = e.data.envelope;
+      const mRes = mEnv && mEnv.fmt === 'swimzone.setresult/1' ? await saveSetResult(mEnv) : { ok: false, text: 'Not a SwimZone test result.' };
+      setImportMsg(mRes);
+      try { e.source && e.source.postMessage({ type: 'swimzone:setresult-saved', sessionId: mEnv && mEnv.sessionId, ...mRes }, e.origin); } catch { /* page closed */ }
+    }
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [handoff?.id, protocols, protocol]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const grouped = prescription ? groupRows(prescription) : null;
   const unresolved = grouped && grouped.athletes.some((a) => a.athleteId && a.reps.some((r) => r.target && !r.target.resolved && /^PB/.test(r.target.display)));
@@ -415,14 +439,21 @@ export default function TestSets() {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
                   {prescription && prescription.athletes.length > 0
                     ? prescription.athletes.map((a) => (
-                      <button key={a.athleteId} style={{ ...C.btn, background: 'rgba(48,176,199,0.3)', borderColor: 'rgba(48,176,199,0.8)' }}
-                        onClick={() => timeInPoolside(a.athleteId)}>
-                        ⏱ Time {a.name.replace(' (me)', '')} in Poolside
-                      </button>))
+                      <Fragment key={a.athleteId}>
+                        <button style={{ ...C.btn, background: 'rgba(48,176,199,0.3)', borderColor: 'rgba(48,176,199,0.8)' }}
+                          onClick={() => timeInPoolside(a.athleteId)}>
+                          ⏱ Time {a.name.replace(' (me)', '')} in Poolside
+                        </button>
+                        <button style={C.btn} onClick={() => timeInPoolside(a.athleteId, '/poolside/entry.html')}
+                          title="Already swum? Type in the times and readings you have">
+                          ✎ Enter results by hand
+                        </button>
+                      </Fragment>))
                     : <span style={C.muted}>Load a swimmer in Athlete Setup to time this test in Poolside.</span>}
                 </div>
                 <div style={{ ...C.muted, fontSize: 11, marginTop: 6 }}>
                   Opens Poolside with this exact set. When done, tap Results → SwimZone test, then import that file below.
+                  Already swum it? "Enter results by hand" opens a sheet for the times and readings you have — Save there puts them straight in here.
                 </div>
               </div>
             )}

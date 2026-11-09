@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>Test Results Entry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<!--
+  Test results by hand — the Poolside companion for a test you didn't time in
+  Poolside (a coach's paper sheet, another stopwatch, a meet, numbers from a
+  parent). Opened from SwimZone Test Sets with the same hand-off as Poolside:
+    /poolside/entry.html#run=z.<swimzone.testrun/1>
+  Type whatever you have — times, splits, readings — leave the rest blank, and
+  it produces the same swimzone.setresult/1 Poolside's "SwimZone test" export
+  does (source:"manual"). "Save to SwimZone" hands it straight back to the Test
+  Sets tab that opened this page (postMessage, same origin); the downloaded
+  .swimzone-test.json is the fallback and imports in the usual place.
+  No build step, no network: works offline once opened.
+-->
+<style>
+  :root{
+    --ink:#0a2233; --paper:#eef7f9; --surface:#ffffff; --surface-2:#e3f0f3;
+    --accent:#0b8fa8; --accent-ink:#ffffff; --line:#c9dfe4; --muted:#527080;
+    --good:#0f9d68; --good-bg:#e2f6ec; --warn:#b5730a; --warn-bg:#fdf0dc; --bad:#c23b3b; --bad-bg:#fbe6e6;
+    --shadow:0 1px 2px rgba(10,34,51,.06),0 6px 20px -8px rgba(10,34,51,.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:#e8f4f7; --paper:#071923; --surface:#0e2530; --surface-2:#123140;
+      --accent:#38c6df; --accent-ink:#02222b; --line:#1c3c48; --muted:#8fb1bc;
+      --good:#3fd196; --good-bg:#0e3327; --warn:#f2b654; --warn-bg:#3a2a0c; --bad:#ff8a8a; --bad-bg:#3a1414;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 28px -10px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:#e8f4f7; --paper:#071923; --surface:#0e2530; --surface-2:#123140;
+    --accent:#38c6df; --accent-ink:#02222b; --line:#1c3c48; --muted:#8fb1bc;
+    --good:#3fd196; --good-bg:#0e3327; --warn:#f2b654; --warn-bg:#3a2a0c; --bad:#ff8a8a; --bad-bg:#3a1414;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--paper); color:var(--ink); font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif; }
+  .mono{ font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; }
+  #app{ max-width:960px; margin:0 auto; padding:16px 16px 120px; }
+  h1{ font-size:22px; margin:4px 0 2px; letter-spacing:-.01em; }
+  .sub{ color:var(--muted); font-size:13.5px; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px; margin-top:14px; box-shadow:var(--shadow); }
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  label.f{ display:block; font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  input,select{ font:inherit; color:var(--ink); background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:8px 9px; width:100%; margin-top:4px; }
+  input:focus,select:focus{ outline:2px solid var(--accent); outline-offset:-1px; }
+  input.bad{ border-color:var(--bad); background:var(--bad-bg); }
+  input.warn{ border-color:var(--warn); background:var(--warn-bg); }
+  .row-opts{ display:flex; flex-wrap:wrap; gap:14px; margin-top:12px; font-size:13.5px; align-items:center; }
+  .row-opts label{ display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .row-opts input[type=checkbox]{ width:auto; margin:0; }
+  .tbl-wrap{ overflow-x:auto; margin:0 -14px; padding:0 14px; }
+  table{ border-collapse:collapse; width:100%; font-size:13.5px; }
+  th{ text-align:left; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; padding:6px 5px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  td{ padding:5px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td input{ margin:0; padding:7px 7px; }
+  td.rep{ font-weight:800; white-space:nowrap; padding-top:12px; }
+  td.what{ white-space:nowrap; padding-top:12px; }
+  td.what small, td.tgt small{ display:block; color:var(--muted); font-size:11.5px; }
+  td.tgt{ padding-top:12px; white-space:nowrap; }
+  .hint{ display:block; font-size:11px; margin-top:3px; color:var(--muted); min-height:13px; white-space:nowrap; }
+  .hint.bad{ color:var(--bad); } .hint.warn{ color:var(--warn); } .hint.good{ color:var(--good); }
+  .w-time{ min-width:96px; } .w-num{ min-width:66px; } .w-splits{ min-width:170px; } .w-note{ min-width:140px; }
+  tr.extra td.rep{ color:var(--accent); }
+  button{ font:inherit; font-weight:800; border:none; border-radius:10px; padding:11px 14px; cursor:pointer; }
+  .primary{ background:var(--accent); color:var(--accent-ink); }
+  .ghost{ background:var(--surface-2); color:var(--ink); border:1px solid var(--line); }
+  .linkbtn{ background:none; color:var(--muted); padding:4px; font-weight:600; font-size:12px; }
+  .bar{ position:fixed; left:0; right:0; bottom:0; background:var(--surface); border-top:1px solid var(--line); box-shadow:var(--shadow); }
+  .bar-in{ max-width:960px; margin:0 auto; padding:10px 16px calc(10px + env(safe-area-inset-bottom)); display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .bar-in .count{ flex:1 1 180px; font-size:13px; color:var(--muted); }
+  .msg{ margin-top:12px; padding:10px 12px; border-radius:10px; font-size:13.5px; }
+  .msg.ok{ background:var(--good-bg); color:var(--good); } .msg.err{ background:var(--bad-bg); color:var(--bad); } .msg.info{ background:var(--warn-bg); color:var(--warn); }
+  .empty{ text-align:center; padding:40px 10px; }
+  .empty p{ color:var(--muted); }
+  textarea{ font:inherit; font-size:12px; width:100%; min-height:70px; margin-top:8px; color:var(--ink); background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:8px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function(){
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const STROKE = { FS:'Free', BK:'Back', BR:'Breast', Fly:'Fly', IM:'IM', Kick:'Kick' };
+  const POOL_LEN = { '25SC':25, '50LC':50, '25Y':25 };
+  const METRICS = {          // same keys and ranges as Poolside's readings
+    sc:      { label:'SC', title:'Stroke count (whole rep)', step:'1', min:1, max:400 },
+    sr:      { label:'SR', title:'Stroke rate (cycles/min)', step:'1', min:10, max:90 },
+    hr:      { label:'HR', title:'Heart rate (bpm)', step:'1', min:40, max:240 },
+    rpe:     { label:'RPE', title:'RPE (6–20)', step:'1', min:6, max:20 },
+    lactate: { label:'La', title:'Lactate (mmol/L)', step:'0.1', min:0, max:30 },
+  };
+  const METRIC_KEYS = Object.keys(METRICS);
+  const todayISO = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+
+  // ---- times -------------------------------------------------------------
+  // Accepts 1:12.34 · 72.34 · 1.12.34 · 1:12 · 1,12,34 (commas as dots).
+  function parseTime(s){
+    s = String(s || '').trim().replace(/,/g, '.');
+    if (!s) return null;
+    let m;
+    if ((m = s.match(/^(\d{1,3})[:.](\d{1,2})[.:](\d{1,2})$/))) return +m[1]*60 + +m[2] + +(m[3].padEnd(2,'0'))/100;
+    if ((m = s.match(/^(\d{1,3}):(\d{1,2}(?:\.\d{1,3})?)$/))) return +m[1]*60 + parseFloat(m[2]);
+    if ((m = s.match(/^\d{1,4}(?:\.\d{1,3})?$/))) return parseFloat(s);
+    return NaN;
+  }
+  function fmtTime(sec){
+    if (sec == null || !isFinite(sec)) return '';
+    const cs = Math.round(sec*100), m = Math.floor(cs/6000), r = cs - m*6000;
+    const ss = (r/100).toFixed(2).padStart(5,'0');
+    return m ? m + ':' + ss : (r/100).toFixed(2);
+  }
+  const round2 = (x) => Math.round(x*100)/100;
+  // Too fast for a human (100 m under 20 s) or absurdly slow → flag, don't block.
+  function timeCheck(sec, distM){
+    if (sec == null) return null;
+    if (!isFinite(sec) || sec <= 0) return { level:'bad', text:'not a time' };
+    const perM = sec / (distM || 100);
+    if (perM < 0.2) return { level:'bad', text:'too fast for ' + distM + 'm?' };
+    if (perM > 4) return { level:'warn', text:'very slow — check' };
+    return { level:'good', text:fmtTime(sec) };
+  }
+
+  // ---- hand-off (same format as decodeHandoff in src/session/protocolFormat.js)
+  function b64urlBytes(str){
+    const b = atob(str.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((str.length + 3) % 4));
+    const out = new Uint8Array(b.length); for (let i=0;i<b.length;i++) out[i] = b.charCodeAt(i); return out;
+  }
+  async function decodeRun(str){
+    const kind = str.slice(0,2); let bytes = b64urlBytes(str.slice(2));
+    if (kind === 'z.'){
+      const buf = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      bytes = new Uint8Array(buf);
+    } else if (kind !== 'j.') throw new Error('not a SwimZone test link');
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  // ---- state ---------------------------------------------------------------
+  let run = null, st = null, storeKey = null;
+  function freshState(){
+    return {
+      date: todayISO(), location: run.location || '', poolType: (run.set && run.set.poolType) || '25SC',
+      sessionRpe: '', startClock: '', onSendOff: false, showAll: false,
+      entries: {},     // repNo → { time, splits, note, sc, sr, hr, rpe, lactate }
+      extras: 0,
+    };
+  }
+  function save(){ try { localStorage.setItem(storeKey, JSON.stringify(st)); } catch(e){} }
+  function load(){ try { const s = JSON.parse(localStorage.getItem(storeKey) || 'null'); if (s && s.entries) return s; } catch(e){} return null; }
+
+  const n = () => run.reps.length;
+  const maxReps = () => Math.max(60, 2 * n());
+  // Prescribed reps plus any extras. An extra is swum like the last prescribed
+  // rep (same line), numbered on — the same rule Poolside follows.
+  function allReps(){
+    const last = run.reps[n()-1];
+    const out = run.reps.map(r => ({ ...r, extra:false }));
+    for (let i = 1; i <= st.extras; i++) out.push({ ...last, repNo: last.repNo + i, extra: true, note: '' });
+    return out;
+  }
+  // Columns: the readings this test asks for, or all of them.
+  function metricCols(){
+    if (st.showAll) return METRIC_KEYS;
+    const asked = new Set(); run.reps.forEach(r => (r.measures || []).forEach(m => asked.add(m)));
+    return METRIC_KEYS.filter(k => asked.has(k));
+  }
+  function wantsSplits(){ return st.showAll || run.reps.some(r => (r.measures || []).includes('splits')); }
+  const entry = (repNo) => (st.entries[repNo] = st.entries[repNo] || {});
+
+  // Splits typed as the times at each checkpoint before the finish, e.g. for a
+  // 200: "31.2, 1:05.0, 1:39.8". Spaced evenly over the rep; each must land on
+  // a pool length. Cumulative, like Poolside's.
+  function parseSplits(text, distM, finalSec){
+    const parts = String(text || '').split(/\s*[,;/|]\s*|\s+/).map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return { splits: [] };
+    const secs = parts.map(parseTime);
+    if (secs.some(x => x == null || !isFinite(x) || x <= 0)) return { error:'use times like 31.2, 1:05.0' };
+    if (finalSec != null && Math.abs(secs[secs.length-1] - finalSec) < 0.005) secs.pop();   // they typed the finish too
+    for (let i = 1; i < secs.length; i++) if (secs[i] <= secs[i-1]) return { error:'each split must be later than the last' };
+    if (finalSec != null && secs.length && secs[secs.length-1] >= finalSec) return { error:'splits must be before the finish' };
+    if (!secs.length) return { splits: [] };
+    const step = distM / (secs.length + 1), pl = POOL_LEN[st.poolType] || 25;
+    if (!Number.isInteger(step) || step % pl) return { error: secs.length + ' split' + (secs.length>1?'s':'') + " don't divide " + distM + 'm' };
+    return { splits: secs.map((s, i) => ({ dist: step*(i+1), sec: round2(s) })), step };
+  }
+
+  function sendOffSec(rep){
+    const iv = rep.interval; if (!iv) return null;
+    if (iv.type === 'fixed' && iv.onTime) { const s = parseTime(iv.onTime); return isFinite(s) ? { kind:'fixed', sec:s } : null; }
+    if (iv.type === 'rest' && iv.restSec != null) return { kind:'rest', sec:Number(iv.restSec) };
+    return null;
+  }
+  const anySendOff = () => run.reps.some(r => sendOffSec(r));
+
+  // Start of each rep, only when the coach says they went on the send-off and
+  // gave the first start. Stops at the first rep it can't place.
+  function startTimes(reps){
+    const out = {};
+    if (!st.onSendOff || !st.startClock || !/^\d{1,2}:\d{2}$/.test(st.startClock)) return out;
+    const [h, mi] = st.startClock.split(':').map(Number);
+    const d = new Date(st.date + 'T00:00:00'); d.setHours(h, mi, 0, 0);
+    let t = d.getTime();
+    for (let i = 0; i < reps.length; i++){
+      const r = reps[i]; out[r.repNo] = new Date(t).toISOString();
+      const so = sendOffSec(r); if (!so) break;
+      if (so.kind === 'fixed') t += so.sec * 1000;
+      else { const tm = parseTime(entry(r.repNo).time); if (tm == null || !isFinite(tm)) break; t += (tm + so.sec) * 1000; }
+    }
+    return out;
+  }
+
+  // ---- the result file (swimzone.setresult/1, as Poolside writes it) -------
+  function buildResult(){
+    const reps = allReps(), starts = startTimes(reps), outReps = [], missing = [], problems = [], readingsOnly = [];
+    reps.forEach(r => {
+      const e = st.entries[r.repNo] || {};
+      const t = parseTime(e.time);
+      const metrics = {};
+      METRIC_KEYS.forEach(k => { const v = e[k]; if (v !== '' && v != null && isFinite(+v)) metrics[k] = +v; });
+      const hasReading = Object.keys(metrics).length || (e.note || '').trim() || (e.splits || '').trim();
+      if (t == null){ if (!r.extra) missing.push(r.repNo); if (hasReading) readingsOnly.push(r.repNo); return; }
+      if (!isFinite(t) || t <= 0){ problems.push('rep ' + r.repNo + ': time'); return; }
+      const sp = parseSplits(e.splits, r.distM, t);
+      if (sp.error){ problems.push('rep ' + r.repNo + ': splits — ' + sp.error); return; }
+      outReps.push({
+        repNo: r.repNo, distM: r.distM, stroke: r.stroke, timeSec: round2(t),
+        ...(starts[r.repNo] ? { startedAt: starts[r.repNo] } : {}),
+        targetTime: r.targetTime || null, pbAtSwim: r.pbAtSwim ?? null,
+        splits: sp.splits, metrics, note: (e.note || '').trim(),
+        ...(r.extra ? { extra: true, blockIdx: r.blockIdx, lineIdx: r.lineIdx, blockRepeat: r.blockRepeat } : {}),
+      });
+    });
+    const cond = { poolType: st.poolType, location: st.location.trim(), entry: 'manual' };
+    if (st.sessionRpe !== '' && isFinite(+st.sessionRpe)) cond.rpe = +st.sessionRpe;
+    const result = {
+      fmt: 'swimzone.setresult/1', source: 'manual', sessionId: run.sessionId,
+      athleteId: (run.athlete && run.athlete.id) || null, athleteName: (run.athlete && run.athlete.name) || '',
+      swumOn: st.date || todayISO(),
+      protocolId: run.protocol.id, protocolKey: run.protocol.key, protocolVersion: run.protocol.version, protocolName: run.protocol.name,
+      set: run.set ? { ...run.set, poolType: st.poolType } : run.set, params: run.params,
+      conditions: cond, reps: outReps, missing, extraReps: outReps.filter(r => r.extra).length,
+    };
+    return { result, problems, readingsOnly };
+  }
+
+  // ---- rendering -----------------------------------------------------------
+  function renderEmpty(title, text){
+    $('app').innerHTML = '<div class="card empty"><h1>' + esc(title) + '</h1><p>' + text + '</p></div>';
+  }
+
+  function render(){
+    const reps = allReps(), cols = metricCols(), splits = wantsSplits();
+    const a = run.athlete || {};
+    const paramBits = Object.entries(run.params || {}).map(([k,v]) => k + ' ' + (typeof v === 'object' ? JSON.stringify(v) : v));
+    const head = '<tr><th>Rep</th><th>Swim</th><th>Target</th><th>Time</th>' +
+      (splits ? '<th title="Times at each checkpoint before the finish, e.g. 31.2, 1:05.0">Splits</th>' : '') +
+      cols.map(k => '<th title="' + esc(METRICS[k].title) + '">' + METRICS[k].label + '</th>').join('') +
+      '<th>Note</th><th></th></tr>';
+    const rows = reps.map((r, i) => {
+      const e = st.entries[r.repNo] || {};
+      const so = sendOffSec(r);
+      return '<tr class="' + (r.extra ? 'extra' : '') + '" data-rep="' + r.repNo + '">' +
+        '<td class="rep">' + r.repNo + '</td>' +
+        '<td class="what">' + r.distM + ' ' + esc(STROKE[r.stroke] || r.stroke) +
+          '<small>' + esc([r.extra ? 'extra' : '', r.intensity, so ? (so.kind === 'fixed' ? 'on ' + r.interval.onTime : so.sec + 's rest') : '', r.note].filter(Boolean).join(' · ')) + '</small></td>' +
+        '<td class="tgt mono">' + esc(r.targetLabel || r.targetTime || '—') + (r.pbAtSwim ? '<small>PB ' + esc(fmtTime(r.pbAtSwim)) + '</small>' : '') + '</td>' +
+        '<td class="w-time"><input class="mono" data-k="time" inputmode="decimal" autocomplete="off" placeholder="1:12.34" value="' + esc(e.time || '') + '"><span class="hint" data-h="time"></span></td>' +
+        (splits ? '<td class="w-splits"><input class="mono" data-k="splits" autocomplete="off" placeholder="34.1, 1:10.2" value="' + esc(e.splits || '') + '"><span class="hint" data-h="splits"></span></td>' : '') +
+        cols.map(k => '<td class="w-num"><input class="mono" data-k="' + k + '" type="number" inputmode="decimal" step="' + METRICS[k].step + '" value="' + esc(e[k] ?? '') + '"><span class="hint" data-h="' + k + '"></span></td>').join('') +
+        '<td class="w-note"><input data-k="note" autocomplete="off" value="' + esc(e.note || '') + '"></td>' +
+        '<td>' + (r.extra && i === reps.length - 1 ? '<button class="linkbtn" data-act="drop" title="Remove this extra rep">✕</button>' : '') + '</td>' +
+      '</tr>';
+    }).join('');
+
+    $('app').innerHTML =
+      '<div class="sub">SwimZone · test results by hand</div>' +
+      '<h1>' + esc(run.protocol.name) + '</h1>' +
+      '<div class="sub">' + esc([a.name, paramBits.join(' · '), n() + ' reps'].filter(Boolean).join(' · ')) + '</div>' +
+
+      '<div class="card"><div class="grid">' +
+        '<div><label class="f" for="fDate">Date swum</label><input id="fDate" type="date" value="' + esc(st.date) + '" max="' + todayISO() + '"></div>' +
+        '<div><label class="f" for="fPool">Pool</label><select id="fPool">' +
+          [['25SC','25 m'],['50LC','50 m'],['25Y','25 yd']].map(([v,l]) => '<option value="' + v + '"' + (st.poolType === v ? ' selected' : '') + '>' + l + '</option>').join('') + '</select></div>' +
+        '<div><label class="f" for="fLoc">Location</label><input id="fLoc" value="' + esc(st.location) + '" placeholder="optional"></div>' +
+        '<div><label class="f" for="fRpe">Session RPE</label><input id="fRpe" type="number" inputmode="numeric" min="6" max="20" step="1" value="' + esc(st.sessionRpe) + '" placeholder="6–20, optional"></div>' +
+      '</div>' +
+      '<div class="row-opts">' +
+        '<label><input type="checkbox" id="fAll"' + (st.showAll ? ' checked' : '') + '> Show every field (splits, SC, SR, HR, RPE, lactate)</label>' +
+        (anySendOff() ? '<label><input type="checkbox" id="fSendOff"' + (st.onSendOff ? ' checked' : '') + '> Reps left on the send-off — first rep started at</label>' +
+          '<input id="fStart" type="time" style="width:auto;margin:0" value="' + esc(st.startClock) + '"' + (st.onSendOff ? '' : ' disabled') + '>' : '') +
+      '</div>' +
+      (anySendOff() ? '<div class="sub" style="font-size:12px;margin-top:6px">Tick that only if they really went on the clock — it fills in start times, so SwimZone can work out rest.</div>' : '') +
+      '</div>' +
+
+      '<div class="card"><div class="sub" style="margin-bottom:8px">Fill in what you have. Blank times are saved as "not timed". Times as <span class="mono">1:12.34</span>, <span class="mono">72.34</span> or <span class="mono">1.12.34</span>.</div>' +
+        '<div class="tbl-wrap"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">' +
+          (reps.length < maxReps() ? '<button class="ghost" data-act="extra">+ Extra rep</button>' : '') +
+          '<button class="linkbtn" data-act="clear">Clear everything</button>' +
+        '</div>' +
+        '<div id="msg"></div>' +
+      '</div>' +
+
+      '<div class="bar"><div class="bar-in">' +
+        '<div class="count" id="count"></div>' +
+        '<button class="ghost" data-act="download">Download file</button>' +
+        '<button class="primary" data-act="send" id="sendBtn">Save to SwimZone</button>' +
+      '</div></div>';
+
+    wire();
+    reps.forEach(r => refreshRow(r.repNo));
+    refreshCount();
+  }
+
+  function rowEl(repNo){ return document.querySelector('tr[data-rep="' + repNo + '"]'); }
+  function setHint(tr, k, h){
+    const sp = tr.querySelector('[data-h="' + k + '"]'), inp = tr.querySelector('[data-k="' + k + '"]');
+    if (sp){ sp.className = 'hint' + (h ? ' ' + h.level : ''); sp.textContent = h ? h.text : ''; }
+    if (inp){ inp.classList.toggle('bad', !!h && h.level === 'bad'); inp.classList.toggle('warn', !!h && h.level === 'warn'); }
+  }
+  function refreshRow(repNo){
+    const tr = rowEl(repNo); if (!tr) return;
+    const r = allReps().find(x => x.repNo === repNo), e = st.entries[repNo] || {};
+    const t = parseTime(e.time);
+    const tc = timeCheck(t, r.distM);
+    if (tc && tc.level === 'good'){
+      const tg = parseTime(r.targetTime);
+      if (tg && isFinite(tg)) tc.text = fmtTime(t) + '  ' + (t - tg >= 0 ? '+' : '−') + Math.abs(t - tg).toFixed(2);
+    }
+    setHint(tr, 'time', tc);
+    if (tr.querySelector('[data-k="splits"]')){
+      const sp = parseSplits(e.splits, r.distM, isFinite(t) ? t : null);
+      setHint(tr, 'splits', sp.error ? { level:'bad', text:sp.error } : (sp.splits.length ? { level:'good', text:'every ' + sp.step + 'm' } : null));
+    }
+    METRIC_KEYS.forEach(k => {
+      if (!tr.querySelector('[data-k="' + k + '"]')) return;
+      const v = e[k];
+      if (v === '' || v == null) return setHint(tr, k, null);
+      const x = +v, M = METRICS[k];
+      setHint(tr, k, !isFinite(x) ? { level:'bad', text:'number' } : (x < M.min || x > M.max) ? { level:'warn', text:M.min + '–' + M.max + '?' } : null);
+    });
+  }
+  function refreshCount(){
+    const { result, problems, readingsOnly } = buildResult();
+    const done = result.reps.filter(r => !r.extra).length;
+    let txt = done + ' of ' + n() + ' timed' + (result.extraReps ? ' + ' + result.extraReps + ' extra' : '');
+    if (problems.length) txt += ' · fix: ' + problems.join('; ');
+    else if (readingsOnly.length) txt += ' · rep' + (readingsOnly.length>1?'s ':' ') + readingsOnly.join(', ') + (readingsOnly.length>1 ? ' need' : ' needs') + ' a time to be saved';
+    $('count').textContent = txt;
+    const ok = result.reps.length > 0 && !problems.length;
+    $('sendBtn').disabled = !ok; $('sendBtn').style.opacity = ok ? 1 : .5;
+    document.querySelector('[data-act="download"]').disabled = !ok;
+  }
+  function showMsg(kind, text){ const m = $('msg'); if (m) m.innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + '</div>' : ''; if (text) m.scrollIntoView({ block:'nearest', behavior:'smooth' }); }
+
+  function wire(){
+    const bind = (id, key, after) => { const el = $(id); if (!el) return; el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', () => {
+      st[key] = el.type === 'checkbox' ? el.checked : el.value; save(); if (after) after(); else { allReps().forEach(r => refreshRow(r.repNo)); refreshCount(); } }); };
+    bind('fDate', 'date'); bind('fLoc', 'location'); bind('fRpe', 'sessionRpe'); bind('fStart', 'startClock');
+    bind('fPool', 'poolType'); bind('fAll', 'showAll', render); bind('fSendOff', 'onSendOff', render);
+
+    document.querySelector('tbody').addEventListener('input', (ev) => {
+      const k = ev.target.dataset.k; if (!k) return;
+      const repNo = +ev.target.closest('tr').dataset.rep;
+      entry(repNo)[k] = ev.target.value; save(); refreshRow(repNo); refreshCount(); showMsg('', '');
+    });
+    // Enter moves down the same column — quick for a sheet of times.
+    document.querySelector('tbody').addEventListener('keydown', (ev) => {
+      if (ev.key !== 'Enter' || !ev.target.dataset.k) return;
+      ev.preventDefault();
+      const next = ev.target.closest('tr').nextElementSibling;
+      const inp = next && next.querySelector('[data-k="' + ev.target.dataset.k + '"]');
+      if (inp) inp.focus(); else ev.target.blur();
+    });
+    document.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act)));
+  }
+
+  function act(what){
+    if (what === 'extra'){ st.extras++; save(); render(); const l = allReps().pop(); const i = rowEl(l.repNo).querySelector('[data-k="time"]'); i && i.focus(); return; }
+    if (what === 'drop'){ const l = allReps().pop(); delete st.entries[l.repNo]; st.extras = Math.max(0, st.extras - 1); save(); render(); return; }
+    if (what === 'clear'){ if (!window.confirm('Clear every time and reading on this page?')) return; st = freshState(); save(); render(); return; }
+    const { result, problems } = buildResult();
+    if (problems.length || !result.reps.length) return;
+    if (what === 'download') return download(result);
+    if (what === 'send') return sendToSwimZone(result);
+  }
+
+  function download(result){
+    const stamp = result.swumOn.replace(/-/g,'');
+    const who = (result.athleteName || 'swimmer').replace(/[^\w-]+/g,'_');
+    const name = stamp + '_' + who + '_' + (result.protocolKey || 'test') + '.swimzone-test.json';
+    const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 1)], { type:'application/json' }));
+    const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showMsg('info', 'Saved ' + name + '. In SwimZone, Test Sets → Import Poolside results → choose this file.');
+  }
+
+  // Hand the result back to the Test Sets tab that opened this page. It saves
+  // it through the same path as an imported file and answers with what it did.
+  let waiting = null;
+  function sendToSwimZone(result){
+    const op = window.opener;
+    if (!op || op.closed){ showMsg('err', 'The SwimZone tab that opened this page is closed. Download the file and import it in Test Sets instead.'); return; }
+    showMsg('info', 'Saving…');
+    try { op.postMessage({ type:'swimzone:setresult', envelope: result }, location.origin); }
+    catch(e){ showMsg('err', 'Could not reach SwimZone — download the file instead.'); return; }
+    clearTimeout(waiting);
+    waiting = setTimeout(() => showMsg('err', 'No answer from SwimZone. Make sure Test Sets is still open on that tab with ' + (result.athleteName || 'the swimmer') + ' loaded, or download the file and import it.'), 10000);
+  }
+  window.addEventListener('message', (ev) => {
+    if (ev.origin !== location.origin || !ev.data || ev.data.type !== 'swimzone:setresult-saved') return;
+    if (run && ev.data.sessionId && ev.data.sessionId !== run.sessionId) return;
+    clearTimeout(waiting);
+    showMsg(ev.data.ok ? 'ok' : 'err', ev.data.text || (ev.data.ok ? 'Saved.' : 'Not saved.'));
+  });
+
+  // ---- start ---------------------------------------------------------------
+  async function start(){
+    const m = location.hash.match(/run=([^&]+)/);
+    if (!m){ renderEmpty('Test results by hand', 'Open this from SwimZone: load a swimmer in Athlete Setup → Test Sets → pick a test → <b>✎ Enter results by hand</b>.'); return; }
+    try { run = await decodeRun(decodeURIComponent(m[1])); }
+    catch(e){ renderEmpty('That link could not be read', 'Open the test again from SwimZone Test Sets. (' + esc(e.message || e) + ')'); return; }
+    if (!run || run.fmt !== 'swimzone.testrun/1' || !Array.isArray(run.reps) || !run.reps.length){ renderEmpty('That link could not be read', 'It isn’t a SwimZone test. Open the test again from Test Sets.'); return; }
+    storeKey = 'sz-testentry-' + run.sessionId;
+    st = load() || freshState();
+    document.title = run.protocol.name + ' · Results entry';
+    render();
+  }
+  start();
+})();
+</script>
+</body>
+</html>
