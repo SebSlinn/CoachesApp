@@ -3,11 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0b1220">
+<meta name="theme-color" content="#eef7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#071923" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Poolside Splits">
+<meta name="apple-mobile-web-app-title" content="Poolside">
 <title>Poolside Splits</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -101,6 +105,7 @@
   .state-pill{ display:inline-flex; align-items:center; gap:6px; margin-top:3px; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background:var(--surface-2); color:var(--muted); }
   .state-pill.running{ background:var(--good-bg); color:var(--good); }
   .state-pill .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; }
+  #statePill{ display:none; }   /* 2026-11-14: the ticking clock already says "swimming"; the element stays for the code that updates it */
   .next-hint{ margin-top:2px; font-size:14px; font-weight:700; color:var(--accent); min-height:0; }
 
   /* ---- buttons ---- */
@@ -129,7 +134,8 @@
   button.tap.flash{ background:var(--accent) !important; color:var(--accent-ink) !important; border-color:var(--accent) !important; transform:scale(1.03); }
   button.tap.flash .small{ color:var(--accent-ink) !important; }
 
-  .toolrow{ display:flex; gap:8px; margin-top:7px; }
+  .toolrow{ display:flex; gap:8px; margin-top:7px; justify-content:center; }
+  .toolrow #undoBtn{ flex:0 1 260px; }
   .toolrow button{
     flex:1; border:1px solid var(--line); background:var(--surface); color:var(--muted); border-radius:11px;
     padding:7px; font-family:inherit; font-weight:700; font-size:12.5px; cursor:pointer;
@@ -171,6 +177,44 @@
   .session-actions button{ flex:1; border:none; border-radius:12px; padding:12px; font-family:inherit; font-weight:800; font-size:13.5px; cursor:pointer; }
   .session-actions .primary{ background:var(--accent); color:var(--accent-ink); }
   .session-actions .ghost{ background:var(--surface-2); color:var(--ink); }
+
+  /* ---- ⋮ menu (2026-11-12) — the things you use once a session (details,
+     results, new session, screen awake, full screen, install) live here so
+     the screen is clock + tap buttons + reps. A plain drop-down, not one of
+     the history-backed sheets below: an item usually opens a sheet, and two
+     sheets swapping history entries at once closed the wrong one. ---- */
+  .menu-scrim{ position:fixed; inset:0; z-index:35; }
+  .menu-scrim[hidden], .menu-pop[hidden]{ display:none; }
+  .menu-pop{
+    position:fixed; z-index:36; top:calc(env(safe-area-inset-top,0px) + 50px);
+    right:max(16px, calc((100vw - var(--app-w)) / 2 + 16px));
+    min-width:230px; background:var(--surface); border:1px solid var(--line); border-radius:14px;
+    box-shadow:0 12px 36px -8px rgba(0,0,0,.35); padding:6px; display:flex; flex-direction:column;
+  }
+  .menu-pop button{
+    display:flex; align-items:center; gap:12px; width:100%; text-align:left; border:none; background:none; color:var(--ink);
+    font-family:inherit; font-weight:700; font-size:15px; padding:12px 12px; border-radius:10px; cursor:pointer;
+  }
+  .menu-pop button:active{ background:var(--surface-2); }
+  .menu-pop button .ic{ width:22px; text-align:center; font-size:17px; color:var(--accent); flex:0 0 22px; }
+  .menu-pop button .on{ margin-left:auto; color:var(--good); font-size:13px; font-weight:800; }
+  .menu-pop button.primary-item{ color:var(--accent); }
+  .menu-pop hr{ border:none; border-top:1px solid var(--line); margin:4px 6px; }
+  .menu-pop[data-standalone="1"] #installBtn{ display:none; }
+
+  /* ---- tablets / laptops: use the width, and make the tap targets bigger
+     — the phone column left half a tablet empty. ---- */
+  :root{ --app-w:640px; }
+  @media (min-width:700px){
+    :root{ --app-w:920px; }
+    #app{ max-width:920px; padding:0 24px; }
+    .clock{ font-size:clamp(50px, 9vw, 104px); }
+    .session-clock{ font-size:clamp(21px, 2.8vw, 30px); }
+    .grid.spaced{ gap:22px 22px; }
+    button.tap{ min-height:clamp(52px, 11vh, 150px); font-size:20px; border-radius:16px; }
+    button.tap .small{ font-size:12px; }
+    .event-card .title{ font-size:22px; }
+  }
 
   /* ---- overlay panels ---- */
   .overlay{ position:fixed; inset:0; background:rgba(4,15,22,.5); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
@@ -299,11 +343,24 @@
       <div class="word">Pool<b>side</b><span id="athleteTag" style="display:none;font-size:12px;font-weight:700;color:var(--accent);margin-left:10px;letter-spacing:0;"></span></div>
       <div class="bar-right">
         <button class="hr-chip" id="hrChip" type="button" aria-label="Heart rate sensor" title="Heart rate sensor"><span class="heart">&#9829;</span><span class="bpm" id="hrChipBpm"></span><span id="hrChipZone"></span><span class="age" id="hrChipAge"></span></button>
-        <button class="icon-btn" id="settingsBtn" aria-label="Session settings" title="Session settings">&#9881;</button>
+        <button class="icon-btn" id="menuBtn" type="button" aria-label="Menu" aria-haspopup="menu" title="Menu" style="font-size:22px">&#8942;</button>
       </div>
     </header>
 
     <div class="set-strip" id="setStrip"></div>
+  </div>
+
+  <div class="menu-scrim" id="menuScrim" hidden></div>
+  <div class="menu-pop" id="menuPop" role="menu" hidden>
+    <button class="primary-item" id="exportBtn" type="button" role="menuitem"><span class="ic">&#9776;</span>Results</button>
+    <button id="settingsBtn" type="button" role="menuitem"><span class="ic">&#9881;</span>Session details</button>
+    <button id="hrMenuBtn" type="button" role="menuitem"><span class="ic">&#9829;</span>Heart-rate sensor</button>
+    <hr>
+    <button id="wakeBtn" type="button" role="menuitemcheckbox"><span class="ic">&#9728;</span>Keep screen awake<span class="on" id="wakeOn" hidden>ON</span></button>
+    <button id="fullBtn" type="button" role="menuitem"><span class="ic">&#10530;</span><span id="fullLabel">Full screen</span></button>
+    <button id="installBtn" type="button" role="menuitem" hidden><span class="ic">&#10515;</span>Install Poolside app</button>
+    <hr>
+    <button id="newSessionBtn" type="button" role="menuitem"><span class="ic">&#8634;</span>New session</button>
   </div>
 
   <button class="event-card" id="eventCard" type="button"></button>
@@ -333,12 +390,6 @@
 
   <div class="toolrow">
     <button id="undoBtn">&#8630; Undo last tap</button>
-    <button id="wakeBtn">Keep screen awake</button>
-  </div>
-
-  <div class="session-actions">
-    <button class="ghost" id="newSessionBtn">New session</button>
-    <button class="primary" id="exportBtn">Results</button>
   </div>
 
   <div class="reps">
@@ -413,6 +464,13 @@
     <div class="field">
       <label>Location</label>
       <input type="text" id="locationInput" placeholder="e.g. Riverside Pool">
+    </div>
+    <div class="field">
+      <label>Pool length</label>
+      <div class="chipset" id="sessPoolChips">
+        <button type="button" data-v="25">25m</button>
+        <button type="button" data-v="50">50m</button>
+      </div>
     </div>
     <div class="hr-note" style="margin-top:0">Keyboard: <b>D</b> start dive · <b>P</b> start push · <b>T</b> turn · <b>F</b> finish · <b>Space</b> next expected tap · <b>S</b> stroke rate · <b>C</b> stroke count · <b>Z</b>/<b>Backspace</b> undo · <b>H</b> heart rate · <b>R</b> results · <b>Esc</b> close</div>
     <div class="actions">
@@ -2228,18 +2286,30 @@ const SwimCore = (function(){
     render();
   });
 
-  /* ---- wake lock ---- */
+  /* ---- wake lock: comes on by itself with the first start of a rep, and
+     after the screen comes back, unless the coach turned it off in the menu
+     (remembered on this device). ---- */
+  const WAKE_KEY = 'poolside-wake';
   let wakeLock = null;
-  wakeBtn.addEventListener('click', async () => {
+  let wakeWanted = (function(){ try { return localStorage.getItem(WAKE_KEY) !== 'off'; } catch(e){ return true; } })();
+  async function acquireWake(pLoud){
+    if (wakeLock || document.visibilityState !== 'visible') return;
+    if (!('wakeLock' in navigator)){ if (pLoud) showToast('Keep screen awake isn\'t available on this browser'); return; }
     try {
-      if (!wakeLock){
-        wakeLock = await navigator.wakeLock.request('screen');
-        wakeBtn.textContent = 'Screen staying awake';
-        wakeLock.addEventListener('release', () => { wakeLock = null; wakeBtn.textContent = 'Keep screen awake'; });
-      } else {
-        await wakeLock.release(); wakeLock = null; wakeBtn.textContent = 'Keep screen awake';
-      }
-    } catch (e) { showToast('Wake lock not available on this browser'); }
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; paintMenu(); });
+    } catch(e){ if (pLoud) showToast('Keep screen awake isn\'t available here'); }
+    paintMenu();
+  }
+  addTapListener(wakeBtn, async () => {
+    if (wakeLock){ wakeWanted = false; try { await wakeLock.release(); } catch(e){} wakeLock = null; }
+    else { wakeWanted = true; await acquireWake(true); }
+    try { localStorage.setItem(WAKE_KEY, wakeWanted ? 'on' : 'off'); } catch(e){}
+    paintMenu();
+  });
+  [btnDive, btnPush].forEach(b => addTapListener(b, () => { if (wakeWanted) acquireWake(false); }));
+  document.addEventListener('visibilitychange', () => {
+    if (wakeWanted && document.visibilityState === 'visible' && state.sets.some(x => x.events.length)) acquireWake(false);
   });
 
   /* ---- event picker sheet ---- */
@@ -2250,6 +2320,7 @@ const SwimCore = (function(){
     const set = activeSet();
     editingEvent = set.event ? { ...set.event } : { stroke:'OPEN' };
     if (!editingEvent.stroke) editingEvent.stroke = 'OPEN';
+    if (!editingEvent.poolLength) editingEvent.poolLength = sessionPool();
     setNameInput.value = set.name || ('Set '+(state.activeSetIndex+1));
     deleteSetBtn.style.display = state.sets.length > 1 ? '' : 'none';
     distanceInput.value = editingEvent.distance || ''; // set once, from state — never again while the sheet is open
@@ -2275,7 +2346,7 @@ const SwimCore = (function(){
     [...poolChips.children].forEach(b => b.classList.toggle('on', b.dataset.v === String(editingEvent.poolLength || 25)));
     const isOpen = editingEvent.stroke === 'OPEN';
     distanceField.style.display = isOpen ? 'none' : '';
-    poolField.style.display = isOpen ? 'none' : '';
+    poolField.style.display = 'none';   // the pool is set once, in Session details (2026-11-14)
     updatePreview();
   }
   function updatePreview(){
@@ -2335,7 +2406,16 @@ const SwimCore = (function(){
 
   /* ---- settings sheet ---- */
   const settingsOverlay=$('settingsOverlay');
+  // The session's pool: what Session details set, else the first set that has one, else 25 m.
+  function sessionPool(){
+    const s0 = state.sets.find(x => x.event && x.event.poolLength);
+    return Number(state.session.poolLength) || (s0 ? Number(s0.event.poolLength) : 25);
+  }
+  let editingPool = 25;
+  function paintSessPool(){ [...$('sessPoolChips').children].forEach(b => b.classList.toggle('on', b.dataset.v === String(editingPool))); }
+  addTapDelegate($('sessPoolChips'), 'button', (b) => { editingPool = Number(b.dataset.v); paintSessPool(); });
   addTapListener($('settingsBtn'), () => {
+    editingPool = sessionPool(); paintSessPool();
     $('athleteInput').value = state.session.athlete || '';
     $('dateInput').value = state.session.date || todayISO();
     $('locationInput').value = state.session.location || '';
@@ -2345,8 +2425,19 @@ const SwimCore = (function(){
   addTapListener($('settingsSave'), () => {
     // preserve the SwimZone identity (szAthleteId / seNumber) that arrived via
     // the Athlete Setup link — editing the name here must not drop it.
-    state.session = { ...state.session, athlete: $('athleteInput').value.trim(), date: $('dateInput').value || todayISO(), location: $('locationInput').value.trim() };
+    state.session = { ...state.session, athlete: $('athleteInput').value.trim(), date: $('dateInput').value || todayISO(), location: $('locationInput').value.trim(),
+                      poolLength: editingPool };
+    // Every set takes the new pool, except a plain set that already has reps
+    // timed in it (those were swum in the pool they say). Test sets are always
+    // corrected in place — see applySetChange.
+    let kept = 0;
+    state.sets.forEach(x => {
+      if (!x.event || Number(x.event.poolLength) === editingPool) return;
+      if (x.events.length && !x.testRepNos){ kept++; return; }
+      x.event = { ...x.event, poolLength: editingPool };
+    });
     hideOverlay(settingsOverlay); render();
+    if (kept) showToast(kept + ' set' + (kept>1?'s':'') + ' already timed keep' + (kept>1?'':'s') + ' the old pool');
   });
 
   /* ---- confirm sheet (replaces window.confirm, which the artifact sandbox
@@ -2649,6 +2740,52 @@ const SwimCore = (function(){
   addTapListener($('measuresSave'), saveReadings);
   addTapListener($('hrChip'), () => HR.onChip());
   $('hrChip').addEventListener('contextmenu', (e) => { e.preventDefault(); HR.openSheet(); });
+
+  /* ---- ⋮ menu (2026-11-12): Results, Session details, heart rate, screen
+     awake, full screen, install, New session. Each item's own handler (set
+     up above) runs, then the menu closes. ---- */
+  const menuPop = $('menuPop'), menuScrim = $('menuScrim');
+  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches) || navigator.standalone === true;
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let installPrompt = null;
+  function paintMenu(){
+    if (!menuPop) return;
+    $('wakeOn').hidden = !wakeLock;
+    $('fullBtn').hidden = !document.fullscreenEnabled;
+    $('fullLabel').textContent = document.fullscreenElement ? 'Leave full screen' : 'Full screen';
+    $('installBtn').hidden = isStandalone() || !(installPrompt || isIOS);
+    menuPop.dataset.standalone = isStandalone() ? '1' : '';
+  }
+  function openMenu(){ paintMenu(); menuPop.hidden = false; menuScrim.hidden = false; }
+  function closeMenu(){ menuPop.hidden = true; menuScrim.hidden = true; }
+  addTapListener($('menuBtn'), () => { if (menuPop.hidden) openMenu(); else closeMenu(); });
+  addTapListener(menuScrim, closeMenu);
+  addTapListener($('hrMenuBtn'), () => HR.openSheet());
+  addTapListener($('fullBtn'), async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+    } catch(e){ showToast('Full screen isn\'t available here'); }
+  });
+  document.addEventListener('fullscreenchange', paintMenu);
+  // Chrome/Edge (Android, Windows, Mac, ChromeOS) offer the install here; on
+  // iPhone/iPad it's Safari's Share → Add to Home Screen.
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; paintMenu(); });
+  window.addEventListener('appinstalled', () => { installPrompt = null; paintMenu(); showToast('Poolside installed — open it from your home screen or apps'); });
+  addTapListener($('installBtn'), async () => {
+    if (installPrompt){ const p = installPrompt; installPrompt = null; p.prompt(); try { await p.userChoice; } catch(e){} paintMenu(); }
+    else if (isIOS) showToast('In Safari: tap Share, then "Add to Home Screen"');
+  });
+  menuPop.querySelectorAll('button').forEach(b => addTapListener(b, closeMenu));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menuPop.hidden){ closeMenu(); e.stopImmediatePropagation(); } }, true);
+  paintMenu();
+
+  // Installed app + offline: the same service worker as SwimZone (public/sw.js)
+  // keeps Poolside opening with no signal. Live site only — on the Vite dev
+  // server it would cache source files.
+  if ('serviceWorker' in navigator && location.protocol === 'https:' && !/^(localhost|127\.)/.test(location.hostname)){
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
   addTapListener($('hrPairBtn'), () => HR.pair());
   addTapListener($('hrConnectBtn'), () => HR.connect());
   addTapListener($('hrDisconnectBtn'), () => HR.disconnect());

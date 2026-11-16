@@ -1,4 +1,5 @@
-// public/sw.js — keeps SwimZone opening with no signal (Registers, and Poolside as a bonus).
+// public/sw.js — keeps SwimZone opening with no signal (Registers), and Poolside (installable app; registered
+// from public/poolside/index.html too, so Poolside works offline without the main app ever being opened).
 // Hand-written, no build step. Registered from src/main.jsx in production builds only.
 //
 //   page loads (navigation)   network first (4 s), else the saved copy; the app's routes all share
@@ -13,6 +14,12 @@ const SHELL = VERSION + '-shell';
 const ASSETS = VERSION + '-assets';
 const MAX_ASSETS = 80;
 const NET_TIMEOUT_MS = 4000;
+const POOLSIDE_FILES = [
+  '/poolside/', '/poolside/manifest.webmanifest',
+  '/poolside/hrMetrics.js', '/poolside/hrMonitor.js', '/poolside/protocolFormat.js', '/poolside/setFormat.js',
+  '/poolside/types.js', '/poolside/schemes.js', '/poolside/writeups.js',
+  '/poolside/icons/icon-192.png', '/poolside/icons/icon-512.png', '/poolside/icons/icon-maskable-512.png', '/poolside/icons/apple-touch-icon.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -24,6 +31,11 @@ self.addEventListener('install', (event) => {
         await cacheAssetsFrom(await res.text());
       }
     } catch (e) { /* offline at install: the next online load fills it */ }
+    // Poolside (installable app, 2026-11-12): save it whole at install, so the
+    // installed app opens at the pool even if it has only been opened once.
+    await Promise.all(POOLSIDE_FILES.map(async (u) => {
+      try { const r = await fetch(u, { cache: 'no-store' }); if (r.ok) await c.put(u, r); } catch (e) { /* later */ }
+    }));
     await self.skipWaiting();
   })());
 });
