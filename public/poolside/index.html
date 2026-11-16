@@ -202,6 +202,56 @@
   .menu-pop hr{ border:none; border-top:1px solid var(--line); margin:4px 6px; }
   .menu-pop[data-standalone="1"] #installBtn{ display:none; }
 
+  /* ---- scene picker in the menu ---- */
+  .menu-pop .scene-row{ padding:8px 12px 6px; }
+  .menu-pop .scene-row .lbl{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+  .menu-pop .scene-chips{ display:flex; gap:6px; }
+  .menu-pop .scene-chips button{ flex:1; justify-content:center; padding:9px 8px; font-size:13.5px; border:1px solid var(--line); background:var(--surface-2); }
+  .menu-pop .scene-chips button.on{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+
+  /* ---- "Big buttons" scene (2026-11-16): the screen is locked — no
+     scrolling, reps behind the menu — and the tap buttons share all the
+     height left under the clock. Undo sits at the top; Turn runs across the
+     bottom and becomes Finish on the last length (unless the set is open /
+     freeform, where Turn and Finish sit side by side). Landscape puts Turn
+     down the right-hand side. ---- */
+  body.scene-locked{ overflow:hidden; overscroll-behavior:none; height:100dvh; }
+  body.scene-locked #app{ height:100dvh; display:flex; flex-direction:column; padding-bottom:calc(10px + env(safe-area-inset-bottom,0px)); }
+  body.scene-locked #app > .reps{ display:none; }
+  body.scene-locked .top-sticky{ order:0; }
+  body.scene-locked .toolrow{ order:1; margin:2px 0 0; }
+  body.scene-locked .toolrow #undoBtn{ flex:1 1 auto; font-size:15px; padding:9px; color:var(--ink); }
+  body.scene-locked #eventCard{ order:2; padding:7px 12px; margin-top:6px; }
+  body.scene-locked #testPanel{ order:3; }
+  body.scene-locked .clock-wrap{ order:4; padding-top:6px; }
+  body.scene-locked .clock{ font-size:clamp(58px, 17vw, 132px); }
+  body.scene-locked .grid.row3{
+    order:5; flex:1 1 auto; min-height:0; margin-top:10px; gap:12px;
+    grid-template-columns:1fr 1fr; grid-template-rows:1fr .8fr 1.7fr;
+    grid-template-areas:"dive push" "sr sc" "turn turn";
+  }
+  body.scene-locked .grid.row3.open-set{ grid-template-areas:"dive push" "sr sc" "turn finish"; }
+  body.scene-locked #btnDive{ grid-area:dive; } body.scene-locked #btnPush{ grid-area:push; }
+  body.scene-locked #btnSR{ grid-area:sr; } body.scene-locked #btnSC{ grid-area:sc; }
+  body.scene-locked #btnTurn{ grid-area:turn; } body.scene-locked #btnFinish{ grid-area:finish; display:none; }
+  body.scene-locked .grid.row3.open-set #btnFinish{ display:flex; }
+  body.scene-locked button.tap{ min-height:0; font-size:23px; border-radius:18px; }
+  body.scene-locked button.tap .small{ font-size:12.5px; }
+  body.scene-locked #btnTurn, body.scene-locked #btnFinish{ font-size:clamp(30px, 9vw, 54px); }
+  body.scene-locked #btnTurn .small, body.scene-locked #btnFinish .small{ font-size:clamp(14px, 3.6vw, 20px); }
+  @media (orientation:landscape){
+    body.scene-locked .grid.row3{ grid-template-columns:1fr 1fr 1.5fr; grid-template-rows:1fr 1fr; grid-template-areas:"dive sr turn" "push sc turn"; }
+    body.scene-locked .grid.row3.open-set{ grid-template-areas:"dive sr turn" "push sc finish"; }
+    body.scene-locked .clock{ font-size:clamp(44px, 9vh, 110px); }
+  }
+  .rep-m15{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .rep-m15 span{ font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12px; background:var(--lane); color:var(--lane-ink); border-radius:6px; padding:3px 7px; }
+  #btnM15{ display:none; }
+  body.scene-race #btnM15{ display:flex; grid-area:push; }
+  body.scene-race #btnPush{ display:none; }
+  #repsSheet{ max-width:920px; }
+  #repsSheet .reps{ margin-top:6px; }
+
   /* ---- tablets / laptops: use the width, and make the tap targets bigger
      — the phone column left half a tablet empty. ---- */
   :root{ --app-w:640px; }
@@ -352,6 +402,16 @@
 
   <div class="menu-scrim" id="menuScrim" hidden></div>
   <div class="menu-pop" id="menuPop" role="menu" hidden>
+    <div class="scene-row">
+      <div class="lbl">Screen</div>
+      <div class="scene-chips" id="sceneChips">
+        <button type="button" data-scene="general">General</button>
+        <button type="button" data-scene="big">Big buttons</button>
+        <button type="button" data-scene="race">Race</button>
+      </div>
+    </div>
+    <button id="repsMenuBtn" type="button" role="menuitem" hidden><span class="ic">&#9636;</span>Reps this session</button>
+    <hr>
     <button class="primary-item" id="exportBtn" type="button" role="menuitem"><span class="ic">&#9776;</span>Results</button>
     <button id="settingsBtn" type="button" role="menuitem"><span class="ic">&#9881;</span>Session details</button>
     <button id="hrMenuBtn" type="button" role="menuitem"><span class="ic">&#9829;</span>Heart-rate sensor</button>
@@ -386,6 +446,7 @@
     <button class="tap" id="btnFinish" type="button">Finish</button>
     <button class="tap start" id="btnPush" type="button">Start Push<span class="small">in-water start</span></button>
     <button class="tap secondary" id="btnSC" type="button">SC<span class="small">stroke count</span></button>
+    <button class="tap" id="btnM15" type="button">15m<span class="small">timing point</span></button>
   </div>
 
   <div class="toolrow">
@@ -395,6 +456,16 @@
   <div class="reps">
     <h2>All reps this session</h2>
     <div id="repList"></div>
+  </div>
+</div>
+
+<!-- ============ reps sheet (Big buttons scene: the rep list lives here) ============ -->
+<div class="overlay" id="repsOverlay" hidden>
+  <div class="sheet" id="repsSheet">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <h3 style="margin:0">Reps this session</h3>
+      <button class="ghost" id="repsClose" type="button" style="padding:8px 14px">Close</button>
+    </div>
   </div>
 </div>
 
@@ -605,7 +676,7 @@ const SwimCore = (function(){
     const reps = []; let current = null;
 
     function openRep(startType, t){
-      current = { startTime:t, startType, splits:[], scCount:0, scEvents:[], srTaps:[], srResults:[], finishTime:null, finishFlags:[], eventIds:[], lastByType:{} };
+      current = { startTime:t, startType, splits:[], marks15:[], scCount:0, scEvents:[], srTaps:[], srResults:[], finishTime:null, finishFlags:[], eventIds:[], lastByType:{} };
     }
     function closeRep(t, flags){
       current.finishTime = t; current.finishFlags = flags.slice();
@@ -663,6 +734,19 @@ const SwimCore = (function(){
       } else if (ev.type === 'sc'){
         rep.scEvents.push({ id:ev.id, t:ev.t, flags: [], legIndex: rep.splits.length });
         rep.scCount += 1;
+      } else if (ev.type === 'm15'){
+        // Race analysis (2026-11-16): the 15 m timing point — a moment inside a
+        // length, not a wall, so it never counts as a split. Almost always the
+        // first length (start to 15 m); off a later wall it's 15 m off that turn.
+        // One per length: a second tap in the same length is ignored.
+        const li = rep.splits.length;
+        if (!rep.marks15.some(m => m.legIndex === li)){
+          const last = li ? rep.splits[li-1] : null;
+          const wallT = last ? last.t : rep.startTime;
+          rep.marks15.push({ id:ev.id, t:ev.t, legIndex:li,
+            distance: li === 0 ? 15 : (last && last.distance != null ? last.distance + 15 : null),
+            sec: Math.round((ev.t - rep.startTime)/10)/100, fromWallSec: Math.round((ev.t - wallT)/10)/100 });
+        }
       }
     }
     // turn each rep's raw SR taps into consecutive-interval readings — tap
@@ -803,6 +887,7 @@ const SwimCore = (function(){
           set: set.name || ('Set ' + (setIdx+1)), rep: flush ? 'flush' : repNo, stroke: set.event ? set.event.stroke : 'open',
           distance: rep.distance, poolLength: set.event ? set.event.poolLength : null, startType: rep.startType,
           startClock: fmtWallClock(rep.startTime), startTime: rep.startTime, finishTime: rep.finishTime, marks: repMarks(rep),
+          marks15: (rep.marks15 || []).map(m => ({ dist: m.distance, legIndex: m.legIndex, sec: m.sec, fromWallSec: m.fromWallSec })),
           totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
           lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
@@ -840,7 +925,7 @@ const SwimCore = (function(){
     const T = (t) => t ? { raw: '="' + t + '"' } : '';
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
     const HR_COLS = [['HR-Start','hrStart'],['HR min','hrMin'],['HR avg','hrAvg'],['HR max','hrPeak'],['HR-End','hrEnd'],['HR +30s','hrRec30']];
-    const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time',
+    const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time','15m',
                   ...HR_COLS.map(c => c[0]), 'HR cover %', 'Result', 'Notes'];
     for (let i=1;i<=maxLengths;i++) header.push('L'+i,'L'+i+' SC','L'+i+' SR','L'+i+' HR1','L'+i+' HR2');   // HR1/HR2 = first/last reading in the length
     const lines=[header.join(',')];
@@ -852,8 +937,12 @@ const SwimCore = (function(){
           l && l.hr && l.hr.hrFirst != null ? l.hr.hrFirst : '', l && l.hr && l.hr.hrLast != null ? l.hr.hrLast : '');
       }
       const resultText = r.flush ? 'Flush' : (r.status==='complete' && !r.dnf) ? 'OK' : 'Check';
-      const notesText = flagNotes(r).join('; ');
+      // 15 m from the start in its own column; any 15 m off a later wall goes in Notes
+      const m15 = (r.marks15 || []).find(m => m.legIndex === 0);
+      const m15later = (r.marks15 || []).filter(m => m.legIndex > 0).map(m => '15m off wall' + (m.dist ? ' (' + m.dist + 'm)' : '') + ' ' + m.fromWallSec.toFixed(2));
+      const notesText = flagNotes(r).concat(m15later).join('; ');
       const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,T(r.restBeforeFormatted),r.startType,r.startClock,T(r.totalFormatted),
+        m15 ? T(m15.sec.toFixed(2)) : '',
         ...HR_COLS.map(c => r.hr && r.hr[c[1]] != null ? r.hr[c[1]] : ''),
         r.hr && r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : '',
         resultText, notesText, ...lengthCells]
@@ -928,6 +1017,7 @@ const SwimCore = (function(){
         source: 'stopwatch',
         note: r.set || '',                  // which Poolside set this rep came from
         ...(r.hr ? { metrics: r.hr } : {}), // live heart rate for this swim (avg/peak/end/recovery/coverage)
+        ...(r.marks15 && r.marks15.length ? { marks15: r.marks15 } : {}),   // race analysis 15 m points (not yet stored by SwimZone)
       });
     });
     return {
@@ -1307,7 +1397,8 @@ const SwimCore = (function(){
         const v = rep.srResults.map(r => r.strokeRate).filter(x => x != null);
         if (v.length) m.sr = Math.round(v.reduce((a,b) => a+b, 0) / v.length);
       }
-      return { repNo, distM: pr.distM, stroke: pr.stroke, timeSec: Math.round((rep.finishTime - rep.startTime)/10)/100,
+      const m15 = (rep.marks15 || []).map(m => ({ dist: m.distance, legIndex: m.legIndex, sec: m.sec, fromWallSec: m.fromWallSec }));
+      return { repNo, distM: pr.distM, stroke: pr.stroke, timeSec: Math.round((rep.finishTime - rep.startTime)/10)/100, ...(m15.length ? { marks15: m15 } : {}),
                startedAt: new Date(rep.startTime).toISOString(), targetTime: pr.targetTime || null, pbAtSwim: pr.pbAtSwim ?? null,
                splits, metrics: m, note: rep.status === 'complete' ? '' : 'check timing: ' + rep.finishFlags.join(', '),
                // an extra rep carries the line it continued, so SwimZone's block/line analysers can place it
@@ -1353,6 +1444,7 @@ const SwimCore = (function(){
     sr.reps.forEach(r => {
       const bits = [];
       if (r.extra) bits.push('extra');
+      (r.marks15 || []).forEach(m => bits.push(m.legIndex === 0 ? '15m ' + m.sec.toFixed(2) : '15m off wall ' + m.fromWallSec.toFixed(2)));
       if (r.targetTime) bits.push('target ' + r.targetTime);
       ['hr','lactate','rpe','sc','sr'].forEach(k => { if (r.metrics[k] != null) bits.push(({hr:'HR',lactate:'La',rpe:'RPE',sc:'SC',sr:'SR'})[k] + ' ' + r.metrics[k]); });
       if (r.metrics.hrAvg != null) bits.push('♥ HR-Start ' + (r.metrics.hrStart ?? '–') + ', min ' + r.metrics.hrMin + ' avg ' + r.metrics.hrAvg + ' max ' + r.metrics.hrPeak + ', HR-End ' + (r.metrics.hrEnd ?? '–') + (r.metrics.hrRec30 != null ? ', +30s ' + r.metrics.hrRec30 : ''));
@@ -1924,6 +2016,7 @@ const SwimCore = (function(){
     btnPush.className = 'tap start' + (running ? ' quiet' : '');
     btnTurn.className = 'tap' + (!running ? ' off' : (d.next && d.next.kind==='turn' ? ' expected' : ''));
     btnFinish.className = 'tap' + (!running ? ' off' : (d.next && d.next.kind==='finish' ? ' expected' : ''));
+    paintSceneButtons(d, running);
     btnSR.className = 'tap secondary' + (!running ? ' off' : '');
     btnSC.className = 'tap secondary' + (!running ? ' off' : '');
     // Undo only ever touches the newest set — once a new set has been
@@ -2001,6 +2094,11 @@ const SwimCore = (function(){
           lengths.map((l, i) => '<tr><td>'+(l.to!=null ? l.to+'m' : '•')+'</td><td>'+SwimCore.fmtClock(l.ms)+'</td><td>'+(st.sc[i] || '<span class="dim">–</span>')+'</td><td>'+(st.sr[i] || '<span class="dim">–</span>')+'</td>'+(lhr ? hrCell(lhr[i]) : '')+'</tr>').join('')+
         '</tbody></table>'
       : lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
+    const m15Html = (rep.marks15 || []).length
+      ? '<div class="rep-m15">' + rep.marks15.map(m => m.legIndex === 0
+          ? '<span><b>15m</b> ' + m.sec.toFixed(2) + '</span>'
+          : '<span><b>15m off wall</b>' + (m.distance ? ' (' + m.distance + 'm)' : '') + ' ' + m.fromWallSec.toFixed(2) + '</span>').join('') + '</div>'
+      : '';
     const ackKey = String(rep.startTime);
     const acked = set.acked.includes(ackKey);
     const badge = isFlush ? '<span class="badge review" style="background:var(--surface-2);color:var(--muted)">Flush</span>'
@@ -2031,7 +2129,7 @@ const SwimCore = (function(){
       '<div class="rep-top"><span class="rep-num">'+(isFlush ? 'Flush' : 'Rep '+(testNo != null ? testNo : (dispNo || idx)))+'</span>'+badge+'</div>'+
       '<div class="rep-total mono">'+total+'</div>'+
       testBit+
-      (splitsHtml ? (splitsHtml.startsWith('<table') ? splitsHtml : '<div class="splits">'+splitsHtml+'</div>') : '')+
+      (splitsHtml ? (splitsHtml.startsWith('<table') ? splitsHtml : '<div class="splits">'+splitsHtml+'</div>') : '')+ m15Html +
       '<div class="rep-meta">'+timeMeta+'</div>'+
       (meta ? '<div class="rep-meta">'+meta+'</div>' : '')+
       hrLineHtml(HR.repMetrics(rep, nextRepStart(rep.startTime)), testNo != null && state.test ? (repPlan(testNo) || {}).intensity : null)+
@@ -2256,7 +2354,14 @@ const SwimCore = (function(){
 
   addTapListener(btnDive, () => addEvent('start', { startType:'dive' }, btnDive));
   addTapListener(btnPush, () => addEvent('start', { startType:'push' }, btnPush));
-  addTapListener(btnTurn, () => { if (derived().status==='running') addEvent('turn', null, btnTurn); });
+  const btnM15 = $('btnM15');
+  addTapListener(btnM15, () => { if (derived().status === 'running') addEvent('m15', null, btnM15); });
+  addTapListener(btnTurn, () => {
+    const d = derived(); if (d.status !== 'running') return;
+    // Big buttons: one bottom button — Turn, then Finish on the last length.
+    if (turnIsFinish() && d.next && d.next.kind === 'finish') addEvent('finish', null, btnTurn);
+    else addEvent('turn', null, btnTurn);
+  });
   addTapListener(btnFinish, () => { if (derived().status==='running') addEvent('finish', null, btnFinish); });
   addTapListener(btnSR, () => { if (derived().status==='running') addEvent('sr', null, btnSR); });
   addTapListener(btnSC, () => { if (derived().status==='running') addEvent('sc', null, btnSC); });
@@ -2792,6 +2897,53 @@ const SwimCore = (function(){
   menuPop.querySelectorAll('button').forEach(b => addTapListener(b, closeMenu));
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menuPop.hidden){ closeMenu(); e.stopImmediatePropagation(); } }, true);
   paintMenu();
+
+  /* ---- scenes (2026-11-16): General = the full page; Big buttons = locked
+     screen, reps behind the menu. Remembered on this device. ---- */
+  const SCENE_KEY = 'poolside-scene';
+  var poolScene = (function(){ try { return localStorage.getItem(SCENE_KEY) || 'general'; } catch(e){ return 'general'; } })();
+  const isLocked = () => poolScene === 'big' || poolScene === 'race';
+  function turnIsFinish(){ return isLocked() && !!plan(); }
+  function paintSceneButtons(d, running){
+    const big = isLocked(), grid = btnTurn.parentElement;
+    // 15 m: live while a rep runs, once per length; lit on the first length.
+    if (poolScene === 'race'){
+      const cur = d.current, li = cur ? cur.splits.length : 0;
+      const done = !!(cur && cur.marks15.some(m => m.legIndex === li));
+      btnM15.className = 'tap' + (!running || done ? ' off' : (li === 0 ? ' expected' : ''));
+      btnM15.innerHTML = (li === 0 || !running ? '15m' : '15m off wall') + '<span class="small">' + (done ? 'taken' : 'timing point') + '</span>';
+    }
+    grid.classList.toggle('open-set', big && !plan());
+    if (!big){ if (btnTurn.dataset.big){ btnTurn.textContent = 'Turn'; delete btnTurn.dataset.big; } return; }
+    btnTurn.dataset.big = '1';
+    const to = d.next && d.next.label.includes('→ ') ? d.next.label.split('→ ')[1] : '';
+    if (turnIsFinish() && running && d.next && d.next.kind === 'finish'){
+      btnTurn.innerHTML = 'Finish<span class="small">' + escapeHtml(to) + '</span>';
+      btnTurn.className = 'tap expected';
+    } else {
+      btnTurn.innerHTML = 'Turn' + (running && to ? '<span class="small">' + escapeHtml(to) + '</span>' : '');
+    }
+  }
+  function applyScene(){
+    document.body.classList.toggle('scene-locked', isLocked());
+    document.body.classList.toggle('scene-race', poolScene === 'race');
+    [...$('sceneChips').children].forEach(b => b.classList.toggle('on', b.dataset.scene === poolScene));
+    $('repsMenuBtn').hidden = !isLocked();
+    window.scrollTo(0, 0);
+    render();
+  }
+  addTapDelegate($('sceneChips'), 'button', (b) => {
+    poolScene = b.dataset.scene;
+    try { localStorage.setItem(SCENE_KEY, poolScene); } catch(e){}
+    applyScene();
+  });
+  // The rep list moves into a sheet while it's open, and back after.
+  const repsEl = document.querySelector('#app > .reps'), repsHome = repsEl.parentElement, repsOverlay = $('repsOverlay');
+  function closeReps(fromPopstate){ hideOverlay(repsOverlay, fromPopstate); repsHome.appendChild(repsEl); }
+  addTapListener($('repsMenuBtn'), () => { $('repsSheet').appendChild(repsEl); openOverlay(repsOverlay, closeReps); });
+  addTapListener($('repsClose'), () => closeReps(false));
+  repsOverlay.addEventListener('click', (e) => { if (e.target === repsOverlay) closeReps(false); });
+  applyScene();
 
   // Installed app + offline: the same service worker as SwimZone (public/sw.js)
   // keeps Poolside opening with no signal. Live site only — on the Vite dev
