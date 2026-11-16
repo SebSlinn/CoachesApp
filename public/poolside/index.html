@@ -566,9 +566,20 @@ const SwimCore = (function(){
     const { distance, poolLength, stroke } = event;
     const legs = [];
     if (stroke === 'IM'){
+      // One touch per pool length, the stroke changing every quarter
+      // (200 IM in a 25 m pool = 8 touches: Fly Fly Back Back Breast Breast
+      // Free Free). Was one touch per stroke whatever the pool, so in a
+      // 25 m pool the 25 m wall was taken as the end of the 50 m Fly and the
+      // rep "finished" at 100 m (2026-11-16).
       const seq = STROKE_SEQUENCES.IM;
       const legDistance = distance / seq.length;
-      seq.forEach((s,i) => legs.push({ stroke:s, endDistance: legDistance*(i+1) }));
+      const perStroke = Math.round(legDistance / poolLength);
+      if (perStroke >= 1 && Math.abs(perStroke * poolLength - legDistance) < 0.01){
+        seq.forEach((s,i) => { for (let k=1;k<=perStroke;k++) legs.push({ stroke:s, endDistance: legDistance*i + poolLength*k }); });
+      } else {
+        // a distance that doesn't fit the pool (e.g. 100 IM in 50 m): one touch per stroke, as before
+        seq.forEach((s,i) => legs.push({ stroke:s, endDistance: legDistance*(i+1) }));
+      }
     } else {
       const nLegs = Math.round(distance / poolLength);
       for (let i=1;i<=nLegs;i++) legs.push({ stroke, endDistance: poolLength*i });
@@ -1739,7 +1750,8 @@ const SwimCore = (function(){
     if (!ev || ev.stroke === 'OPEN' || !ev.stroke) return { title:'Open / freeform', sub:'no expected touches — every tap just logs', legs: [] };
     const strokeName = { FREE:'Free', BACK:'Back', BREAST:'Breast', FLY:'Fly', IM:'IM' }[ev.stroke] || ev.stroke;
     const p = SwimCore.buildPlan(ev);
-    const legs = p ? p.allLegs.map((l,i)=> (i===p.allLegs.length-1 ? 'Finish '+l.endDistance+'m' : l.endDistance+'m'+(ev.stroke==='IM' ? ' '+({FLY:'Fly',BACK:'Back',BREAST:'Breast',FREE:'Free'}[l.stroke]) : ''))) : [];
+    const legs = p ? p.allLegs.map((l,i,a)=> (i===a.length-1 ? 'Finish '+l.endDistance+'m'
+      : l.endDistance+'m'+(ev.stroke==='IM' && a[i+1].stroke !== l.stroke ? ' '+({FLY:'Fly',BACK:'Back',BREAST:'Breast',FREE:'Free'}[l.stroke]) : ''))) : [];
     return { title: strokeName + ' ' + ev.distance, sub: ev.poolLength + 'm pool', legs };
   }
 
@@ -2320,7 +2332,7 @@ const SwimCore = (function(){
     const set = activeSet();
     editingEvent = set.event ? { ...set.event } : { stroke:'OPEN' };
     if (!editingEvent.stroke) editingEvent.stroke = 'OPEN';
-    if (!editingEvent.poolLength) editingEvent.poolLength = sessionPool();
+    editingEvent.poolLength = sessionPool();   // one pool per session (Session details)
     setNameInput.value = set.name || ('Set '+(state.activeSetIndex+1));
     deleteSetBtn.style.display = state.sets.length > 1 ? '' : 'none';
     distanceInput.value = editingEvent.distance || ''; // set once, from state — never again while the sheet is open
@@ -2351,9 +2363,9 @@ const SwimCore = (function(){
   }
   function updatePreview(){
     if (editingEvent.stroke === 'OPEN'){ planPreview.textContent = 'Every Turn just logs a split; Finish ends the rep whenever you tap it.'; return; }
-    const cfg = { stroke: editingEvent.stroke, distance: Number(distanceInput.value)||editingEvent.distance, poolLength: Number(editingEvent.poolLength)||25 };
+    const cfg = { stroke: editingEvent.stroke, distance: Number(distanceInput.value)||editingEvent.distance, poolLength: Number(editingEvent.poolLength)||sessionPool() };
     const p = SwimCore.buildPlan(cfg);
-    planPreview.textContent = p ? p.allLegs.map((l,i)=> (i===p.allLegs.length-1?'Finish ':'')+l.endDistance+'m'+(cfg.stroke==='IM'?' '+l.stroke:'')).join('  →  ') : 'Set a distance to preview the touches.';
+    planPreview.textContent = p ? p.allLegs.map((l,i,a)=> (i===a.length-1?'Finish ':'')+l.endDistance+'m'+(cfg.stroke==='IM' && i<a.length-1 && a[i+1].stroke!==l.stroke?' '+l.stroke:'')).join('  →  ') : 'Set a distance to preview the touches.';
   }
   addTapDelegate(strokeChips, 'button', (b) => { editingEvent.stroke=b.dataset.v; syncEventChips(); });
   addTapDelegate(poolChips, 'button', (b) => { editingEvent.poolLength=Number(b.dataset.v); syncEventChips(); });
@@ -2376,7 +2388,7 @@ const SwimCore = (function(){
     if (plan === false) return;   // keep the sheet open on the error
     const distanceVal = Number(distanceInput.value) || editingEvent.distance || 100;
     const nextEvent = editingEvent.stroke === 'OPEN' ? null
-      : { stroke: editingEvent.stroke, distance: distanceVal, poolLength: Number(editingEvent.poolLength)||25 };
+      : { stroke: editingEvent.stroke, distance: distanceVal, poolLength: sessionPool() };
     const typedName = (setNameInput.value || '').trim();
     const opened = applySetChange(nextEvent, typedName);
     if (plan !== undefined) activeSet().plan = plan;   // lands on the new set if the change opened one
@@ -2427,17 +2439,18 @@ const SwimCore = (function(){
     // the Athlete Setup link — editing the name here must not drop it.
     state.session = { ...state.session, athlete: $('athleteInput').value.trim(), date: $('dateInput').value || todayISO(), location: $('locationInput').value.trim(),
                       poolLength: editingPool };
-    // Every set takes the new pool, except a plain set that already has reps
-    // timed in it (those were swum in the pool they say). Test sets are always
-    // corrected in place — see applySetChange.
-    let kept = 0;
+    // One pool per session: every set takes it, reps already timed included —
+    // changing it is almost always correcting a wrong pool, and the taps are
+    // raw, so those reps' splits are simply re-worked for the right pool
+    // (2026-11-16; before, timed sets kept the old pool and the banner stuck).
+    let changed = 0;
     state.sets.forEach(x => {
       if (!x.event || Number(x.event.poolLength) === editingPool) return;
-      if (x.events.length && !x.testRepNos){ kept++; return; }
+      if (x.events.length) changed++;
       x.event = { ...x.event, poolLength: editingPool };
     });
     hideOverlay(settingsOverlay); render();
-    if (kept) showToast(kept + ' set' + (kept>1?'s':'') + ' already timed keep' + (kept>1?'':'s') + ' the old pool');
+    if (changed) showToast('Splits re-worked for a ' + editingPool + 'm pool');
   });
 
   /* ---- confirm sheet (replaces window.confirm, which the artifact sandbox
