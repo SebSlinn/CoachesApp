@@ -19,6 +19,10 @@ try {
     copyFileSync(`src/${f}`, `${destDir}/${name}`);
     console.log(`copied src/${f} → ${destDir}/${name}`);
   }
+  // Poolside's spreadsheet download uses the same ExcelJS as SwimZone's (2026-11-16)
+  mkdirSync(`${destDir}/vendor`, { recursive: true });
+  copyFileSync('node_modules/exceljs/dist/exceljs.min.js', `${destDir}/vendor/exceljs.min.js`);
+  console.log(`copied exceljs.min.js → ${destDir}/vendor/`);
 } catch (e) {
   console.error(`failed to copy shared modules: ${e.message}`);
   process.exit(1);

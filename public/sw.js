@@ -17,7 +17,7 @@ const NET_TIMEOUT_MS = 4000;
 const POOLSIDE_FILES = [
   '/poolside/', '/poolside/manifest.webmanifest',
   '/poolside/hrMetrics.js', '/poolside/hrMonitor.js', '/poolside/protocolFormat.js', '/poolside/setFormat.js',
-  '/poolside/types.js', '/poolside/schemes.js', '/poolside/writeups.js',
+  '/poolside/types.js', '/poolside/schemes.js', '/poolside/writeups.js', '/poolside/vendor/exceljs.min.js',
   '/poolside/icons/icon-192.png', '/poolside/icons/icon-512.png', '/poolside/icons/icon-maskable-512.png', '/poolside/icons/apple-touch-icon.png',
 ];
 

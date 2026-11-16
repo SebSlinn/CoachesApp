@@ -377,6 +377,14 @@
   .test-panel .t-dots span.next{ background:var(--lane); }
   .test-panel .t-dots span.skip{ background:var(--warn); opacity:.55; }
   .rep-test{ font-size:12px; font-weight:700; color:var(--accent); margin-top:4px; }
+  .rep-label{ font-size:15px; font-weight:800; color:var(--accent); margin-top:2px; }
+  .rep-label.not{ color:var(--muted); font-size:13px; }
+  .race-preview{ max-height:34vh; overflow-y:auto; margin-top:10px; border:1px solid var(--line); border-radius:10px; }
+  .race-preview table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  .race-preview td{ padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .race-preview td.r{ white-space:nowrap; color:var(--muted); font-family:'JetBrains Mono',ui-monospace,monospace; }
+  .race-preview td.warn{ color:var(--warn); }
+  #raceOrderText{ width:100%; min-height:120px; font:inherit; font-size:14px; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--surface-2); color:var(--ink); }
   .rep-test .readings{ color:var(--ink); font-weight:600; }
 </style>
 </head>
@@ -571,11 +579,60 @@
     <div class="actions grid3">
       <button class="ghost" id="copySummaryBtn" type="button">Copy</button>
       <button class="ghost" id="shareSummaryBtn" type="button" hidden>Share</button>
+      <button class="ghost" id="raceOrderBtn" type="button">Race order</button>
+      <button class="ghost" id="downloadXlsxBtn" type="button">Spreadsheet</button>
       <button class="ghost" id="downloadCsvBtn" type="button">CSV</button>
       <button class="ghost" id="downloadJsonBtn" type="button">SwimZone</button>
       <button class="primary" id="resultsClose" type="button">Close</button>
     </div>
-    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Copy pastes the recap above. CSV opens in a spreadsheet. SwimZone saves a file to import into an athlete's records.</p>
+    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Race order labels each rep with its swimmer and event. Spreadsheet saves an Excel workbook (summary, races, lengths, per 100) that also opens in LibreOffice, Google Sheets and Numbers. CSV is the raw table. SwimZone saves a file to import into an athlete's records.</p>
+  </div>
+</div>
+
+<!-- ============ race label for one rep (2026-11-16) ============ -->
+<div class="overlay" id="labelOverlay" hidden>
+  <div class="sheet">
+    <h3 id="labelTitle">Race</h3>
+    <div class="field">
+      <label>Swimmer</label>
+      <input type="text" id="labelSwimmer" list="labelNames" autocomplete="off" placeholder="Name">
+      <datalist id="labelNames"></datalist>
+    </div>
+    <div class="field">
+      <label>Stroke</label>
+      <div class="chipset" id="labelStroke">
+        <button type="button" data-v="FREE">Free</button><button type="button" data-v="BACK">Back</button>
+        <button type="button" data-v="BREAST">Breast</button><button type="button" data-v="FLY">Fly</button><button type="button" data-v="IM">IM</button>
+      </div>
+    </div>
+    <div class="field">
+      <label>Distance</label>
+      <div class="chipset" id="labelDist">
+        <button type="button" data-v="50">50</button><button type="button" data-v="100">100</button><button type="button" data-v="200">200</button>
+        <button type="button" data-v="400">400</button><button type="button" data-v="800">800</button><button type="button" data-v="1500">1500</button>
+      </div>
+      <input type="number" id="labelDistInput" inputmode="numeric" placeholder="or type a distance (m)" style="margin-top:8px">
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;font-size:14px;margin:6px 0 4px"><input type="checkbox" id="labelNotRace" style="width:auto"> Not a race (false start, mis-tap)</label>
+    <div class="actions">
+      <button class="ghost" id="labelClear" type="button">Clear</button>
+      <button class="ghost" id="labelCancel" type="button">Cancel</button>
+      <button class="primary" id="labelSave" type="button">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ race order: label every rep at once from the meet's list ============ -->
+<div class="overlay" id="raceOrderOverlay" hidden>
+  <div class="sheet">
+    <h3>Race order</h3>
+    <p style="margin:0 0 8px;font-size:13px;color:var(--muted);line-height:1.5">One race per line, in the order you timed them — <b>name and event</b>, e.g. <span class="mono">Esmee Slinn, 50 Free</span>. Heat/lane are ignored. Reps marked "Not a race" or Flush are skipped.</p>
+    <textarea id="raceOrderText" placeholder="Esmee Slinn, 50 Free&#10;Tom Jones, 1500 Free&#10;Amy Lee, 200 IM"></textarea>
+    <div class="race-preview" id="raceOrderPreview"></div>
+    <div class="actions">
+      <button class="ghost" id="raceOrderCancel" type="button">Cancel</button>
+      <button class="primary" id="raceOrderApply" type="button">Label reps</button>
+    </div>
   </div>
 </div>
 
@@ -841,6 +898,43 @@ const SwimCore = (function(){
     });
     return { sc, sr };
   }
+  /* Race labels (2026-11-16). At a gala the coach times race after race in
+     one freeform set, then says who swam what afterwards:
+       set.labels[startTime] = { swimmer, stroke, distance, notRace }
+     A labelled rep is re-worked as that event in the session's pool, so a
+     freeform rep's raw taps become 25m Fly … 200m Free, with stroke counts and
+     rates per length. The taps themselves never change. */
+  const EVENT_STROKE_NAME = { FREE:'Free', BACK:'Back', BREAST:'Breast', FLY:'Fly', IM:'IM' };
+  function eventName(l){ return l && l.distance && l.stroke ? l.distance + ' ' + (EVENT_STROKE_NAME[l.stroke] || l.stroke) : ''; }
+  function labelPlan(label, poolLength){
+    return label && label.stroke && Number(label.distance) > 0
+      ? buildPlan({ stroke: label.stroke, distance: Number(label.distance), poolLength: Number(poolLength) || 25 }) : null;
+  }
+  function applyLabel(set, rep, poolLength){
+    const label = (set.labels || {})[String(rep.startTime)];
+    if (!label) return rep;
+    const p = labelPlan(label, (set.event && set.event.poolLength) || poolLength);
+    let out = rep;
+    if (p){
+      const evs = set.events.filter(e => rep.eventIds.includes(e.id));
+      // a rep closed by the next Start has no Finish tap of its own
+      if (!evs.some(e => e.type === 'finish')) evs.push({ id:'label-finish', type:'finish', t: rep.finishTime, meta:{} });
+      const r2 = derive(evs, p).reps[0];
+      if (r2) out = r2;
+    }
+    return { ...out, label, labelPlan: p };
+  }
+  // Seconds from the start (length 1) or the wall (later lengths) to the first
+  // stroke-count tap of each length — the underwater / breakout time. null
+  // where no SC was taken on that length.
+  function firstStrokes(rep, lengths){
+    const marks = repMarks(rep);
+    return lengths.map((l, i) => {
+      const f = rep.scEvents.find(e => e.legIndex === i);
+      return f && marks[i] != null ? Math.round((f.t - marks[i]) / 10) / 100 : null;
+    });
+  }
+
   function fmtClock(ms){
     if (ms==null) return '--:--.--';
     const neg = ms<0; ms=Math.abs(ms);
@@ -866,7 +960,10 @@ const SwimCore = (function(){
     (session.sets || []).forEach((set, setIdx) => {
       const derived = derive(set.events, buildPlan(set.event));
       let repNo = 0;   // flushes take no number, so the swim after one keeps the next
-      derived.reps.forEach((rep, repIdx) => {
+      derived.reps.forEach((rawRep, repIdx) => {
+        const rep = applyLabel(set, rawRep, session.poolLength);
+        const label = rep.label || null;
+        const legPlan = rep.labelPlan || buildPlan(set.event);
         const key = String(rep.startTime);
         if (!(set.flush||[]).includes(key)) repNo++;
         const notDone = (set.notDone||[]).includes(key);
@@ -880,16 +977,21 @@ const SwimCore = (function(){
         if (notDone){ return; }
         const lengths = repLengthTimes(rep);
         const stats = perLengthStats(rep, lengths);
+        const first = firstStrokes(rep, lengths);
         const restBeforeMs = prevFinish == null ? 0 : Math.max(0, rep.startTime - prevFinish);
         if (!dnf) prevFinish = rep.finishTime;
         rows.push({
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
-          set: set.name || ('Set ' + (setIdx+1)), rep: flush ? 'flush' : repNo, stroke: set.event ? set.event.stroke : 'open',
-          distance: rep.distance, poolLength: set.event ? set.event.poolLength : null, startType: rep.startType,
+          swimmer: (label && label.swimmer) || '', event: eventName(label), notRace: !!(label && label.notRace),
+          set: set.name || ('Set ' + (setIdx+1)), rep: flush ? 'flush' : repNo,
+          stroke: (label && label.stroke) || (set.event ? set.event.stroke : 'open'),
+          distance: rep.distance, poolLength: (set.event && set.event.poolLength) || session.poolLength || null, startType: rep.startType,
+          firstStrokeSec: first[0] != null ? first[0] : null,
           startClock: fmtWallClock(rep.startTime), startTime: rep.startTime, finishTime: rep.finishTime, marks: repMarks(rep),
           marks15: (rep.marks15 || []).map(m => ({ dist: m.distance, legIndex: m.legIndex, sec: m.sec, fromWallSec: m.fromWallSec })),
           totalMs: rep.finishTime-rep.startTime, totalFormatted: fmtClock(rep.finishTime-rep.startTime),
-          lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i]})),
+          lengths: lengths.map((l,i)=>({from:l.from,to:l.to,ms:l.ms,formatted:fmtClock(l.ms),sc:stats.sc[i],sr:stats.sr[i],
+                                        firstStrokeSec:first[i], stroke: legPlan && legPlan.allLegs[i] ? legPlan.allLegs[i].stroke : null})),
           strokeCount: rep.scCount||0, strokeRates: rep.srResults.map(r=>r.strokeRate),
           status: rep.status, flags: rep.finishFlags, missingCount: rep.missingCount||0, dnf, flush,
           restBeforeMs, restBeforeFormatted: fmtClock(restBeforeMs),
@@ -903,6 +1005,7 @@ const SwimCore = (function(){
   // never appear in the CSV or the on-screen summary.
   function flagNotes(rep){
     const notes = [];
+    if (rep.notRace) notes.push('Not a race (false start or mis-tap)');
     if (rep.flush) notes.push('Flush — active recovery between reps');
     if (rep.dnf) notes.push('Not finished — the swimmer started but didn\'t complete this rep');
     if (rep.flags.includes('missingSplits')) notes.push('Missing ' + (rep.missingCount||1) + ' split' + (rep.missingCount===1?'':'s') + ' — a time was estimated');
@@ -925,7 +1028,7 @@ const SwimCore = (function(){
     const T = (t) => t ? { raw: '="' + t + '"' } : '';
     const maxLengths = exported.reps.reduce((m,r)=>Math.max(m, r.lengths.length), 0);
     const HR_COLS = [['HR-Start','hrStart'],['HR min','hrMin'],['HR avg','hrAvg'],['HR max','hrPeak'],['HR-End','hrEnd'],['HR +30s','hrRec30']];
-    const header=['Athlete','Date','Location','Set','Rep','Stroke','Dist','Pool','Rest','Start','Clock','Time','15m',
+    const header=['Athlete','Date','Location','Set','Rep','Swimmer','Event','Stroke','Dist','Pool','Rest','Start','Clock','Time','15m','1st stroke',
                   ...HR_COLS.map(c => c[0]), 'HR cover %', 'Result', 'Notes'];
     for (let i=1;i<=maxLengths;i++) header.push('L'+i,'L'+i+' SC','L'+i+' SR','L'+i+' HR1','L'+i+' HR2');   // HR1/HR2 = first/last reading in the length
     const lines=[header.join(',')];
@@ -941,8 +1044,8 @@ const SwimCore = (function(){
       const m15 = (r.marks15 || []).find(m => m.legIndex === 0);
       const m15later = (r.marks15 || []).filter(m => m.legIndex > 0).map(m => '15m off wall' + (m.dist ? ' (' + m.dist + 'm)' : '') + ' ' + m.fromWallSec.toFixed(2));
       const notesText = flagNotes(r).concat(m15later).join('; ');
-      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.stroke,r.distance,r.poolLength,T(r.restBeforeFormatted),r.startType,r.startClock,T(r.totalFormatted),
-        m15 ? T(m15.sec.toFixed(2)) : '',
+      const cells=[r.athlete,r.date,r.location,r.set,r.rep,r.swimmer||'',r.event||'',r.stroke,r.distance,r.poolLength,T(r.restBeforeFormatted),r.startType,r.startClock,T(r.totalFormatted),
+        m15 ? T(m15.sec.toFixed(2)) : '', r.firstStrokeSec != null ? T(r.firstStrokeSec.toFixed(2)) : '',
         ...HR_COLS.map(c => r.hr && r.hr[c[1]] != null ? r.hr[c[1]] : ''),
         r.hr && r.hr.hrCoverage != null ? Math.round(r.hr.hrCoverage*100) : '',
         resultText, notesText, ...lengthCells]
@@ -1003,6 +1106,10 @@ const SwimCore = (function(){
       // can't be a valid single result — leave them out (counted, not dropped
       // silently) rather than posting a malformed swim.
       if (r.flush) { flushes++; return; }   // active recovery — not a swim worth a record
+      if (r.notRace) { skipped++; return; }
+      // Race labels: a rep labelled for a different swimmer is theirs, not this athlete's
+      const who = (exported.session.athlete || '').trim().toLowerCase();
+      if (r.swimmer && r.swimmer.trim().toLowerCase() !== who) { skipped++; return; }
       if (!stroke || !(distM > 0) || !(r.totalMs > 0)) { skipped++; return; }
       records.push({
         fmt: 'swimzone.result/1',
@@ -1034,7 +1141,8 @@ const SwimCore = (function(){
     };
   }
 
-  return { buildPlan, makeEvent, derive, repLengthTimes, perLengthStats, repMarks, fmtClock, fmtWallClock, exportSession, toCSV, toSummaryText, toSwimZone, flagNotes, DOUBLE_TAP_MS };
+  return { buildPlan, makeEvent, derive, repLengthTimes, perLengthStats, repMarks, fmtClock, fmtWallClock, exportSession, toCSV, toSummaryText, toSwimZone, flagNotes, DOUBLE_TAP_MS,
+           applyLabel, eventName, firstStrokes };
 })();
 
 /* ============================================================
@@ -2084,14 +2192,15 @@ const SwimCore = (function(){
     const st = SwimCore.perLengthStats(rep, lengths);
     const lhr = HR.lengths(SwimCore.repMarks(rep));
     const anyStat = st.sc.some(x => x) || st.sr.some(x => x) || lhr;
+    const fst = SwimCore.firstStrokes(rep, lengths), anyFirst = fst.some(x => x != null);
     const minCov = HR.lib ? HR.lib.HR_MIN_COVERAGE : 0.4;
     // Per length: heart rate at the first and last reading of the length (min/avg/max
     // are kept for the rep and set summaries).
     const hrCell = (h) => !h || h.hrFirst == null ? '<td class="dim">–</td><td class="dim">–</td>'
       : ['hrFirst','hrLast'].map(k => '<td class="hrv'+(h.hrCoverage < minCov ? ' low' : '')+'">'+h[k]+'</td>').join('');
     const splitsHtml = (anyStat && lengths.length)
-      ? '<table class="len-table"><thead><tr><th></th><th>Split</th><th>SC</th><th>SR</th>'+(lhr ? '<th class="hrh">&#9829; first</th><th class="hrh">last</th>' : '')+'</tr></thead><tbody>'+
-          lengths.map((l, i) => '<tr><td>'+(l.to!=null ? l.to+'m' : '•')+'</td><td>'+SwimCore.fmtClock(l.ms)+'</td><td>'+(st.sc[i] || '<span class="dim">–</span>')+'</td><td>'+(st.sr[i] || '<span class="dim">–</span>')+'</td>'+(lhr ? hrCell(lhr[i]) : '')+'</tr>').join('')+
+      ? '<table class="len-table"><thead><tr><th></th><th>Split</th>'+(anyFirst ? '<th title="Time to first stroke, from the start or the wall">1st</th>' : '')+'<th>SC</th><th>SR</th>'+(lhr ? '<th class="hrh">&#9829; first</th><th class="hrh">last</th>' : '')+'</tr></thead><tbody>'+
+          lengths.map((l, i) => '<tr><td>'+(l.to!=null ? l.to+'m' : '•')+'</td><td>'+SwimCore.fmtClock(l.ms)+'</td>'+(anyFirst ? '<td>'+(fst[i] != null ? fst[i].toFixed(2) : '<span class="dim">–</span>')+'</td>' : '')+'<td>'+(st.sc[i] || '<span class="dim">–</span>')+'</td><td>'+(st.sr[i] || '<span class="dim">–</span>')+'</td>'+(lhr ? hrCell(lhr[i]) : '')+'</tr>').join('')+
         '</tbody></table>'
       : lengths.map(l => '<span>'+(l.to!=null? l.to+'m' : '•')+' '+SwimCore.fmtClock(l.ms)+'</span>').join('');
     const m15Html = (rep.marks15 || []).length
@@ -2123,10 +2232,15 @@ const SwimCore = (function(){
       '<button data-setidx="'+setIdx+'" data-flush="'+ackKey+'">'+(isFlush?'Undo flush':'Flush')+'</button>'+
       (isFlush ? '' : '<button data-setidx="'+setIdx+'" data-notdone="'+ackKey+'">Not done</button>'+
       '<button data-setidx="'+setIdx+'" data-dnf="'+ackKey+'">'+(isDnf?'Undo not finished':'Not finished')+'</button>')+
+      (state.test || isFlush ? '' : '<button data-setidx="'+setIdx+'" data-label="'+ackKey+'">'+(rep.label ? 'Edit race' : 'Race…')+'</button>')+
       '<button data-setidx="'+setIdx+'" data-delrep="'+ackKey+'" style="color:var(--warn)">Delete rep</button>'+
     '</div>';
-    return '<div class="rep-card"'+(isFlush ? ' style="opacity:.75"' : '')+'>'+
+    const lb = rep.label;
+    const labelHtml = !lb ? '' : lb.notRace ? '<div class="rep-label not">Not a race</div>'
+      : '<div class="rep-label">'+escapeHtml(lb.swimmer || 'Swimmer?')+(SwimCore.eventName(lb) ? ' &middot; '+escapeHtml(SwimCore.eventName(lb)) : '')+'</div>';
+    return '<div class="rep-card"'+(isFlush || (lb && lb.notRace) ? ' style="opacity:.75"' : '')+'>'+
       '<div class="rep-top"><span class="rep-num">'+(isFlush ? 'Flush' : 'Rep '+(testNo != null ? testNo : (dispNo || idx)))+'</span>'+badge+'</div>'+
+      labelHtml+
       '<div class="rep-total mono">'+total+'</div>'+
       testBit+
       (splitsHtml ? (splitsHtml.startsWith('<table') ? splitsHtml : '<div class="splits">'+splitsHtml+'</div>') : '')+ m15Html +
@@ -2139,7 +2253,11 @@ const SwimCore = (function(){
   }
 
   function renderAllReps(){
-    const groups = state.sets.map((set, i) => ({ set, i, d: SwimCore.derive(set.events, SwimCore.buildPlan(set.event)) }));
+    const groups = state.sets.map((set, i) => {
+      const d = SwimCore.derive(set.events, SwimCore.buildPlan(set.event));
+      if (!state.test && set.labels) d.reps = d.reps.map(r => SwimCore.applyLabel(set, r, sessionPool()));
+      return { set, i, d };
+    });
     if (!groups.some(g => g.d.reps.length) && !groups.some(g => g.d.current)){
       repList.innerHTML = '<div class="empty">No reps recorded yet — tap Start Dive or Start Push to begin.</div>';
       return;
@@ -2190,6 +2308,7 @@ const SwimCore = (function(){
       const fields = have.concat(readingsNeeded(no, rep)).filter((k,i,a) => a.indexOf(k) === i);
       openReadings(no, rep, fields.length ? fields : ['hr','lactate','rpe']);
     }));
+    repList.querySelectorAll('[data-label]').forEach(b => b.addEventListener('click', () => openLabelSheet(Number(b.dataset.setidx), b.dataset.label)));
     repList.querySelectorAll('[data-ack]').forEach(b => b.addEventListener('click', () => {
       state.sets[Number(b.dataset.setidx)].acked.push(b.dataset.ack); render();
     }));
@@ -2292,7 +2411,12 @@ const SwimCore = (function(){
   let currentOverlayEl = null;
   let currentOverlayOnBack = null; // optional custom close path (the confirm sheet needs to unbind its per-call listeners, not just hide)
   let overlayHistoryPushed = false;
+  var ownBackPending = 0;
   function openOverlay(el, onBack){
+    // A sheet opened over another (Race… over the reps sheet, Race order over
+    // Results) remembers the one underneath, so Back closes them one at a time.
+    el._under = (currentOverlayEl && currentOverlayEl !== el && !currentOverlayEl.hidden)
+      ? { el: currentOverlayEl, onBack: currentOverlayOnBack, pushed: overlayHistoryPushed } : null;
     el.hidden = false;
     currentOverlayEl = el;
     currentOverlayOnBack = onBack || null;
@@ -2309,11 +2433,15 @@ const SwimCore = (function(){
   function hideOverlay(el, fromPopstate){
     el.hidden = true;
     lastOverlayCloseAt = Date.now();
-    if (currentOverlayEl === el){ currentOverlayEl = null; currentOverlayOnBack = null; }
-    if (overlayHistoryPushed){
+    const top = currentOverlayEl === el;
+    if (top){ currentOverlayEl = null; currentOverlayOnBack = null; }
+    if (top && overlayHistoryPushed){
       overlayHistoryPushed = false;
-      if (!fromPopstate){ try { history.back(); } catch(e){} }
+      // our own Back step — its popstate must not close the sheet underneath
+      if (!fromPopstate){ try { ownBackPending++; history.back(); } catch(e){ ownBackPending = Math.max(0, ownBackPending - 1); } }
     }
+    const u = el._under; el._under = null;
+    if (top && u && !u.el.hidden){ currentOverlayEl = u.el; currentOverlayOnBack = u.onBack; overlayHistoryPushed = u.pushed; }
   }
   // Fires both from our own history.back() above and from the phone's real
   // Back button/gesture — either way, if a sheet is still showing, this is
@@ -2321,6 +2449,7 @@ const SwimCore = (function(){
   // the page itself (which is what previously looked like the watch
   // "restarting": Back left/reloaded the page rather than closing Results).
   window.addEventListener('popstate', () => {
+    if (ownBackPending > 0){ ownBackPending--; return; }
     if (currentOverlayEl && !currentOverlayEl.hidden){
       const onBack = currentOverlayOnBack, el = currentOverlayEl;
       if (onBack) onBack(true); else hideOverlay(el, true);
@@ -2601,7 +2730,7 @@ const SwimCore = (function(){
   const resultsOverlay = $('resultsOverlay');
   let currentExport = null, currentStamp = 'poolside-results';
   function buildExport(){
-    const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets };
+    const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets, poolLength: sessionPool() };
     currentExport = SwimCore.exportSession(session);
     // live heart rate → per-rep figures on each row (CSV, recap and SwimZone file)
     currentExport.reps.forEach(r => {
@@ -2858,6 +2987,303 @@ const SwimCore = (function(){
   addTapListener($('measuresSave'), saveReadings);
   addTapListener($('hrChip'), () => HR.onChip());
   $('hrChip').addEventListener('contextmenu', (e) => { e.preventDefault(); HR.openSheet(); });
+
+  /* ---- race labels (2026-11-16): who swam each rep, and what event. A gala
+     is timed as one freeform set of back-to-back reps; afterwards each rep is
+     labelled here (or all at once from the race order) and re-worked as its
+     event in the session's pool. ---- */
+  const labelOverlay = $('labelOverlay');
+  const LABEL_DISTS = [50,100,200,400,800,1500];
+  let labelTarget = null, labelEdit = {};
+  function knownSwimmers(){
+    const n = new Set();
+    if (state.session.athlete) n.add(state.session.athlete);
+    state.sets.forEach(x => Object.values(x.labels || {}).forEach(l => { if (l.swimmer) n.add(l.swimmer); }));
+    return [...n].sort();
+  }
+  function paintLabel(){
+    [...$('labelStroke').children].forEach(b => b.classList.toggle('on', b.dataset.v === labelEdit.stroke));
+    [...$('labelDist').children].forEach(b => b.classList.toggle('on', Number(b.dataset.v) === Number(labelEdit.distance)));
+  }
+  function openLabelSheet(setIdx, key){
+    const set = state.sets[setIdx]; labelTarget = { setIdx, key };
+    const cur = (set.labels || {})[key] || {};
+    const ev = set.event && set.event.stroke !== 'OPEN' ? set.event : null;
+    labelEdit = { stroke: cur.stroke || (ev ? ev.stroke : null), distance: cur.distance || (ev ? ev.distance : null) };
+    $('labelSwimmer').value = cur.swimmer || '';
+    $('labelDistInput').value = labelEdit.distance && !LABEL_DISTS.includes(Number(labelEdit.distance)) ? labelEdit.distance : '';
+    $('labelNotRace').checked = !!cur.notRace;
+    $('labelNames').innerHTML = knownSwimmers().map(nm => '<option value="' + escapeHtml(nm) + '">').join('');
+    $('labelTitle').textContent = 'Race — started ' + SwimCore.fmtWallClock(Number(key));
+    paintLabel(); openOverlay(labelOverlay);
+  }
+  addTapDelegate($('labelStroke'), 'button', (b) => { labelEdit.stroke = b.dataset.v; paintLabel(); });
+  addTapDelegate($('labelDist'), 'button', (b) => { labelEdit.distance = Number(b.dataset.v); $('labelDistInput').value = ''; paintLabel(); });
+  $('labelDistInput').addEventListener('input', (e) => { const v = Number(e.target.value); labelEdit.distance = v > 0 ? v : null; paintLabel(); });
+  addTapListener($('labelSave'), () => {
+    const set = state.sets[labelTarget.setIdx];
+    if (!set.labels) set.labels = {};
+    const l = { swimmer: $('labelSwimmer').value.trim(), stroke: labelEdit.stroke || null, distance: labelEdit.distance || null, notRace: $('labelNotRace').checked };
+    if (!l.swimmer && !l.stroke && !l.distance && !l.notRace) delete set.labels[labelTarget.key];
+    else set.labels[labelTarget.key] = l;
+    hideOverlay(labelOverlay); render(); buildExport();
+    const pool = sessionPool();
+    if (l.distance && l.distance % pool) showToast(l.distance + 'm doesn\'t fit a ' + pool + 'm pool — check the pool in Session details');
+  });
+  addTapListener($('labelClear'), () => { const set = state.sets[labelTarget.setIdx]; if (set.labels) delete set.labels[labelTarget.key]; hideOverlay(labelOverlay); render(); });
+  addTapListener($('labelCancel'), () => hideOverlay(labelOverlay));
+
+  /* ---- race order: paste the meet's list, one race per line, in the order
+     they were timed; each line labels the next rep. ---- */
+  const raceOrderOverlay = $('raceOrderOverlay');
+  const STROKE_WORDS = [
+    [/\b(individual\s+medley|medley|im)\b/i, 'IM'],
+    [/\b(freestyle|free|fs|fr)\b/i, 'FREE'],
+    [/\b(backstroke|back|bk)\b/i, 'BACK'],
+    [/\b(breaststroke|breast|br)\b/i, 'BREAST'],
+    [/\b(butterfly|fly|bf)\b/i, 'FLY'],
+  ];
+  function parseRaceLine(line){
+    const raw = String(line || '').trim();
+    if (!raw) return null;
+    let t = ' ' + raw + ' ';
+    const dm = t.match(/\b(25|50|100|200|400|800|1500)\s*(m|metres|meters)?\b/i);
+    let stroke = null;
+    if (dm) t = t.replace(dm[0], ' ');
+    for (const [re, v] of STROKE_WORDS){ const m = t.match(re); if (m){ stroke = v; t = t.replace(m[0], ' '); break; } }
+    t = t.replace(/\b(heat|h|lane|l|event|ev|e)\s*#?\d+\b/gi, ' ')
+         .replace(/\b(girls|boys|women|men|mixed|open)\b/gi, ' ')
+         .replace(/[,\t|;:–—\-()#]+/g, ' ').replace(/\s+/g, ' ').trim();
+    return { swimmer: t, stroke, distance: dm ? Number(dm[1]) : null };
+  }
+  // every timed rep, in time order — skipping flushes, "not done" and "not a race"
+  function raceTargets(){
+    const out = [];
+    state.sets.forEach((set, si) => {
+      SwimCore.derive(set.events, SwimCore.buildPlan(set.event)).reps.forEach(r => {
+        const k = String(r.startTime), lb = (set.labels || {})[k];
+        if ((set.flush || []).includes(k) || (set.notDone || []).includes(k) || (lb && lb.notRace)) return;
+        out.push({ si, k, rep: r });
+      });
+    });
+    return out.sort((a, b) => a.rep.startTime - b.rep.startTime);
+  }
+  function racePairs(){
+    return { lines: $('raceOrderText').value.split(/\r?\n/).map(parseRaceLine).filter(Boolean), targets: raceTargets() };
+  }
+  function paintRaceOrder(){
+    const { lines, targets } = racePairs();
+    if (!lines.length){ $('raceOrderPreview').innerHTML = ''; return; }
+    const n = Math.max(lines.length, targets.length);
+    let h = lines.length !== targets.length
+      ? '<div style="padding:8px;font-size:12.5px;color:var(--warn)">' + lines.length + ' line' + (lines.length>1?'s':'') + ', ' + targets.length + ' rep' + (targets.length>1?'s':'') + ' — check nothing is missing or extra</div>' : '';
+    h += '<table>';
+    for (let i = 0; i < n; i++){
+      const L = lines[i], T = targets[i];
+      const left = T ? SwimCore.fmtWallClock(T.rep.startTime) + ' · ' + SwimCore.fmtClock(T.rep.finishTime - T.rep.startTime) : 'no rep';
+      const ev = L ? SwimCore.eventName(L) : '';
+      const right = !L ? 'left as it is'
+        : escapeHtml(L.swimmer || '?') + (ev ? ' · ' + escapeHtml(ev) : ' · <span class="warn">event?</span>');
+      h += '<tr><td class="r">' + (i+1) + '. ' + left + '</td><td' + (!T || !L ? ' class="warn"' : '') + '>' + right + '</td></tr>';
+    }
+    $('raceOrderPreview').innerHTML = h + '</table>';
+  }
+  $('raceOrderText').addEventListener('input', paintRaceOrder);
+  addTapListener($('raceOrderBtn'), () => {
+    if (state.test){ showToast('A test set is already labelled by the test'); return; }
+    $('raceOrderText').value = state.session.raceOrder || '';
+    paintRaceOrder(); openOverlay(raceOrderOverlay);
+  });
+  addTapListener($('raceOrderCancel'), () => hideOverlay(raceOrderOverlay));
+  addTapListener($('raceOrderApply'), () => {
+    const { lines, targets } = racePairs();
+    const n = Math.min(lines.length, targets.length);
+    for (let i = 0; i < n; i++){
+      const set = state.sets[targets[i].si];
+      if (!set.labels) set.labels = {};
+      set.labels[targets[i].k] = { swimmer: lines[i].swimmer, stroke: lines[i].stroke, distance: lines[i].distance, notRace: false };
+    }
+    state.session.raceOrder = $('raceOrderText').value;
+    hideOverlay(raceOrderOverlay); render(); buildExport();
+    showToast('Labelled ' + n + ' rep' + (n===1?'':'s') + (lines.length !== targets.length ? ' — ' + Math.abs(lines.length - targets.length) + (lines.length > targets.length ? ' line(s) had no rep' : ' rep(s) left as they were') : ''));
+  });
+
+  /* ---- Spreadsheet (.xlsx) — Summary, Races/Reps, Lengths, Per 100, Heart
+     rate. ExcelJS (public/poolside/vendor, copied from node_modules by
+     scripts/copy-setformat.mjs) loads only when this is tapped, and is kept
+     for offline by sw.js. Times are real numbers formatted m:ss.00, so they
+     sort, average and chart. ---- */
+  let excelLoading = null;
+  function loadExcel(){
+    if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+    if (!excelLoading) excelLoading = new Promise((res, rej) => {
+      const sc = document.createElement('script'); sc.src = 'vendor/exceljs.min.js';
+      sc.onload = () => window.ExcelJS ? res(window.ExcelJS) : rej(new Error('not loaded'));
+      sc.onerror = () => { excelLoading = null; rej(new Error('could not load')); };
+      document.head.appendChild(sc);
+    });
+    return excelLoading;
+  }
+  const DAY = 86400;
+  const TIME_FMT = '[m]:ss.00', SEC_FMT = '0.00';
+  const mean = (a) => { const v = a.filter(x => x != null && x > 0); return v.length ? v.reduce((p,c)=>p+c,0) / v.length : null; };
+  const r1 = (x) => x == null ? null : Math.round(x * 10) / 10;
+  const STROKE_NM = { FREE:'Free', BACK:'Back', BREAST:'Breast', FLY:'Fly', IM:'IM', open:'Open', OPEN:'Open' };
+  // cumulative seconds at each length end
+  function cumAt(r){ let c = 0; return r.lengths.map(l => (c += l.ms / 1000)); }
+  function cumAtDistance(r, dist){
+    const cum = cumAt(r); const i = r.lengths.findIndex(l => l.to === dist); return i >= 0 ? cum[i] : null;
+  }
+  // 100 m splits, when the race is 200 m+ and the lengths land on each 100
+  function per100(r){
+    if (!(r.distance >= 200)) return [];
+    const out = []; let prev = 0;
+    for (let d = 100; d <= r.distance; d += 100){
+      const c = cumAtDistance(r, d); if (c == null) return [];
+      const ls = r.lengths.filter(l => l.to > d - 100 && l.to <= d);
+      out.push({ no: d / 100, to: d, sec: c - prev, cum: c, sc: ls.reduce((a,l)=>a+(l.sc||0),0) || null, sr: r1(mean(ls.map(l=>l.sr))) });
+      prev = c;
+    }
+    return out;
+  }
+  function raceFigures(r){
+    const total = r.totalMs / 1000;
+    const half = r.distance ? cumAtDistance(r, r.distance / 2) : null;
+    const h = per100(r);
+    const m15 = (r.marks15 || []).find(m => m.legIndex === 0);
+    const fast = h.length ? h.reduce((a,b) => b.sec < a.sec ? b : a) : null, slow = h.length ? h.reduce((a,b) => b.sec > a.sec ? b : a) : null;
+    return {
+      total, m15: m15 ? m15.sec : null, first: r.firstStrokeSec,
+      scLen: r1(mean(r.lengths.map(l => l.sc))), sr: r1(mean(r.lengths.map(l => l.sr))),
+      fade: half != null ? Math.round(((total - half) - half) * 100) / 100 : null,
+      first100: h[0] ? h[0].sec : null, last100: h.length ? h[h.length-1].sec : null,
+      fast100: fast, slow100: slow,
+    };
+  }
+  async function buildWorkbook(exp){
+    const ExcelJS = await loadExcel();
+    const wb = new ExcelJS.Workbook(); wb.creator = 'Poolside'; wb.created = new Date();
+    const ses = exp.session, pool = sessionPool();
+    const all = exp.reps.filter(r => !r.notRace);
+    const races = all.some(r => r.swimmer || r.event);
+    const byRace = (a, b) => (a.swimmer ? 0 : 1) - (b.swimmer ? 0 : 1) || String(a.swimmer).localeCompare(String(b.swimmer)) || a.startTime - b.startTime;
+    const rows = races ? all.slice().sort(byRace) : all;
+    const who = (r) => r.swimmer || (races ? '' : (ses.athlete || ''));
+    const evName = (r) => r.event || (r.distance ? r.distance + ' ' + (STROKE_NM[r.stroke] || r.stroke) : 'Open');
+    const repName = (r) => r.flush ? 'Flush' : (r.set + ' · ' + r.rep);
+
+    function sheet(name, cols){
+      const ws = wb.addWorksheet(name, { views: [{ state:'frozen', ySplit:1 }] });
+      ws.columns = cols.map(c => ({ header:c[0], key:c[1], width:c[2] || 11, style: c[3] ? { numFmt: c[3] } : {} }));
+      const hr = ws.getRow(1); hr.font = { bold:true, color:{ argb:'FFFFFFFF' } };
+      hr.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:'FF0B8FA8' } }; hr.alignment = { vertical:'middle' };
+      return ws;
+    }
+    const finish = (ws) => { if (ws.rowCount > 1) ws.autoFilter = { from:{ row:1, column:1 }, to:{ row:1, column:ws.columnCount } }; };
+    const T = (sec) => sec == null ? null : sec / DAY;
+
+    // ---- Summary ----
+    const sm = wb.addWorksheet('Summary');
+    sm.getColumn(1).width = 22;
+    sm.addRow(['Poolside session']).font = { bold:true, size:14 };
+    [['Date', ses.date || ''], ['Location', ses.location || ''], ['Pool', pool + 'm'], races ? null : ['Athlete', ses.athlete || '']]
+      .filter(Boolean).forEach(x => { const rw = sm.addRow(x); rw.getCell(1).font = { bold:true }; });
+    sm.addRow([]);
+    let head;
+    if (races){
+      head = ['Swimmer','Event','Time','15m','1st stroke','SC / length','SR','HR avg','Fade'];
+      sm.addRow(['Races']).font = { bold:true, size:12 };
+      const hr = sm.addRow(head); hr.font = { bold:true };
+      let last = null;
+      rows.forEach(r => {
+        const f = raceFigures(r);
+        if (last !== null && last !== who(r)) sm.addRow([]);
+        const rw = sm.addRow([last === who(r) ? '' : (who(r) || '(no name)'), evName(r), T(f.total), f.m15, f.first, f.scLen, f.sr, r.hr ? r.hr.hrAvg : null, f.fade]);
+        rw.getCell(3).numFmt = TIME_FMT; [4,5,9].forEach(c => rw.getCell(c).numFmt = SEC_FMT);
+        last = who(r);
+      });
+    } else {
+      head = ['Set','Swim','Reps','Fastest','Average','Slowest','SC / length','SR','HR avg'];
+      sm.addRow(['Sets']).font = { bold:true, size:12 };
+      const hr = sm.addRow(head); hr.font = { bold:true };
+      const sets = [...new Set(rows.map(r => r.set))];
+      sets.forEach(nm => {
+        const rs = rows.filter(r => r.set === nm && !r.flush && !r.dnf);
+        if (!rs.length) return;
+        const t = rs.map(r => r.totalMs / 1000);
+        const rw = sm.addRow([nm, evName(rs[0]), rs.length, T(Math.min(...t)), T(mean(t)), T(Math.max(...t)),
+          r1(mean(rs.flatMap(r => r.lengths.map(l => l.sc)))), r1(mean(rs.flatMap(r => r.lengths.map(l => l.sr)))), r1(mean(rs.map(r => r.hr && r.hr.hrAvg)))]);
+        [4,5,6].forEach(c => rw.getCell(c).numFmt = TIME_FMT);
+      });
+    }
+    [2,3,4,5,6,7,8,9].forEach(c => sm.getColumn(c).width = 12);
+
+    // ---- Races / Reps: one row each ----
+    const rc = sheet(races ? 'Races' : 'Reps', [
+      ['Swimmer','who',18],['Event','ev',12],['Set · rep','rep',14],['Started','clock',10],['Start','st',7],['Rest','rest',9,TIME_FMT],
+      ['Time','time',11,TIME_FMT],['15m','m15',8,SEC_FMT],['1st stroke','first',10,SEC_FMT],['Strokes','sc',9],['SC / length','scl',11],['SR','sr',7],
+      ['HR avg','hra',8],['HR max','hrm',8],['First 100','f100',10,TIME_FMT],['Fastest 100','fa100',11,TIME_FMT],['Slowest 100','sl100',11,TIME_FMT],['Last 100','l100',10,TIME_FMT],
+      ['Fade','fade',8,SEC_FMT],['Result','res',9],['Notes','notes',40]]);
+    rows.forEach(r => {
+      const f = raceFigures(r);
+      rc.addRow({ who: who(r), ev: evName(r), rep: repName(r), clock: r.startClock, st: r.startType || '', rest: T(r.restBeforeMs / 1000),
+        time: T(f.total), m15: f.m15, first: f.first, sc: r.strokeCount || null, scl: f.scLen, sr: f.sr,
+        hra: r.hr ? r.hr.hrAvg : null, hrm: r.hr ? r.hr.hrPeak : null,
+        f100: T(f.first100), fa100: f.fast100 ? T(f.fast100.sec) : null, sl100: f.slow100 ? T(f.slow100.sec) : null, l100: T(f.last100),
+        fade: f.fade, res: r.flush ? 'Flush' : (r.status === 'complete' && !r.dnf) ? 'OK' : 'Check', notes: SwimCore.flagNotes(r).join('; ') });
+    });
+    finish(rc);
+
+    // ---- Lengths: one row per length ----
+    const ln = sheet('Lengths', [
+      ['Swimmer','who',18],['Event','ev',12],['Set · rep','rep',14],['Length','n',8],['From','from',7],['To','to',7],['Stroke','stroke',8],
+      ['Split','split',10,TIME_FMT],['Cumulative','cum',11,TIME_FMT],['1st stroke','first',10,SEC_FMT],['15m','m15',8,SEC_FMT],['SC','sc',6],['SR','sr',6],['HR first','h1',9],['HR last','h2',9]]);
+    rows.forEach(r => {
+      const cum = cumAt(r);
+      r.lengths.forEach((l, i) => {
+        const m = (r.marks15 || []).find(x => x.legIndex === i);
+        ln.addRow({ who: who(r), ev: evName(r), rep: repName(r), n: i + 1, from: l.from, to: l.to, stroke: STROKE_NM[l.stroke] || l.stroke || '',
+          split: T(l.ms / 1000), cum: T(cum[i]), first: l.firstStrokeSec, m15: m ? (i === 0 ? m.sec : m.fromWallSec) : null,
+          sc: l.sc || null, sr: l.sr || null, h1: l.hr ? l.hr.hrFirst : null, h2: l.hr ? l.hr.hrLast : null });
+      });
+    });
+    finish(ln);
+
+    // ---- Per 100: races of 200 m and over ----
+    const long = rows.filter(r => per100(r).length);
+    if (long.length){
+      const ph = sheet('Per 100', [['Swimmer','who',18],['Event','ev',12],['Set · rep','rep',14],['100','no',6],['To','to',7],
+        ['Split','split',10,TIME_FMT],['Cumulative','cum',11,TIME_FMT],['Strokes','sc',9],['SR','sr',7]]);
+      long.forEach(r => per100(r).forEach(h => ph.addRow({ who: who(r), ev: evName(r), rep: repName(r), no: h.no, to: h.to, split: T(h.sec), cum: T(h.cum), sc: h.sc, sr: h.sr })));
+      finish(ph);
+    }
+
+    // ---- Heart rate: the raw readings, when a sensor was worn ----
+    if (all.length && HR.hasData()){
+      const st = HR.packFor(Math.min(...all.map(r => r.startTime)), Math.max(...all.map(r => r.finishTime)));
+      if (st && st.samples.length){
+        const hs = sheet('Heart rate', [['Clock','clock',10],['bpm','bpm',7],['During','rep',22]]);
+        st.samples.forEach(([t, bpm]) => {
+          const r = all.find(x => t >= x.startTime && t <= x.finishTime);
+          hs.addRow({ clock: SwimCore.fmtWallClock(t), bpm, rep: r ? (who(r) ? who(r) + ' · ' : '') + repName(r) : '' });
+        });
+        finish(hs);
+      }
+    }
+    const buf = await wb.xlsx.writeBuffer();
+    return new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  }
+  addTapListener($('downloadXlsxBtn'), async () => {
+    const exported = currentExport || buildExport();
+    if (!exported.reps.length){ showToast('No reps to put in a spreadsheet yet'); return; }
+    showToast('Building the spreadsheet…');
+    try {
+      const blob = await buildWorkbook(exported);
+      if (await saveFile(currentStamp + '.xlsx', blob)) showToast('Saved ' + currentStamp + '.xlsx');
+    } catch(e){
+      showToast(navigator.onLine ? 'Couldn\'t build the spreadsheet' : 'The spreadsheet part isn\'t saved on this device yet — open Poolside once with signal');
+    }
+  });
 
   /* ---- ⋮ menu (2026-11-12): Results, Session details, heart rate, screen
      awake, full screen, install, New session. Each item's own handler (set

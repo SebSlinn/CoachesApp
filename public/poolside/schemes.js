@@ -21,16 +21,17 @@
 import { TYPES, GROUPS_BY_ZONE, isTypeCode } from './types.js';
 
 const UNKNOWN_COLOR = '#8E8E93';
-const DEFAULT_SCHEME_ID = 'sweetenham';
+// The scheme everyone sees until they choose one (2026-10-26: Urbanchek; was Sweetenham).
+const DEFAULT_SCHEME_ID = 'urbanchek';
 
 // ── Built-in schemes ─────────────────────────────────────────────────────────
 
-// Sweetenham = EXACTLY the colours SwimZone has always shown (the default scheme).
+// Sweetenham = EXACTLY the colours SwimZone showed until 2026-10-26 ("SwimZone classic").
 // Type colours from the old ZONE_COLORS / sbZoneColor; CS (and MVO, which shares
 // Zone 3 with it) keep CS's teal. Group colours are the old ZONE_GROUPS header colours.
-// Don't change these without meaning to change every coach's default screen.
+// Coaches who chose it keep it; the default is now Urbanchek (DEFAULT_SCHEME_ID).
 const SWEETENHAM = {
-  id: 'sweetenham', name: 'SwimZone default', builtIn: true,
+  id: 'sweetenham', name: 'SwimZone classic', builtIn: true,
   types: {
     A1:  { color: '#007AFF' },
     A2:  { color: '#30B0C7' },
@@ -86,9 +87,9 @@ const MAGLISCHO = {
   groups: {},
 };
 
-const BUILT_IN_SCHEMES = Object.freeze({
-  sweetenham: SWEETENHAM,
+const BUILT_IN_SCHEMES = Object.freeze({   // picker order: the default first
   urbanchek:  URBANCHEK,
+  sweetenham: SWEETENHAM,
   maglischo:  MAGLISCHO,
 });
 
@@ -112,7 +113,7 @@ function pickScheme(pScheme) {
 /**
  * How to show a type code under a scheme.
  * @param {string} pCode            type code, e.g. 'AT'. Unknown codes ('Drill', null) get a neutral grey.
- * @param {Object|string} [pScheme] scheme object or built-in id; default Sweetenham.
+ * @param {Object|string} [pScheme] scheme object or built-in id; default DEFAULT_SCHEME_ID.
  * @returns {{code, label, short, name, color, text, group:number|null, known:boolean}}
  *   name = the "CODE / Long name" line used in zone lists; the type's own name unless the
  *   scheme relabels the type, then "CODE / scheme label". Buttons and badges keep showing the code.
@@ -163,7 +164,7 @@ function groupColor(pZone, pScheme) {
 
 /**
  * Start a custom scheme from a built-in one (deep copy, editable).
- * @param {string} [pBaseId='sweetenham']
+ * @param {string} [pBaseId=DEFAULT_SCHEME_ID]
  * @param {Object} [pOpts] { id, name }
  */
 function copyScheme(pBaseId = DEFAULT_SCHEME_ID, pOpts = {}) {

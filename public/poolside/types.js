@@ -114,30 +114,85 @@ const TYPE_LIST = [
   // intense). The British Swimming / Swim England chart lists them the other way round;
   // Al chose this order on 2026-10-14. PL sits above LT.
   {
-    // LP RULES UNDER REVIEW (Al, 2026-10-14) — do not change until he has finished reading.
-    // The 1.0–1.2 rest:work rule came from an earlier chat with no source. Sweetenham and
-    // Bowman use LONG rest (e.g. 50s on 2:30–3:00; Bowman: lactate peaks ~4:00 after) over
-    // 50–100m reps. Al prefers whole-number ratios (or send-offs) when it is redone.
+    // Al, 2026-10-22 (Sweetenham & Atkinson ch. 13 race-pace LP sets + his own numbers):
+    //  - race pace for the athlete's event, set per athlete type:
+    //      sprint    100 pace — 25 in ~¼ × 100 PB, 50 in the second 50 of the 100 (50–52.5% of 100 PB)
+    //      allround  200 pace — the second 100 of the 200 (½ × 200 goal/PB per 100)
+    //      endurance 400 pace — from the swimmer's 400 PB (Al, 2026-10-22)
+    //  - reps 25–100m (sprinters 25/50, 200 swimmers 50/100; Sweetenham 50–100)
+    //  - rest per rep, by athlete type (rest inside the piece; active-recovery swims between
+    //    pieces are separate main rest and need the set-format change to be seen):
+    //      sprint/allround  1–5× the swim — about 1:2 (Al); Sweetenham's 10×50 on 2:30–3:00 ≈ 1:4
+    //      endurance        0.75–2× (Al, 2026-10-22, from the book's 400m sets scaled to the
+    //                       swimmer: a 4:28 400 swimmer's 100 on 2:00 is 67:53, 50 on 60 is 33:27)
+    //    Send-offs are offered as ratios of the swimmer's own rep time, so they scale to level.
+    //  - volume = race-pace metres only (recovery swims don't count): sprinters 500–~1000m (Al),
+    //    endurance 500–1200m (book's 400m sets), all-round 500–1200m provisional.
+    // LP is below LT and PL in intensity: the Training Zones chart's LA (8–15 vs 12–20 mmol)
+    // and RPE (17–19 vs 19–20) agree with Sweetenham, whatever order the chart's rows are in.
     code: 'LP', group: 4, rank: 6, label: 'Lactate production', short: 'LP',
     name: 'LP / Lactate Production', rpe: '17-19', energyModel: true, speedRatio: 1.00,
-    desc: 'Improves the rate of anaerobic glycolysis. Hard efforts building lactate. Early season focus.',
+    desc: 'Improves the rate of anaerobic glycolysis. Race-pace 25–100m reps with rest 1–5× the swim. Early season focus.',
     hrBand: { fromBbm: 0, toBbm: 10 },
-    criteria: { speed: [0.97, 1.025], restWork: [1.0, 1.2], distMax: 100 },
+    criteria: {
+      eventPace: {
+        sprint:    { event: 100, lo: 1.00, hi: 1.05 },
+        allround:  { event: 200, lo: 1.00, hi: 1.03 },
+        endurance: { event: 400, lo: 1.00, hi: 1.03 },
+      },
+      speed: [0.97, 1.03],
+      restWork: [1, 5], onRestRatios: [1, 2, 3, 4, 5],
+      restWorkByAthleteType:    { endurance: [0.75, 2] },
+      onRestRatiosByAthleteType: { endurance: [0.75, 1, 1.25, 1.5, 2] },
+      distMin: 25, distMax: 100,
+      volumeM: [300, 2000],
+      volumeByAthleteType: { sprint: [500, 1000], allround: [500, 1200], endurance: [500, 1200] },
+    },
+    provisional: true,
   },
   {
     code: 'LT', group: 4, rank: 7, label: 'Lactate tolerance', short: 'LT',
     name: 'LT / Lactate Tolerance', rpe: '18-20', energyModel: true, speedRatio: 0.96,
     desc: 'High-speed glycolytic work with significant lactate accumulation. Post-PHV athletes.',
     hrBand: { fromBbm: 0, toBbm: 10 },
-    criteria: { speed: [0.85, 0.97] },
+    // Al, 2026-10-16:
+    //  - reps 50–200m
+    //  - pace = ½ × 200 goal time (else ½ × 200 PB) per 100 — the 2nd 100 of the 200 — ±2 s/100
+    //  - send-off 3:00–5:00 start-to-start: the next rep starts as lactate from the last one
+    //    peaks (Bowman: ~4:00 from the start of the previous swim). Offered 3:00/3:30/4:00/4:30/5:00.
+    //  - 600–2000m: shorter for sprinters, longer for middle-distance swimmers.
+    // speed is the ratio fallback when there is no 200 time in the context.
+    criteria: {
+      racePace: { offsetLow: -2, offsetHigh: 2 }, speed: [0.97, 1.03],
+      onSec: [180, 300], onOptions: [180, 210, 240, 270, 300],
+      distMin: 50, distMax: 200,
+      volumeM: [600, 2000],
+      volumeByAthleteType: { sprint: [600, 1000], allround: [800, 1500], endurance: [1200, 2000] },
+    },
   },
   {
     code: 'PL', group: 4, rank: 8, label: 'Peak lactate', short: 'PL',
     name: 'PL / Peak Lactate', rpe: '20', energyModel: false, speedRatio: 0.92,
-    desc: 'Near-maximal 50–100m efforts with long recovery to drive lactate to its peak. Use sparingly.',
+    desc: 'Maximum 75–400m efforts (straight or broken) on 10–30 min with active recovery, so each swim reaches peak lactate. Use sparingly.',
     hrBand: null,
-    // Above LT: all-out, 50–100m reps, very long rest (≥5× work).
-    criteria: { speed: [null, 0.95], restWork: [5, null], distMin: 50, distMax: 100 },
+    // Al, 2026-10-22 (Sweetenham & Atkinson ch. 1 and 13):
+    //  - maximum effort: at or faster than race pace for the athlete's event (a 100 swimmer
+    //    holds their 100 splits, a 200 swimmer their 200 splits)
+    //  - efforts 75–400m, straight or broken (e.g. 3×200 as 4×50 on 60 — a broken effort is
+    //    not yet expressible in a single line; see the set-format request)
+    //  - send-off 10–30 min with active recovery (4×100 on 15:00; 4×100 on 20:00; 3×200 on 30:00)
+    //  - 300–800m of peak-lactate swimming
+    criteria: {
+      eventPace: {
+        sprint:    { event: 100, lo: null, hi: 1.02 },
+        allround:  { event: 200, lo: null, hi: 1.02 },
+        endurance: { event: 400, lo: null, hi: 1.02 },
+      },
+      speed: [null, 1.0],
+      onSec: [600, 1800], onOptions: [600, 900, 1200, 1500, 1800],
+      distMin: 75, distMax: 400,
+      volumeM: [300, 800],
+    },
     provisional: true,
   },
   {
