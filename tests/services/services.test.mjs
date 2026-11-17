@@ -214,5 +214,38 @@ console.log('\nOpen sign-up (checks before the server)');
   ok('instructions carry the link and the +name tip', txt.includes('https://swimzone.example/signup') && txt.includes('+sam'));
 }
 
+// ── Max HR on the day (2026-11-17): every saved result with HR carries the max
+// HR that applied then — Poolside's if it knew one, else the athlete's own.
+console.log('\nmax HR kept with results');
+{
+  const yr = new Date().getUTCFullYear();
+  store.dobs.mia = `${yr - 14}-01-01`;                 // 14 now → 220 − 14 = 206
+  const swim = (id, swumOn, metrics) => ({ fmt: 'swimzone.result/1', id, kind: 'training', effort: 'submaximal', swumOn,
+    stroke: 'FS', distM: 100, poolType: '25SC', timeSec: 70, source: 'stopwatch', ...(metrics ? { metrics } : {}) });
+  const today = new Date().toISOString().slice(0, 10);
+  const r1 = await R.ingestPoolsideExport('mia', { fmt: 'swimzone.import/1', records: [swim('m1', today, { hrAvg: 160, hrPeak: 175 }), swim('m2', today)] });
+  const s1 = store.singles.find((x) => x.id === 'm1'), s2 = store.singles.find((x) => x.id === 'm2');
+  ok('no max HR from Poolside → SwimZone adds the athlete\'s own (220 − age)', r1.data?.added === 2 && s1.metrics.hrMax === 206 && s1.metrics.hrMaxEst === 1 && s1.metrics.hrMaxAdded === 1, s1 && s1.metrics);
+  ok('a swim with no heart rate gets no max HR', !s2.metrics || s2.metrics.hrMax == null, s2 && s2.metrics);
+  const twoYearsAgo = `${yr - 2}-06-01`;
+  await R.ingestPoolsideExport('mia', { fmt: 'swimzone.import/1', records: [swim('m3', twoYearsAgo, { hr: 170 })] });
+  const s3 = store.singles.find((x) => x.id === 'm3');
+  ok('an older swim uses the age on the swim date', s3.metrics.hrMax === 206 + 2 || s3.metrics.hrMax === 206 + 1, s3.metrics);
+  await R.ingestPoolsideExport('mia', { fmt: 'swimzone.import/1', hrProfile: { maxHr: 199, estimated: false, by: 'poolside' }, records: [swim('m4', today, { hrAvg: 150 })] });
+  const s4 = store.singles.find((x) => x.id === 'm4');
+  ok('Poolside\'s max HR is kept as sent', s4.metrics.hrMax === 199 && s4.metrics.hrMaxEst === 0 && !s4.metrics.hrMaxAdded, s4.metrics);
+  await R.ingestPoolsideExport('mia', { fmt: 'swimzone.import/1', records: [swim('m5', today, { hrAvg: 150, hrMax: 188, hrMaxEst: 0 })] });
+  ok('a max HR already on the swim is kept', store.singles.find((x) => x.id === 'm5').metrics.hrMax === 188);
+
+  const sr = { protocolId: null, swumOn: today, sessionId: 'hrmax-1', set: { fmt: 'swimzone.set/1', poolType: '25SC', blocks: [{ repeat: 1, lines: [{ qty: 1, distM: 100, stroke: 'FS', intensity: 'A1' }] }] },
+    conditions: {}, reps: [{ repNo: 1, distM: 100, stroke: 'FS', timeSec: 80, metrics: { hr: 165 } }] };
+  await R.addSetResult('mia', sr);
+  const e1 = store.efforts.find((e) => e.clientUuid && store.efforts.indexOf(e) === store.efforts.length - 1);
+  ok('a test run with HR gets the athlete\'s max HR on its conditions', e1.conditions.hrMax?.maxHr === 206 && e1.conditions.hrMax.by === 'swimzone', e1.conditions);
+  await R.addSetResult('mia', { ...sr, sessionId: 'hrmax-2', conditions: { hrMax: { maxHr: 201, source: 'test', estimated: false, by: 'poolside' } } });
+  const e2 = store.efforts[store.efforts.length - 1];
+  ok('a test run keeps the max HR Poolside used', e2.conditions.hrMax?.maxHr === 201 && e2.conditions.hrMax.by === 'poolside', e2.conditions);
+}
+
 console.log(`\n${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);

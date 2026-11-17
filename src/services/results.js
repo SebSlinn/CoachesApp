@@ -14,6 +14,27 @@ import { validateSetFormat } from '../session/setFormat'
 import { analyse, cleanMetrics, expandReps } from '../session/protocolFormat'
 import { recordsToResultRows } from '../athlete/swimmingResults'
 import { unpackStream, applyHrToReps } from '../hr/hrMetrics'
+import { resolveAthleteMaxHr } from './athleteService.js'
+import { ageBasedMaxHr } from '../athlete/maxHr.js'
+
+// ── Max HR on the day (2026-11-17) ───────────────────────────────────────────
+// Every result with heart rate keeps the max HR that applied when it was swum,
+// so zones can be re-worked later as they were then. Poolside sends the one it
+// used live when it knew it; otherwise SwimZone adds the athlete's own here, on
+// save: saved / Max HR test as they stand, or 220 − (age on the swim date).
+// Returns { maxHr, source, estimated, by:'swimzone' } or null (nothing known).
+export async function maxHrOnDay(pAthleteId, pSwumOn) {
+  const r = await resolveAthleteMaxHr(pAthleteId).catch(() => null)
+  if (!r || !r.maxHr) return null
+  let mMax = r.maxHr
+  if (r.source === 'age' && Number.isFinite(r.age) && pSwumOn) {
+    const mYearsAgo = Math.floor((Date.now() - new Date(pSwumOn + 'T12:00:00Z').getTime()) / (365.25 * 864e5))
+    if (mYearsAgo > 0) mMax = ageBasedMaxHr(r.age - mYearsAgo) || mMax
+  }
+  return { maxHr: mMax, source: r.source, estimated: !!r.estimated, by: 'swimzone' }
+}
+const hasHr = (m) => !!m && (m.hr != null || m.hrAvg != null || m.hrPeak != null)
+const maxHrMetrics = (p, pAdded) => (p && p.maxHr ? { hrMax: p.maxHr, hrMaxEst: p.estimated ? 1 : 0, ...(pAdded ? { hrMaxAdded: 1 } : {}) } : {})
 
 const repo = () => getResultsRepository()
 
@@ -271,7 +292,18 @@ export const ingestPoolsideExport = async (pAthleteId, pEnvelope) => {
   }
   // Poolside fills per-swim metrics (e.g. heart rate from a live sensor) — keep
   // only the known numeric keys, like set reps.
-  const mClean = mRows.map((r) => (r.metrics ? { ...r, metrics: cleanMetrics(r.metrics) } : r))
+  // Max HR on the day for every swim with heart rate: Poolside's (envelope
+  // hrProfile, or already on the swim) if it knew one, else the athlete's own.
+  const mNeed = mRows.some((r) => hasHr(r.metrics) && !(r.metrics && r.metrics.hrMax))
+  const mOwn = mNeed && !(pEnvelope.hrProfile && pEnvelope.hrProfile.maxHr)
+    ? await maxHrOnDay(pAthleteId, (mRows[0] && mRows[0].swumOn) || null) : null
+  const mClean = mRows.map((r) => {
+    let m = r.metrics ? { ...r.metrics } : null
+    if (hasHr(m) && !m.hrMax) {
+      m = { ...m, ...(pEnvelope.hrProfile && pEnvelope.hrProfile.maxHr ? maxHrMetrics(pEnvelope.hrProfile, false) : maxHrMetrics(mOwn, true)) }
+    }
+    return m ? { ...r, metrics: cleanMetrics(m) } : r
+  })
   return repo().addManyIdempotent(pAthleteId, mClean.map(withEffort))
 }
 
@@ -334,8 +366,13 @@ export const addSetResult = async (pAthleteId, pSetResult) => {
   const mReps = mRepsIn.map((r) => ({ ...r, metrics: cleanMetrics(r.metrics) }))
   const mTargets = mReps.filter((r) => r.targetTime).map((r) => ({ repNo: r.repNo, targetTime: r.targetTime }))
   const { hrStream: _ignored, ...mCondIn } = pSetResult.conditions || {}
+  // Max HR on the day (see maxHrOnDay): kept as Poolside sent it, else added here.
+  let mHrMax = mCondIn.hrMax || null
+  if (!mHrMax && (mSamples.length || mReps.some((r) => hasHr(r.metrics))))
+    mHrMax = await maxHrOnDay(pAthleteId, pSetResult.swumOn)
   const mConditions = {
     ...mCondIn,
+    ...(mHrMax ? { hrMax: mHrMax } : {}),
     ...(pSetResult.params ? { params: pSetResult.params } : {}),
     ...(mTargets.length ? { targets: mTargets } : {}),
     ...(mSamples.length ? { hrStream: {

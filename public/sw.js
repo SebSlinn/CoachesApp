@@ -54,6 +54,9 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (req.mode === 'navigate') { event.respondWith(page(req, url)); return; }
+  // Poolside's save module points at this deploy's hashed /assets chunks, so it
+  // must never be an old saved copy: network first (saving needs signal anyway).
+  if (url.pathname === '/poolside/sync.js') { event.respondWith(fresh(req)); return; }
   if (url.pathname.startsWith('/assets/')) { event.respondWith(asset(req)); return; }
   event.respondWith(staleWhileRevalidate(req));
 });
@@ -84,6 +87,17 @@ async function asset(req) {
   const res = await fetch(req);
   if (res.ok) { await c.put(req, res.clone()); trim(c); }
   return res;
+}
+
+async function fresh(req) {
+  const c = await caches.open(SHELL);
+  try {
+    const res = await withTimeout(fetch(req, { cache: 'no-store' }), NET_TIMEOUT_MS);
+    if (res.ok) { c.put(req, res.clone()); return res; }
+    return (await c.match(req)) || res;
+  } catch (e) {
+    return (await c.match(req)) || new Response('', { status: 504 });
+  }
 }
 
 async function staleWhileRevalidate(req) {

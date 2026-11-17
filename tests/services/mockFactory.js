@@ -34,6 +34,12 @@ export function getResultsRepository() {
     async listSetEfforts(a) {
       return { data: store.efforts.filter((e) => e.athleteId === a), error: null };
     },
+    async addManyIdempotent(a, rows) {
+      (store.singles ||= []);
+      const fresh = rows.filter((r) => !store.singles.some((x) => x.id === r.id));
+      fresh.forEach((r) => store.singles.push({ ...r, athleteId: a }));
+      return { data: { added: fresh.length, skipped: rows.length - fresh.length }, error: null };
+    },
     async updateSetEffortSummary(eid, s) { const e = store.efforts.find((x) => x.id === eid); e.summary = s; return { data: { updated: 1 }, error: null }; },
   };
 }

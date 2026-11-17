@@ -55,6 +55,7 @@ const FIELD_TO_COLUMN = {
   repNo: 'rep_no',
   pbAtSwim: 'pb_at_swim_sec',
   metrics: 'metrics',
+  hrSamples: 'hr_samples',   // raw heart-rate readings for a single swim (20261117120000)
 };
 
 function toRow(result) {
@@ -195,10 +196,13 @@ export class SupabaseResultsRepository extends IResultsRepository {
   async addManyIdempotent(athleteId, results) {
     if (!supabase) return UNAVAILABLE;
     const rows = results.map((r) => ({ ...toRow(r), athlete_user_id: athleteId }));
-    const { data, error } = await supabase
-      .from('performance_results')
-      .upsert(rows, { onConflict: 'client_uuid', ignoreDuplicates: true })
-      .select('id');
+    const put = (rs) => supabase.from('performance_results')
+      .upsert(rs, { onConflict: 'client_uuid', ignoreDuplicates: true }).select('id');
+    let { data, error } = await put(rows);
+    // Before 20261117120000_hr_samples.sql has run there's no hr_samples column:
+    // save everything else rather than fail.
+    if (error && (error.code === '42703' || error.code === 'PGRST204' || /hr_samples/.test(`${error.message || ''} ${error.details || ''}`)))
+      ({ data, error } = await put(rows.map(({ hr_samples: _h, ...r }) => r)));
     if (error) return { data: null, error };
     const added = (data || []).length;
     return { data: { added, skipped: rows.length - added }, error: null };

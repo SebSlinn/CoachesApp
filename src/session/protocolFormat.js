@@ -29,7 +29,15 @@ export const METRIC_KEYS = ['sc', 'sr', 'hr', 'rpe', 'lactate'];
  * sensor's end-of-rep reading.
  */
 export const HR_SENSOR_KEYS = ['hrStart', 'hrAvg', 'hrMin', 'hrPeak', 'hrEnd', 'hrRec10', 'hrRec30', 'hrRec60', 'hrDrop30', 'hrCoverage'];
-const STORED_METRIC_KEYS = METRIC_KEYS.concat(HR_SENSOR_KEYS);
+/**
+ * The max HR in force when a swim was swum (2026-11-17), so zones can be worked
+ * out later as they were then, not from today's figure:
+ *   hrMax       bpm
+ *   hrMaxEst    1 = estimate (220 − age), 0 = measured / entered
+ *   hrMaxAdded  1 = SwimZone added it when the result was saved (Poolside didn't know it)
+ */
+export const MAX_HR_KEYS = ['hrMax', 'hrMaxEst', 'hrMaxAdded'];
+const STORED_METRIC_KEYS = METRIC_KEYS.concat(HR_SENSOR_KEYS, MAX_HR_KEYS);
 export const PARAM_KINDS = ['onTime', 'restSec', 'level', 'stroke'];
 // A 'stroke' param (2026-10-26) lets "No1 stroke" tests be swum in the swimmer's own
 // stroke: the coach picks it for the run, and lines opt in with line.strokeParam = "<name>".

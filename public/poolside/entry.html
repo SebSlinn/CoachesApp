@@ -240,6 +240,9 @@
       });
     });
     const cond = { poolType: st.poolType, location: st.location.trim(), entry: 'manual' };
+    // the swimmer's max HR as Test Sets sent it — kept with the run (2026-11-17);
+    // without one, SwimZone adds the athlete's own when it saves
+    if (run.hr && Number(run.hr.maxHr) >= 120) cond.hrMax = { maxHr: Number(run.hr.maxHr), source: run.hr.source || '', estimated: !!run.hr.estimated, by: 'entry' };
     if (st.sessionRpe !== '' && isFinite(+st.sessionRpe)) cond.rpe = +st.sessionRpe;
     const result = {
       fmt: 'swimzone.setresult/1', source: 'manual', sessionId: run.sessionId,

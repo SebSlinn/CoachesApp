@@ -377,6 +377,13 @@
   .test-panel .t-dots span.next{ background:var(--lane); }
   .test-panel .t-dots span.skip{ background:var(--warn); opacity:.55; }
   .rep-test{ font-size:12px; font-weight:700; color:var(--accent); margin-top:4px; }
+  .sz-save{ margin:12px 0 2px; padding:12px; border:1px solid var(--accent); border-radius:12px; background:var(--surface-2); }
+  .sz-save #saveSzBtn{ width:100%; }
+  .sz-save #saveSzBtn:disabled{ opacity:.45; }
+  .sz-status{ font-size:12.5px; line-height:1.45; margin-top:8px; color:var(--muted); }
+  .sz-status.ok{ color:var(--good); } .sz-status.warn{ color:var(--warn); }
+  .sz-status a{ color:var(--accent); font-weight:700; }
+  .res-lbl{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin:14px 2px 6px; }
   .rep-label{ font-size:15px; font-weight:800; color:var(--accent); margin-top:2px; }
   .rep-label.not{ color:var(--muted); font-size:13px; }
   .race-preview{ max-height:34vh; overflow-y:auto; margin-top:10px; border:1px solid var(--line); border-radius:10px; }
@@ -576,16 +583,24 @@
   <div class="sheet">
     <h3>Session results</h3>
     <div class="preview" id="resultsText" style="white-space:pre-wrap;max-height:42vh;overflow-y:auto;font-size:13px;line-height:1.6;"></div>
+    <div class="sz-save">
+      <button class="primary" id="saveSzBtn" type="button">Save to SwimZone</button>
+      <div class="sz-status" id="saveSzStatus"></div>
+    </div>
+    <div class="res-lbl">Save to file</div>
     <div class="actions grid3">
-      <button class="ghost" id="copySummaryBtn" type="button">Copy</button>
-      <button class="ghost" id="shareSummaryBtn" type="button" hidden>Share</button>
-      <button class="ghost" id="raceOrderBtn" type="button">Race order</button>
       <button class="ghost" id="downloadXlsxBtn" type="button">Spreadsheet</button>
       <button class="ghost" id="downloadCsvBtn" type="button">CSV</button>
-      <button class="ghost" id="downloadJsonBtn" type="button">SwimZone</button>
-      <button class="primary" id="resultsClose" type="button">Close</button>
+      <button class="ghost" id="downloadJsonBtn" type="button">SwimZone file</button>
+      <button class="ghost" id="copySummaryBtn" type="button">Copy text</button>
+      <button class="ghost" id="shareSummaryBtn" type="button" hidden>Share</button>
     </div>
-    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Race order labels each rep with its swimmer and event. Spreadsheet saves an Excel workbook (summary, races, lengths, per 100) that also opens in LibreOffice, Google Sheets and Numbers. CSV is the raw table. SwimZone saves a file to import into an athlete's records.</p>
+    <div class="res-lbl">Tools</div>
+    <div class="actions grid3">
+      <button class="ghost" id="raceOrderBtn" type="button">Race order</button>
+      <button class="primary" id="resultsClose" type="button" style="grid-column:span 2">Close</button>
+    </div>
+    <p style="margin:10px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.5;">Spreadsheet is an Excel workbook (summary, races, lengths, per 100) that also opens in LibreOffice, Google Sheets and Numbers. CSV is the raw table. SwimZone file imports by hand in Athlete Setup or Test Sets. Race order labels each rep with its swimmer and event.</p>
   </div>
 </div>
 
@@ -963,6 +978,8 @@ const SwimCore = (function(){
       derived.reps.forEach((rawRep, repIdx) => {
         const rep = applyLabel(set, rawRep, session.poolLength);
         const label = rep.label || null;
+        const startEv = set.events.find(e => e.type === 'start' && e.t === rep.startTime);
+        const isRace = !!(label && label.distance && !label.notRace) || !!(startEv && startEv.meta && startEv.meta.scene === 'race');
         const legPlan = rep.labelPlan || buildPlan(set.event);
         const key = String(rep.startTime);
         if (!(set.flush||[]).includes(key)) repNo++;
@@ -982,7 +999,7 @@ const SwimCore = (function(){
         if (!dnf) prevFinish = rep.finishTime;
         rows.push({
           athlete: session.athlete || '', date: session.date || '', location: session.location || '',
-          swimmer: (label && label.swimmer) || '', event: eventName(label), notRace: !!(label && label.notRace),
+          swimmer: (label && label.swimmer) || '', event: eventName(label), notRace: !!(label && label.notRace), race: isRace,
           set: set.name || ('Set ' + (setIdx+1)), rep: flush ? 'flush' : repNo,
           stroke: (label && label.stroke) || (set.event ? set.event.stroke : 'open'),
           distance: rep.distance, poolLength: (set.event && set.event.poolLength) || session.poolLength || null, startType: rep.startType,
@@ -998,7 +1015,7 @@ const SwimCore = (function(){
         });
       });
     });
-    return { session:{athlete:session.athlete,date:session.date,location:session.location,seNumber:session.seNumber||'',szAthleteId:session.szAthleteId||''}, reps: rows };
+    return { session:{athlete:session.athlete,date:session.date,location:session.location,seNumber:session.seNumber||'',szAthleteId:session.szAthleteId||'',hrProfile:session.hrProfile||null}, reps: rows };
   }
   // plain-English notes for a parent/swimmer reading the spreadsheet, not a
   // developer — the raw flag codes (possibleDoubleTap, missingSplits...)
@@ -1096,8 +1113,21 @@ const SwimCore = (function(){
       const r = Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
     });
   }
+  // Same input → same UUID-shaped id (cyrb128). Each swim's id comes from the
+  // swimmer and the moment it started, so saving or exporting a session again
+  // never adds a swim twice — SwimZone ignores a client_uuid it already has.
+  function stableUuid(str){
+    let h1=1779033703, h2=3144134277, h3=1013904242, h4=2773480762;
+    for (let i=0, k; i<str.length; i++){ k=str.charCodeAt(i);
+      h1=h2^Math.imul(h1^k,597399067); h2=h3^Math.imul(h2^k,2869860233); h3=h4^Math.imul(h3^k,951274213); h4=h1^Math.imul(h4^k,2716044179); }
+    h1=Math.imul(h3^(h1>>>18),597399067); h2=Math.imul(h4^(h2>>>22),2869860233); h3=Math.imul(h1^(h3>>>17),951274213); h4=Math.imul(h2^(h4>>>19),2716044179);
+    h1^=(h2^h3^h4); h2^=h1; h3^=h1; h4^=h1;
+    const x=[h1,h2,h3,h4].map(v=>(v>>>0).toString(16).padStart(8,'0')).join('');
+    return x.slice(0,8)+'-'+x.slice(8,12)+'-4'+x.slice(13,16)+'-'+((parseInt(x[16],16)&3)|8).toString(16)+x.slice(17,20)+'-'+x.slice(20,32);
+  }
   function toSwimZone(exported){
     const records = []; let skipped = 0; let flushes = 0;
+    const hp = exported.session.hrProfile, maxP = hp && Number(hp.maxHr) >= 120 && Number(hp.maxHr) <= 240 ? hp : null;
     (exported.reps || []).forEach(r => {
       const stroke = STROKE_TO_SZ[r.stroke];
       const distM = Number(r.distance);
@@ -1113,17 +1143,21 @@ const SwimCore = (function(){
       if (!stroke || !(distM > 0) || !(r.totalMs > 0)) { skipped++; return; }
       records.push({
         fmt: 'swimzone.result/1',
-        id: szId(),                         // client_uuid — makes import idempotent
+        id: stableUuid('poolside|' + (exported.session.szAthleteId || exported.session.athlete || '') + '|' + r.startTime),   // client_uuid — same swim, same id
         athleteId: null,                    // attributed on the SwimZone side
-        kind: 'training',
-        effort: 'submaximal',               // a timed training swim, not a maximal single
+        // A race (labelled, or swum in the Race screen) is a maximal, coach-timed
+        // swim — it counts towards bests; anything else is a training swim.
+        kind: r.race ? 'time_trial' : 'training',
+        effort: r.race ? 'maximal' : 'submaximal',
+        startedAt: new Date(r.startTime).toISOString(),
         swumOn: exported.session.date || '',
         stroke, distM, poolType,
         timeSec: Math.round(r.totalMs / 10) / 100,   // ms → s, 2dp
         splits: (r.lengths || []).map(l => ({ from:l.from, to:l.to, ms:l.ms, sc:l.sc, sr:l.sr, ...(l.hr || {}) })),
         source: 'stopwatch',
         note: r.set || '',                  // which Poolside set this rep came from
-        ...(r.hr ? { metrics: r.hr } : {}), // live heart rate for this swim (avg/peak/end/recovery/coverage)
+        // live heart rate for this swim, plus the max HR Poolside was using (if it knew one)
+        ...(r.hr ? { metrics: { ...r.hr, ...(maxP ? { hrMax: maxP.maxHr, hrMaxEst: maxP.estimated ? 1 : 0 } : {}) } } : {}),
         ...(r.marks15 && r.marks15.length ? { marks15: r.marks15 } : {}),   // race analysis 15 m points (not yet stored by SwimZone)
       });
     });
@@ -1137,12 +1171,14 @@ const SwimCore = (function(){
         name: exported.session.athlete || '',
       },
       session: { date: exported.session.date || '', location: exported.session.location || '' },
+      // the max HR Poolside used live (none → SwimZone adds the athlete's own on save)
+      ...(maxP ? { hrProfile: { maxHr: Number(maxP.maxHr), source: maxP.source || '', estimated: !!maxP.estimated, by: 'poolside' } } : {}),
       records, skipped, flushes,
     };
   }
 
   return { buildPlan, makeEvent, derive, repLengthTimes, perLengthStats, repMarks, fmtClock, fmtWallClock, exportSession, toCSV, toSummaryText, toSwimZone, flagNotes, DOUBLE_TAP_MS,
-           applyLabel, eventName, firstStrokes };
+           applyLabel, eventName, firstStrokes, stableUuid };
 })();
 
 /* ============================================================
@@ -1531,6 +1567,11 @@ const SwimCore = (function(){
       // recoveries: flushes between reps (active recovery). They take no rep number;
       // afterRepNo places each one inline (0 = before rep 1).
       conditions: { poolType: livePoolType, location: state.session.location || '',
+        // max HR used live for zone colours — kept with the run (2026-11-17)
+        ...(state.session.hrProfile && state.session.hrProfile.maxHr ? { hrMax: { maxHr: Number(state.session.hrProfile.maxHr),
+            source: state.session.hrProfile.source || '', estimated: !!state.session.hrProfile.estimated,
+            scheme: typeof state.session.hrProfile.scheme === 'string' ? state.session.hrProfile.scheme
+                  : (state.session.hrProfile.scheme && (state.session.hrProfile.scheme.id || state.session.hrProfile.scheme.name)) || null, by: 'poolside' } } : {}),
         ...(pg.flushes.length ? { recoveries: pg.flushes.slice().sort((a,b) => a.rep.startTime - b.rep.startTime).map(f => ({
           afterRepNo: f.afterRepNo, distM: Number(f.rep.distance) || null, stroke: (planOrLike(f.afterRepNo) || run.reps[0] || {}).stroke || null,
           timeSec: Math.round((f.rep.finishTime - f.rep.startTime)/10)/100, startedAt: new Date(f.rep.startTime).toISOString() })) } : {}) },
@@ -2481,7 +2522,7 @@ const SwimCore = (function(){
     // whenever the coach wants to fill them in.
   }
 
-  addTapListener(btnDive, () => addEvent('start', { startType:'dive' }, btnDive));
+  addTapListener(btnDive, () => addEvent('start', poolScene === 'race' ? { startType:'dive', scene:'race' } : { startType:'dive' }, btnDive));
   addTapListener(btnPush, () => addEvent('start', { startType:'push' }, btnPush));
   const btnM15 = $('btnM15');
   addTapListener(btnM15, () => { if (derived().status === 'running') addEvent('m15', null, btnM15); });
@@ -2506,7 +2547,7 @@ const SwimCore = (function(){
     const running = derived().status === 'running';
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const act = {
-      d: () => addEvent('start', { startType:'dive' }, btnDive),
+      d: () => addEvent('start', poolScene === 'race' ? { startType:'dive', scene:'race' } : { startType:'dive' }, btnDive),
       p: () => addEvent('start', { startType:'push' }, btnPush),
       t: () => running && addEvent('turn', null, btnTurn),
       f: () => running && addEvent('finish', null, btnFinish),
@@ -2730,7 +2771,8 @@ const SwimCore = (function(){
   const resultsOverlay = $('resultsOverlay');
   let currentExport = null, currentStamp = 'poolside-results';
   function buildExport(){
-    const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets, poolLength: sessionPool() };
+    const session = { athlete: state.session.athlete, date: state.session.date, location: state.session.location, sets: state.sets, poolLength: sessionPool(),
+                      szAthleteId: state.session.szAthleteId || '', seNumber: state.session.seNumber || '', hrProfile: state.session.hrProfile || null };
     currentExport = SwimCore.exportSession(session);
     // live heart rate → per-rep figures on each row (CSV, recap and SwimZone file)
     currentExport.reps.forEach(r => {
@@ -2917,7 +2959,8 @@ const SwimCore = (function(){
     const exported = buildExport();
     const recap = state.test ? testSummaryText(toSetResult()) : SwimCore.toSummaryText(exported);
     $('resultsText').textContent = recap;          // shown until the picture is ready (and if it can't be drawn)
-    $('downloadJsonBtn').textContent = state.test ? 'SwimZone test' : 'SwimZone';
+    $('downloadJsonBtn').textContent = state.test ? 'SwimZone test file' : 'SwimZone file';
+    paintSzStatus();
     $('shareSummaryBtn').hidden = false;
     openOverlay(resultsOverlay);
     resultsPng = null;
@@ -2971,7 +3014,7 @@ const SwimCore = (function(){
       return;
     }
     const exported = currentExport || buildExport();
-    const sz = SwimCore.toSwimZone(exported);
+    const sz = swimZoneEnvelope(exported);
     if (await saveFile(currentStamp+'.swimzone.json', JSON.stringify(sz, null, 2))){
       const msg = sz.skipped
         ? 'Saved ' + sz.records.length + ' swims for SwimZone (' + sz.skipped + ' open/unmeasured rep' + (sz.skipped===1?'':'s') + ' left out)'
@@ -3186,7 +3229,9 @@ const SwimCore = (function(){
     const sm = wb.addWorksheet('Summary');
     sm.getColumn(1).width = 22;
     sm.addRow(['Poolside session']).font = { bold:true, size:14 };
-    [['Date', ses.date || ''], ['Location', ses.location || ''], ['Pool', pool + 'm'], races ? null : ['Athlete', ses.athlete || '']]
+    const mh = state.session.hrProfile && state.session.hrProfile.maxHr;
+    [['Date', ses.date || ''], ['Location', ses.location || ''], ['Pool', pool + 'm'], races ? null : ['Athlete', ses.athlete || ''],
+     races || !mh ? null : ['Max HR used', mh + (state.session.hrProfile.estimated ? ' (estimate, 220 − age)' : '')]]
       .filter(Boolean).forEach(x => { const rw = sm.addRow(x); rw.getCell(1).font = { bold:true }; });
     sm.addRow([]);
     let head;
@@ -3284,6 +3329,121 @@ const SwimCore = (function(){
       showToast(navigator.onLine ? 'Couldn\'t build the spreadsheet' : 'The spreadsheet part isn\'t saved on this device yet — open Poolside once with signal');
     }
   });
+
+  /* ---- Save to SwimZone (2026-11-17). Saves to the swimmer Poolside was
+     opened for — nobody else — through SwimZone's own import code (loaded from
+     /poolside/sync.js, built from src/poolside/sync.js), using the SwimZone
+     sign-in on this device. Each save goes into a small outbox first: with
+     signal it's sent at once, without it it waits and goes when signal is back.
+     Sending again is harmless (fixed ids / the test's sessionId). Multi-swimmer
+     race sessions go out as files for now. ---- */
+  const OUTBOX_KEY = 'poolside-outbox';
+  function readOutbox(){ try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || '[]'); } catch(e){ return []; } }
+  function writeOutbox(o){ try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(o.slice(-30))); } catch(e){} }
+  let syncMod = null;
+  async function loadSync(){
+    if (syncMod) return syncMod;
+    try { syncMod = await import('/poolside/sync.js'); }                 // the live site
+    catch(e){ syncMod = await import('/src/poolside/sync.js'); }          // the Vite dev server
+    return syncMod;
+  }
+  function loadedSwimmer(){
+    if (state.test){ const a = state.test.run.athlete || {}; return a.id ? { id: a.id, name: a.name || 'the swimmer' } : null; }
+    return state.session.szAthleteId ? { id: state.session.szAthleteId, name: state.session.athlete || 'the swimmer' } : null;
+  }
+  // What "Save" would send right now, for the loaded swimmer.
+  function currentItem(){
+    const sw = loadedSwimmer(); if (!sw) return null;
+    if (state.test){
+      const sr = toSetResult();
+      if (!sr.reps.length) return { empty: true, sw };
+      return { key: 'set:' + sr.sessionId, kind: 'setresult', athleteId: sw.id, name: sw.name, what: sr.protocolName || 'test', envelope: sr };
+    }
+    const exp = buildExport(), sz = swimZoneEnvelope(exp);
+    const who = (state.session.athlete || '').trim().toLowerCase();
+    const others = exp.reps.filter(r => r.swimmer && r.swimmer.trim().toLowerCase() !== who).length;
+    if (!sz.records.length) return { empty: true, sw, others };
+    const first = Math.min(...exp.reps.map(r => r.startTime));
+    return { key: 'imp:' + sw.id + ':' + first, kind: 'import', athleteId: sw.id, name: sw.name,
+             what: sz.records.length + ' swim' + (sz.records.length === 1 ? '' : 's'), envelope: sz, others };
+  }
+  const fingerprint = (env) => SwimCore.stableUuid(JSON.stringify(env));
+  // The SwimZone file/save for this session, with each swim's raw HR readings.
+  function swimZoneEnvelope(exp){
+    const sz = SwimCore.toSwimZone(exp);
+    if (HR.hasData()) sz.records.forEach(rec => {
+      const r = exp.reps.find(x => new Date(x.startTime).toISOString() === rec.startedAt);
+      const st = r && HR.packFor(r.startTime, r.finishTime);
+      if (st) rec.hrSamples = st;
+    });
+    return sz;
+  }
+  function paintSzStatus(){
+    const btn = $('saveSzBtn'), st = $('saveSzStatus'); if (!btn) return;
+    const box = readOutbox();
+    const sw = loadedSwimmer();
+    const set = (cls, html) => { st.className = 'sz-status' + (cls ? ' ' + cls : ''); st.innerHTML = html; };
+    const otherWaiting = (key) => { const n = box.filter(x => x.status === 'waiting' && x.key !== key).length;
+      return n ? '<br>' + n + ' earlier session' + (n === 1 ? '' : 's') + ' waiting to send.' : ''; };
+    if (!sw){
+      btn.disabled = true; btn.textContent = 'Save to SwimZone';
+      set('', 'No swimmer loaded. Open Poolside from a swimmer in SwimZone (Athlete Setup → Poolside) to save straight to them — or save a file below.' + otherWaiting(''));
+      return;
+    }
+    btn.textContent = 'Save to ' + sw.name;
+    const it = currentItem();
+    const otherNote = it && it.others ? '<br>' + it.others + ' rep' + (it.others === 1 ? ' is' : 's are') + ' labelled for other swimmers — not included; save those as files.' : '';
+    if (!it || it.empty){
+      btn.disabled = true;
+      set('', (state.test ? 'No test reps timed yet.' : 'Nothing to save yet — open/freeform swims need a stroke and distance (set the swim, or label them as races).') + otherNote + otherWaiting(''));
+      return;
+    }
+    btn.disabled = false;
+    const mine = box.find(x => x.key === it.key);
+    const signIn = ' <a href="/login" target="_blank" rel="noopener">Sign in</a>';
+    if (!mine) set('', 'Saves ' + escapeHtml(it.what) + ' to ' + escapeHtml(sw.name) + '\'s records.' + otherNote + otherWaiting(it.key));
+    else if (mine.status === 'saved' && mine.fp === fingerprint(it.envelope))
+      set('ok', '✓ Saved to SwimZone ' + SwimCore.fmtWallClock(mine.at).slice(0,5) + ' — ' + escapeHtml(mine.msg || '') + otherNote + otherWaiting(it.key));
+    else if (mine.status === 'saved')
+      set('', 'Changed since it was saved — save again to add the rest.' + otherNote + otherWaiting(it.key));
+    else if (mine.status === 'error')
+      set('warn', 'Not saved: ' + escapeHtml(mine.msg || 'error') + otherWaiting(it.key));
+    else if (mine.signedOut)
+      set('warn', 'Waiting — sign in to SwimZone on this device, then come back.' + signIn + otherWaiting(it.key));
+    else
+      set('warn', (navigator.onLine ? 'Sending…' : 'Waiting for signal — it will send by itself.') + otherWaiting(it.key));
+  }
+  let flushing = false;
+  async function flushOutbox(){
+    if (flushing) return;
+    let box = readOutbox();
+    if (!box.some(i => i.status === 'waiting') || !navigator.onLine){ paintSzStatus(); return; }
+    flushing = true;
+    try {
+      const mod = await loadSync();
+      for (const it of box.filter(i => i.status === 'waiting')){
+        const r = await mod.save(it);
+        it.msg = r.text; it.at = Date.now(); it.signedOut = !!r.signedOut;
+        if (r.ok){ it.status = 'saved'; delete it.envelope; showToast(it.name + ': ' + r.text); }
+        else if (r.signedOut){ writeOutbox(box); break; }   // nothing will go until someone signs in
+        else if (!r.retry) it.status = 'error';
+        writeOutbox(box);
+      }
+    } catch(e){ /* save module unreachable (no signal / not deployed yet) — stays waiting */ }
+    flushing = false; paintSzStatus();
+  }
+  addTapListener($('saveSzBtn'), async () => {
+    const it = currentItem(); if (!it || it.empty) return;
+    const box = readOutbox().filter(x => x.key !== it.key);
+    box.push({ key: it.key, kind: it.kind, athleteId: it.athleteId, name: it.name, what: it.what, envelope: it.envelope,
+               fp: fingerprint(it.envelope), status: 'waiting', at: Date.now() });
+    writeOutbox(box); paintSzStatus();
+    if (!navigator.onLine){ showToast('No signal — kept on this device; it sends when signal is back'); return; }
+    await flushOutbox();
+  });
+  window.addEventListener('online', flushOutbox);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') flushOutbox(); });
+  setTimeout(flushOutbox, 4000);
 
   /* ---- ⋮ menu (2026-11-12): Results, Session details, heart rate, screen
      awake, full screen, install, New session. Each item's own handler (set
