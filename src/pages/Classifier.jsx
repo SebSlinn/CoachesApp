@@ -216,9 +216,7 @@ export default function Classifier() {
 
         {/* Header */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ ...ui.caption, fontSize: 11, letterSpacing: '0.15em', marginBottom: 2 }}>ELLESMERE PORT ASC</div>
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.04em' }}>TRAINING CLASSIFIER</div>
-          <div style={{ ...ui.caption, marginTop: 2 }}>SWEETENHAM ENERGY ZONE MODEL · v5</div>
         </div>
 
         {/* Nav */}

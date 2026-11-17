@@ -231,9 +231,7 @@ export default function SetBuilder() {
 
         {/* Header */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.15em', marginBottom: 2 }}>ELLESMERE PORT ASC</div>
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.04em' }}>SET BUILDER</div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2, letterSpacing: '0.08em' }}>SWEETENHAM ENERGY ZONE MODEL · v5</div>
         </div>
 
         <button onClick={() => navigate('/classifier')} style={{ padding: '6px 10px', fontSize: 11, borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(48,176,199,0.12)', color: '#fff', cursor: 'pointer', marginBottom: 16 }}>
