@@ -5,7 +5,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { THEMES, THEME_KEYS, T, themeColors, themeCssVars, energyColor, energyVar } from './theme.js';
-import { BUILT_IN_SCHEMES, zoneColor } from '../zones/schemes.js';
+import { DEFAULT_SCHEME_ID, zoneColor } from '../zones/schemes.js';
 import { TYPE_CODES } from '../zones/types.js';
 
 const SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,12 +35,13 @@ test('energy colours resolve by ENERGY_SYSTEMS id', () => {
 });
 
 console.log('\nColour roles');
-test('energy colours are not any zone colour in any built-in scheme', () => {
-  const mZone = new Set();
-  for (const mId of Object.keys(BUILT_IN_SCHEMES)) for (const c of TYPE_CODES) mZone.add(zoneColor(c, mId).toUpperCase());
-  for (const k of ['energyAtpcp', 'energyGlycolytic', 'energyAerobic']) {
-    assert.ok(!mZone.has(THEMES.dark[k].toUpperCase()), k + ' clashes with a zone colour');
-  }
+test('energy colours: three different colours, none the exact value of a zone in the default scheme', () => {
+  // (SwimZone classic shares two of them on purpose: they are the original colours.)
+  const mKeys = ['energyAtpcp', 'energyGlycolytic', 'energyAerobic'];
+  const mEnergy = mKeys.map(k => THEMES.dark[k].toUpperCase());
+  assert.equal(new Set(mEnergy).size, 3);
+  const mZone = new Set(TYPE_CODES.map(c => zoneColor(c, DEFAULT_SCHEME_ID).toUpperCase()));
+  mKeys.forEach((k, i) => assert.ok(!mZone.has(mEnergy[i]), k + ' is exactly a default-scheme zone colour'));
 });
 test('Urbanchek White (A1) is drawn blue-grey, not white', () => {
   assert.notEqual(zoneColor('A1', 'urbanchek').toUpperCase(), '#F5F5F5');

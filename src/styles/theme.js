@@ -5,7 +5,8 @@
 //
 // Colour roles — one meaning each:
 //   ZONE      a training type (A1 … HVO). From the coach's scheme (zones/schemes.js), never here.
-//   ENERGY    the three energy systems. Their own hue (teal) so they are never mistaken for a zone.
+//   ENERGY    the three energy systems, on the heat spectrum (aerobic green → glycolytic yellow → ATP-CP red).
+//             Shown on their own tab with labels; they share hues with some zones, and that is accepted.
 //   STATUS    warn / danger banners only, always with ⚠ or ✗ text beside the colour.
 //   NEUTRAL   everything else: surfaces, borders, text, buttons, selection, group headers.
 //
@@ -40,11 +41,11 @@ const THEMES = Object.freeze({
     dangerBg:      'rgba(255,69,58,0.12)',
     dangerLine:    'rgba(255,69,58,0.45)',
     dangerText:    '#FFB8B2',
-    // energy systems: one teal hue, three depths (brightest = fastest-acting system).
-    // Every shade is clearly teal, never near-white, so ATP-CP can't be mistaken for A1 (2026-11-17).
-    energyAtpcp:      '#3FD6C6',
-    energyGlycolytic: '#23A99B',
-    energyAerobic:    '#157A70',
+    // energy systems: the usual heat spectrum — cool = aerobic, warm = anaerobic (Al, 2026-11-17;
+    // the original SwimZone colours). No universal standard exists; Garmin/Polar/Myzone use the same idea.
+    energyAtpcp:      '#FF2D55',   // red / magenta  — maximal, 0–10 s
+    energyGlycolytic: '#FFCC00',   // yellow / amber — 10 s – ~2 min
+    energyAerobic:    '#34C759',   // green          — 2 min +
   }),
 });
 
