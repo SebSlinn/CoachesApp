@@ -1,7 +1,7 @@
 // src/pages/Account.jsx — /account
 // Your own account: names (the public name others see on results you add, "Added
 // by …"), date of birth (private; add once, corrections via SwimZone), sign-in
-// (email, last sign-in, change password), qualifications and zone colours.
+// (email, last sign-in, change password), qualifications, zone colours and light/dark screens.
 // Self-edit only — RLS (sz_users_self_update) allows a user to change just their
 // own users row; the date of birth goes through set_my_date_of_birth.
 import { useEffect, useState } from 'react';
@@ -10,6 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getProfile, updateProfile, getAccountStatus, getMyDateOfBirth, setMyDateOfBirth } from '../services/users';
 import { setPassword } from '../services/auth';
 import ZoneSchemePicker from '../components/ZoneSchemePicker.jsx';
+import ThemePicker from '../components/ThemePicker.jsx';
 import { getMyQualifications, addQualification, removeQualification, errorText } from '../services/groups';
 
 export default function Account() {
@@ -87,6 +88,10 @@ export default function Account() {
           <label style={label}>Zone colours</label>
           <ZoneSchemePicker />
           <p style={help}>How zones are coloured on the Classifier and Set Builder. Changes take effect straight away and follow you to any device you sign in on. Your sets and results are not changed.</p>
+
+          <label style={label}>Light or dark screens</label>
+          <ThemePicker />
+          <p style={help}>"Match this device" follows your phone or computer's own light/dark setting. Saved on this device only. Screens are being moved over one at a time; the Classifier follows it now.</p>
         </>
       )}
     </div>

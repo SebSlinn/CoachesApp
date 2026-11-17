@@ -5,13 +5,13 @@
 //   <div style={ui.card}>…</div>
 //   <div style={ui.accentCard(zoneColor('AT'), 'strong')}>…</div>
 //   <div style={ui.banner('warn')}>…</div>
-import { T, FONT } from './theme.js';
-import { withAlpha } from '../zones/schemes.js';
+import { T, FONT, tints } from './theme.js';
+import { withAlpha, contrastText } from '../zones/schemes.js';
 
 const RADIUS = 8;
 
 /** Plain panel. */
-const card = { background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12 };
+const card = { background: T.surface, border: `1px solid ${T.border}`, borderRadius: 10, padding: '12px 14px', marginBottom: 12, boxShadow: T.shadow };
 
 /** Small upper-case caption above a value or a list. */
 const caption = { fontSize: 9, color: T.text4, letterSpacing: '0.1em', textTransform: 'uppercase' };
@@ -26,7 +26,7 @@ const input = {
 };
 
 /** Small stat tile (Speed, Work dur …). */
-const tile = { background: T.surface, border: `1px solid ${T.border}`, borderRadius: RADIUS, padding: '9px 11px' };
+const tile = { background: T.surface, border: `1px solid ${T.border}`, borderRadius: RADIUS, padding: '9px 11px', boxShadow: T.shadow };
 
 /**
  * Neutral toggle button (rest type, pool, result tabs).
@@ -49,15 +49,19 @@ const button = {
 
 /**
  * A button coloured by a zone (zone picker, IN/ON chips).
- * @param {string} pColor   zone colour (hex) from the coach's scheme
+ * @param {string} pColor   zone colour (hex) from the coach's scheme, for the theme in force
  * @param {boolean} pActive
+ * @param {string} [pTheme='dark']  light: full-strength text, and the selected one filled solid
  */
-function zoneButton(pColor, pActive) {
+function zoneButton(pColor, pActive, pTheme) {
+  const k = tints(pTheme);
+  const mBase = { cursor: 'pointer', fontFamily: FONT.mono, fontWeight: 700, borderRadius: 5 };
+  if (pActive && k.solidActive) return { ...mBase, border: `1px solid ${pColor}`, background: pColor, color: contrastText(pColor) };
   return {
-    cursor: 'pointer', fontFamily: FONT.mono, fontWeight: 700, borderRadius: 5,
-    border: `1px solid ${pActive ? pColor : withAlpha(pColor, 0.35)}`,
-    background: withAlpha(pColor, pActive ? 0.2 : 0.05),
-    color: pActive ? pColor : withAlpha(pColor, 0.7),
+    ...mBase,
+    border: `1px solid ${pActive ? pColor : withAlpha(pColor, k.idleBorder)}`,
+    background: withAlpha(pColor, pActive ? k.activeBg : k.idleBg),
+    color: pActive || k.idleText >= 1 ? pColor : withAlpha(pColor, k.idleText),
   };
 }
 
@@ -65,21 +69,25 @@ function zoneButton(pColor, pActive) {
  * Card marked with one colour (a zone or an energy system): a left bar plus a faint tint.
  * @param {string} pColor   hex colour
  * @param {'strong'|'normal'|'faint'} [pWeight='normal']  strong = matched / primary, faint = not matched
+ * @param {string} [pTheme='dark']
  */
-function accentCard(pColor, pWeight = 'normal') {
-  const mA = { strong: [0.10, 0.45, 1], normal: [0.05, 0.25, 1], faint: [0.03, 0.15, 0.35] }[pWeight] || [0.05, 0.25, 1];
+function accentCard(pColor, pWeight = 'normal', pTheme) {
+  const k = tints(pTheme);
+  const i = { strong: 0, normal: 1, faint: 2 }[pWeight] ?? 1;
+  const mA = [k.cardBg[i], k.cardBorder[i], i === 2 ? 0.45 : 1];
   const mTint = withAlpha(pColor, mA[0]);
   return {
     // the tint is laid over a card colour, so it stays clean on the light theme's tinted page
     background: `linear-gradient(${mTint}, ${mTint}), ${T.surface}`, border: `1px solid ${withAlpha(pColor, mA[1])}`,
     borderLeft: `4px solid ${withAlpha(pColor, mA[2])}`, borderRadius: RADIUS, padding: '10px 14px', marginBottom: 10,
+    boxShadow: T.shadow,
   };
 }
 
 /** Neutral card with a left bar (group cards, notes). */
 const markedCard = {
   background: T.surface, border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.borderStrong}`,
-  borderRadius: RADIUS, padding: '10px 14px', marginBottom: 10,
+  borderRadius: RADIUS, padding: '10px 14px', marginBottom: 10, boxShadow: T.shadow,
 };
 
 /**

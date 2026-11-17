@@ -5,6 +5,7 @@ import { DRILL_LIBRARY } from '../../drills/index.js';
 import { useZoneScheme } from '../../context/ZoneSchemeContext.jsx';
 import { T, FONT } from '../../styles/theme.js';
 import { ui } from '../../styles/ui.js';
+import { useTheme } from '../../context/ThemeContext.jsx';
 import { withAlpha } from '../../zones/schemes.js';
 
 const AEROBIC = ['A1', 'A2', 'A3'];
@@ -55,6 +56,7 @@ function onOptions(pZone, pSg, pCss, pDist, pTargetTime) {
 }
 
 function TimeRow({ label, color, options, current, onPick, bold }) {
+  const { theme } = useTheme();
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
       <span style={{ fontSize: 9, color: bold ? color : T.text3, fontWeight: 700, letterSpacing: '0.08em', width: 24 }}>{label}</span>
@@ -63,7 +65,7 @@ function TimeRow({ label, color, options, current, onPick, bold }) {
           const mStr = fmtOpt(sec);
           return (
             <button key={sec} onClick={() => onPick(mStr)}
-              style={{ ...ui.zoneButton(color, current === mStr), padding: '4px 10px', borderRadius: 4, fontSize: 12 }}>
+              style={{ ...ui.zoneButton(color, current === mStr, theme), padding: '4px 10px', borderRadius: 4, fontSize: 12 }}>
               {mStr}
             </button>
           );
@@ -117,6 +119,7 @@ function DrillPicker({ zone, inputs, set, color, classifierDrill, setClassifierD
 
 export default function SuggestionPanel({ inputs, set, selectedZone, activeAthlete, classifierDrill, setClassifierDrill }) {
   const { color: zoneColor } = useZoneScheme();
+  const { theme } = useTheme();
   const mSg = buildSuggestion(selectedZone, inputs, activeAthlete);
 
   if (!mSg) {
@@ -137,7 +140,7 @@ export default function SuggestionPanel({ inputs, set, selectedZone, activeAthle
 
   return (
     <div style={{ ...ui.card, padding: 10, marginBottom: 10 }}>
-      <div style={{ ...ui.accentCard(mZc, 'faint'), padding: '8px 10px' }}>
+      <div style={{ ...ui.accentCard(mZc, 'faint', theme), padding: '8px 10px' }}>
         <TimeRow label="IN" color={mZc} options={mIn} current={inputs.targetTime} onPick={v => set('targetTime', v)} bold />
         {mStraightOn ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

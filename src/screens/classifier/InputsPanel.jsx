@@ -4,6 +4,7 @@ import { REST_TYPE_OPTS, PRESCRIBABLE_CODES } from '../../zones/index.js';
 import { useZoneScheme } from '../../context/ZoneSchemeContext.jsx';
 import { T } from '../../styles/theme.js';
 import { ui } from '../../styles/ui.js';
+import { useTheme } from '../../context/ThemeContext.jsx';
 
 const STROKES = ['FS', 'BK', 'BR', 'Fly', 'IM'];
 const DISTS = [25, 50, 75, 100, 150, 200, 300, 400, 800, 1500];
@@ -18,6 +19,7 @@ export const PICKER_CODES = [...PRESCRIBABLE_CODES].reverse();
  */
 export default function InputsPanel({ inputs, set, activeAthlete, selectedZone, setSelectedZone, setClassifierDrill, paused }) {
   const { color: zoneColor } = useZoneScheme();
+  const { theme } = useTheme();
 
   function adjustDist(pDelta) {
     const mIdx = DISTS.indexOf(parseFloat(inputs.distM) || 100);
@@ -70,7 +72,7 @@ export default function InputsPanel({ inputs, set, activeAthlete, selectedZone, 
           const mActive = selectedZone === z;
           return (
             <button key={z} onClick={() => { setSelectedZone(mActive ? null : z); setClassifierDrill(''); }}
-              style={{ ...ui.zoneButton(zoneColor(z), mActive), flex: 1, padding: '5px 2px', fontSize: 11, transition: 'all 0.15s' }}>
+              style={{ ...ui.zoneButton(zoneColor(z), mActive, theme), flex: 1, padding: '5px 2px', fontSize: 11, transition: 'all 0.15s' }}>
               {z}
             </button>
           );

@@ -7,6 +7,7 @@
 import { parseTime, secToDisplay, evaluateZoneMatch, TYPES } from '../../zones/index.js';
 import { useZoneScheme } from '../../context/ZoneSchemeContext.jsx';
 import { T } from '../../styles/theme.js';
+import { useTheme } from '../../context/ThemeContext.jsx';
 import { ui } from '../../styles/ui.js';
 
 const MATCH_CODES = ['LP', 'LT', 'PL'];
@@ -27,9 +28,10 @@ function Criteria({ items }) {
 }
 
 function CheckBanner({ color, state, title, children }) {
+  const { theme } = useTheme();
   const mWeight = state === 'match' ? 'strong' : 'faint';
   return (
-    <div style={{ ...ui.accentCard(color, mWeight), fontSize: 11, lineHeight: 1.7 }}>
+    <div style={{ ...ui.accentCard(color, mWeight, theme), fontSize: 11, lineHeight: 1.7 }}>
       <div style={{ fontWeight: 700, color: state === 'match' ? color : T.text2, marginBottom: 4 }}>{title}</div>
       {children}
     </div>
@@ -38,6 +40,7 @@ function CheckBanner({ color, state, title, children }) {
 
 export default function ZoneCheckBanners({ selectedZone, singleResult, inputs, activeAthlete }) {
   const { color: zoneColor } = useZoneScheme();
+  const { theme } = useTheme();
   if (!selectedZone) return null;
   const mZc = zoneColor(selectedZone);
 
@@ -45,7 +48,7 @@ export default function ZoneCheckBanners({ selectedZone, singleResult, inputs, a
     const cs = singleResult?.csDetection;
     if (!cs) {
       return (
-        <div style={{ ...ui.accentCard(mZc, 'faint'), fontSize: 10, color: T.text3 }}>
+        <div style={{ ...ui.accentCard(mZc, 'faint', theme), fontSize: 10, color: T.text3 }}>
           {activeAthlete?.derivedProfile?.css ? 'Enter set parameters to check against CSS pace'
             : 'Load athlete times to calculate CSS — then time suggestions will appear'}
         </div>
@@ -86,7 +89,7 @@ export default function ZoneCheckBanners({ selectedZone, singleResult, inputs, a
     const [mLo, mHi] = TYPES[selectedZone].criteria.speed;
     const mIn = singleResult.speedRatio >= mLo && singleResult.speedRatio < mHi;
     return (
-      <div style={{ ...ui.accentCard(mZc, mIn ? 'strong' : 'faint'), padding: '8px 14px', fontSize: 10, color: T.text2, lineHeight: 1.6 }}>
+      <div style={{ ...ui.accentCard(mZc, mIn ? 'strong' : 'faint', theme), padding: '8px 14px', fontSize: 10, color: T.text2, lineHeight: 1.6 }}>
         <span style={{ fontWeight: 700, color: mIn ? mZc : T.text2, marginRight: 8 }}>
           {mIn ? '✓ ' + selectedZone : '✗ Outside ' + selectedZone}
         </span>

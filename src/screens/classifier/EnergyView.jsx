@@ -29,7 +29,7 @@ export default function EnergyView({ result }) {
         {ENERGY_SYSTEMS.map(sys => {
           const mC = energyColor(sys.id, theme);
           return (
-            <div key={sys.id} style={{ ...ui.accentCard(mC, 'normal'), marginBottom: 0, padding: '10px 12px' }}>
+            <div key={sys.id} style={{ ...ui.accentCard(mC, 'normal', theme), marginBottom: 0, padding: '10px 12px' }}>
               <div style={{ ...ui.caption, fontSize: 8, marginBottom: 3 }}>{sys.label}</div>
               <div style={{ fontSize: 24, fontWeight: 900, color: mC }}>{(share(result, sys.id) * 100).toFixed(0)}%</div>
               <div style={{ fontSize: 8, color: T.text3, marginTop: 2 }}>
@@ -47,7 +47,7 @@ export default function EnergyView({ result }) {
         if (mPct * 100 < 3) return null;
         const mC = energyColor(sys.id, theme);
         return (
-          <div key={sys.id} style={{ ...ui.accentCard(mC, 'faint'), borderLeft: `3px solid ${mC}`, padding: '12px 14px' }}>
+          <div key={sys.id} style={{ ...ui.accentCard(mC, 'faint', theme), borderLeft: `3px solid ${mC}`, padding: '12px 14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <div>
                 <span style={{ fontSize: 13, fontWeight: 900, color: mC }}>{sys.label}</span>

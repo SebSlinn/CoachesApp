@@ -7,12 +7,14 @@ import ZoneBar from '../../components/ZoneBar.jsx';
 import RepChart from '../../components/RepChart.jsx';
 import ZoneWriteupCard from '../../components/ZoneWriteupCard.jsx';
 import { T } from '../../styles/theme.js';
+import { useTheme } from '../../context/ThemeContext.jsx';
 import { ui } from '../../styles/ui.js';
 import { ChartPanel } from './ResultSummary.jsx';
 
 function HeadlineCard({ color, caption, title, text, pct, rpe }) {
+  const { theme } = useTheme();
   return (
-    <div style={{ ...ui.accentCard(color, 'strong'), borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
+    <div style={{ ...ui.accentCard(color, 'strong', theme), borderRadius: 10, padding: '12px 16px', marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ ...ui.caption, fontSize: 10 }}>{caption}</div>

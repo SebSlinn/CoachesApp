@@ -14,9 +14,11 @@ import { fmtTime } from '../zones/helpers.js';
 import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 import { T } from '../styles/theme.js';
 import { ui } from '../styles/ui.js';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 export default function ResultWarnings({ singleResult, inputs }) {
   const { color: zoneColor } = useZoneScheme();
+  const { theme } = useTheme();
   const mPV = singleResult.paceValidation;
   const mCW = singleResult.consistencyWarning;
   const mPlC = zoneColor('PL');
@@ -24,7 +26,7 @@ export default function ResultWarnings({ singleResult, inputs }) {
   return (
     <>
       {singleResult.plSuggestion && (
-        <div style={{ ...ui.accentCard(mPlC, 'normal'), fontSize: 11, lineHeight: 1.7, marginBottom: 12 }}>
+        <div style={{ ...ui.accentCard(mPlC, 'normal', theme), fontSize: 11, lineHeight: 1.7, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, color: mPlC, marginBottom: 4 }}>⚑ POSSIBLE PL TERRITORY</div>
           <div style={{ color: T.text2, fontSize: 10 }}>{singleResult.plSuggestion.note}</div>
         </div>

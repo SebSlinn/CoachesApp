@@ -8,11 +8,13 @@
 //   color    string   the type's colour from the coach's scheme
 import { T } from '../styles/theme.js';
 import { ui } from '../styles/ui.js';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 export default function ZoneWriteupCard({ zoneId, writeup, color }) {
+  const { theme } = useTheme();
   if (!writeup) return null;
   return (
-    <div style={{ ...ui.accentCard(color, 'normal'), padding: '12px 14px' }}>
+    <div style={{ ...ui.accentCard(color, 'normal', theme), padding: '12px 14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
         <span style={{ fontSize: 13, fontWeight: 900, color }}>{zoneId} — {writeup.name}</span>
         <span style={{ fontSize: 9, color: T.text4 }}>{writeup.domain}</span>

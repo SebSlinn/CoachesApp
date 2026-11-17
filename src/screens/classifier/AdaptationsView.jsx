@@ -4,6 +4,7 @@ import { ZONE_GROUPS } from '../../zones/index.js';
 import { useZoneScheme } from '../../context/ZoneSchemeContext.jsx';
 import { T } from '../../styles/theme.js';
 import { ui } from '../../styles/ui.js';
+import { useTheme } from '../../context/ThemeContext.jsx';
 
 function Bullets({ title, items, color }) {
   return (
@@ -16,6 +17,7 @@ function Bullets({ title, items, color }) {
 
 export default function AdaptationsView({ result }) {
   const { color: zoneColor, style: zoneStyle } = useZoneScheme();
+  const { theme } = useTheme();
   return (
     <div>
       {ZONE_GROUPS.map(grp => {
@@ -34,7 +36,7 @@ export default function AdaptationsView({ result }) {
               const mC = zoneColor(z.id);
               const mAd = grp.adaptations[z.id];
               return (
-                <div key={z.id} style={{ ...ui.accentCard(mC, 'faint'), borderLeft: `3px solid ${mC}`, marginBottom: 8 }}>
+                <div key={z.id} style={{ ...ui.accentCard(mC, 'faint', theme), borderLeft: `3px solid ${mC}`, marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: mC }}>{zoneStyle(z.id).name}</span>
                     <span style={{ fontSize: 13, fontWeight: 900, color: mC }}>{z.pct}%</span>

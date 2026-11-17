@@ -28,6 +28,7 @@ const THEMES = Object.freeze({
     // lines
     border:        'rgba(255,255,255,0.08)',
     borderStrong:  'rgba(255,255,255,0.22)',
+    shadow:        'none',                    // cards: separated by tone on dark
     // text, strongest to faintest
     text:          '#ffffff',
     text2:         'rgba(255,255,255,0.68)',  // body copy
@@ -50,17 +51,19 @@ const THEMES = Object.freeze({
   }),
   // Light: dark blue-grey on a light blue-white-grey (Al, 2026-11-17). White cards on a tinted page.
   light: Object.freeze({
-    bg:            '#EEF2F7',
-    well:          '#E4E9F1',
+    // Firmer than a first try (2026-11-17): faint greys and tints washed out on bright PC monitors.
+    bg:            '#E6EBF2',
+    well:          '#EDF1F6',
     surface:       '#FFFFFF',
-    raised:        'rgba(30,41,59,0.045)',
-    active:        'rgba(30,41,59,0.11)',
-    border:        'rgba(30,41,59,0.13)',
-    borderStrong:  'rgba(30,41,59,0.30)',
-    text:          '#1E293B',
-    text2:         'rgba(30,41,59,0.80)',
-    text3:         'rgba(30,41,59,0.62)',
-    text4:         'rgba(30,41,59,0.48)',
+    raised:        'rgba(30,41,59,0.05)',
+    active:        'rgba(30,41,59,0.13)',
+    border:        'rgba(30,41,59,0.18)',
+    borderStrong:  'rgba(30,41,59,0.38)',
+    shadow:        '0 1px 2px rgba(30,41,59,0.10)',
+    text:          '#0F172A',
+    text2:         'rgba(15,23,42,0.84)',
+    text3:         'rgba(15,23,42,0.70)',
+    text4:         'rgba(15,23,42,0.58)',
     warn:          '#D97706',
     warnBg:        'rgba(217,119,6,0.10)',
     warnLine:      'rgba(217,119,6,0.45)',
@@ -100,7 +103,18 @@ function energyColor(pId, pName = DEFAULT_THEME) { return themeColors(pName)[ENE
 /** The same as a CSS variable, for inline styles. */
 function energyVar(pId) { return T[ENERGY_KEY[pId]] || T.text3; }
 
+/**
+ * How strongly a colour (zone or energy) is laid on, per theme. Light needs firmer values:
+ * a faint tint on white disappears on a bright monitor. `solidActive` = a selected zone
+ * button is filled with the colour itself (light) rather than a tint (dark).
+ */
+const TINTS = Object.freeze({
+  dark:  Object.freeze({ idleBg: 0.05, idleBorder: 0.35, idleText: 0.70, activeBg: 0.20, cardBg: [0.10, 0.05, 0.03], cardBorder: [0.45, 0.25, 0.15], solidActive: false }),
+  light: Object.freeze({ idleBg: 0.08, idleBorder: 0.60, idleText: 1.00, activeBg: 1.00, cardBg: [0.10, 0.06, 0.04], cardBorder: [0.55, 0.40, 0.30], solidActive: true }),
+});
+function tints(pName = DEFAULT_THEME) { return TINTS[pName] || TINTS[DEFAULT_THEME]; }
+
 /** Shared type scale (monospace UI). */
 const FONT = Object.freeze({ mono: 'monospace' });
 
-export { THEMES, THEME_KEYS, DEFAULT_THEME, T, FONT, themeColors, themeCssVars, energyColor, energyVar, cssVarName };
+export { THEMES, THEME_KEYS, DEFAULT_THEME, T, FONT, TINTS, tints, themeColors, themeCssVars, energyColor, energyVar, cssVarName };
