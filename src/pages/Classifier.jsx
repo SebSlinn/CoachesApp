@@ -1,20 +1,14 @@
 // src/pages/Classifier.jsx
 // Orchestrator for the classifier screen.
 // Owns cross-page state (athlete, session bridge, classifier inputs).
-// Delegates all UI to ClassifierScreenRefactor.
+// Delegates all UI to screens/classifier/ClassifierScreen.jsx. Colours: styles/theme.js.
 
 import { storage, KEYS } from '../lib/storage.js';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  STROKE_MULT, REST_TYPE_OPTS, ATHLETE_TYPE_OPTS,
-  ENERGY_SYSTEMS, ZONE_GROUPS, ZONES,
-  parseTime, fmtTime, secToDisplay,
-  validatePace,
-  glycoCapacity, phvZoneCaps, repEnergy, paceImpairment, consistencyCheck,
-  classifySet, suggestTimes,
-} from '../zones/index.js';import { flattenBlock, classifySequence } from '../session/model.js';
+import { STROKE_MULT, REST_TYPE_OPTS, ATHLETE_TYPE_OPTS, parseTime, classifySet } from '../zones/index.js';
+import { flattenBlock, classifySequence } from '../session/model.js';
 import { sbNewLine, sbNewBlock } from '../session/utils.js';
 import { loadAthlete } from '../services/athleteService.js';
 import {
@@ -22,10 +16,11 @@ import {
   saveSession,
   getActiveGroup,
 } from '../services/sessionService.js';
-import EnergyGraph from '../components/EnergyGraph.jsx';
-import ZoneBar     from '../components/ZoneBar.jsx';
-import RepChart    from '../components/RepChart.jsx';
-import { ClassifierScreenRefactor } from '../screens/ClassifierScreenRefactor.jsx';
+import ClassifierScreen from '../screens/classifier/ClassifierScreen.jsx';
+import { T, FONT } from '../styles/theme.js';
+import { ui } from '../styles/ui.js';
+
+const POOLS = [['50LC', '50m LC'], ['25SC', '25m SC'], ['25Y', '25 yard']];
 
 export default function Classifier() {
   const navigate = useNavigate();
@@ -154,7 +149,7 @@ export default function Classifier() {
     if (!selectedElement) { setSeqResult(null); return; }
     const mSession   = loadSession();
     const mBase      = activeAthlete ? parseTime(activeAthlete.pace200) || 120 : 120;
-    const mPace200Map = { FS: mBase, BK: mBase * 1.045, BR: mBase * 1.254, Fly: mBase * 1.051, IM: mBase * 1.082 };
+    const mPace200Map = Object.fromEntries(Object.entries(STROKE_MULT).map(([s, m]) => [s, mBase * m]));
     let mSeq = [];
     mSession.groups.forEach(g => {
       if (selectedElement.type === 'group' && g.id === selectedElement.id) {
@@ -203,63 +198,56 @@ export default function Classifier() {
     inputs, set,
     selectedZone, setSelectedZone,
     classifierDrill, setClassifierDrill,
-    singleResult, setSingleResult,
-    seqResult, setSeqResult,
+    singleResult, seqResult,
     resultView, setResultView,
     activeAthlete, derivedProfile,
-    poolDisplay, setPoolDisplay,
-    selectedElement,
+    poolDisplay, selectedElement,
     sbNewLine, sbNewBlock, sbCommitBlock,
     editingBlock, setEditingBlock,
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
+  const navBtn = { ...ui.button, padding: '6px 10px', fontWeight: 400 };
   return (
-    <div style={{ minHeight: '100vh', background: '#1a1a2e', color: '#fff', fontFamily: 'monospace', padding: '16px 12px' }}>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, fontFamily: FONT.mono, padding: '16px 12px' }}>
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
 
         {/* Header */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.15em', marginBottom: 2 }}>ELLESMERE PORT ASC</div>
+          <div style={{ ...ui.caption, fontSize: 11, letterSpacing: '0.15em', marginBottom: 2 }}>ELLESMERE PORT ASC</div>
           <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.04em' }}>TRAINING CLASSIFIER</div>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2, letterSpacing: '0.08em' }}>SWEETENHAM ENERGY ZONE MODEL · v5</div>
+          <div style={{ ...ui.caption, marginTop: 2 }}>SWEETENHAM ENERGY ZONE MODEL · v5</div>
         </div>
 
         {/* Nav */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          <button onClick={() => navigate('/dashboard')} style={{ padding: '6px 10px', fontSize: 11, borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.05)', color: '#fff', cursor: 'pointer' }}>Dashboard</button>
-          <button onClick={() => navigate('/athlete-setup')} style={{ padding: '6px 10px', fontSize: 11, borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(48,176,199,0.12)', color: '#fff', cursor: 'pointer' }}>Athlete Setup</button>
-          <button onClick={() => navigate('/set-builder')} style={{ padding: '6px 10px', fontSize: 11, borderRadius: 5, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(52,199,89,0.12)', color: '#fff', cursor: 'pointer' }}>Set Builder</button>
-          {selectedElement && (
-            <button onClick={() => setSelectedElement(null)} style={{ padding: '6px 10px', fontSize: 11, borderRadius: 5, border: '1px solid rgba(48,176,199,0.3)', background: 'rgba(48,176,199,0.08)', color: '#30B0C7', cursor: 'pointer' }}>
-              Clear Selection
-            </button>
-          )}
+          <button onClick={() => navigate('/dashboard')} style={navBtn}>Dashboard</button>
+          <button onClick={() => navigate('/athlete-setup')} style={navBtn}>Athlete Setup</button>
+          <button onClick={() => navigate('/set-builder')} style={navBtn}>Set Builder</button>
+          {selectedElement && <button onClick={() => setSelectedElement(null)} style={navBtn}>Clear Selection</button>}
         </div>
 
         {/* Pool selector */}
         <div style={{ display: 'flex', gap: 3, alignItems: 'center', marginBottom: 10 }}>
-          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', letterSpacing: '0.08em', marginRight: 2 }}>POOL:</span>
-          {['50LC', '25SC', '25Y'].map(p => (
-            <button key={p} onClick={() => setPoolDisplay(p)} style={{ padding: '3px 10px', borderRadius: 4, cursor: 'pointer', fontFamily: 'monospace', fontSize: 9, fontWeight: 700, border: '1px solid', borderColor: poolDisplay === p ? 'rgba(48,176,199,0.5)' : 'rgba(255,255,255,0.08)', background: poolDisplay === p ? 'rgba(48,176,199,0.12)' : 'transparent', color: poolDisplay === p ? '#30B0C7' : 'rgba(255,255,255,0.28)' }}>
-              {p === '50LC' ? '50m LC' : p === '25SC' ? '25m SC' : '25 yard'}
-            </button>
+          <span style={{ ...ui.caption, marginRight: 2 }}>Pool:</span>
+          {POOLS.map(([p, l]) => (
+            <button key={p} onClick={() => setPoolDisplay(p)} style={ui.toggle(poolDisplay === p)}>{l}</button>
           ))}
         </div>
 
         {/* Status bar */}
         {activeAthlete && (
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em', marginBottom: 12 }}>
+          <div style={{ fontSize: 10, color: T.text3, letterSpacing: '0.06em', marginBottom: 12 }}>
             Athlete: {activeAthlete.name || 'Unnamed'} · {derivedProfile?.label || 'No profile'}
           </div>
         )}
         {selectedElement && (
-          <div style={{ fontSize: 10, color: 'rgba(48,176,199,0.8)', letterSpacing: '0.06em', marginBottom: 12 }}>
+          <div style={{ fontSize: 10, color: T.text3, letterSpacing: '0.06em', marginBottom: 12 }}>
             Selected: {selectedElement.type} {selectedElement.id}
           </div>
         )}
 
-        <ClassifierScreenRefactor {...sharedClassifierProps} />
+        <ClassifierScreen {...sharedClassifierProps} />
 
       </div>
     </div>

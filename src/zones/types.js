@@ -34,7 +34,8 @@
 import { WRITEUPS } from './writeups.js';
 
 // ── Zone groups ──────────────────────────────────────────────────────────────
-// Colour here is only the last-resort fallback. Schemes own display colour.
+// Colour here is only the last-resort fallback for a TYPE's colour. Schemes own display colour,
+// and group headers are drawn neutral (styles/theme.js, 2026-11-17).
 const GROUPS = [
   { zone: 1, label: 'Zone 1 — Aerobic',   short: 'Aerobic',   color: '#30B0C7' },
   { zone: 2, label: 'Zone 2 — Threshold', short: 'Threshold', color: '#FFCC00' },

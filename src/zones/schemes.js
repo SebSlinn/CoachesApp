@@ -54,7 +54,9 @@ const SWEETENHAM = {
 const URBANCHEK = {
   id: 'urbanchek', name: 'Urbanchek colours', builtIn: true,
   types: {
-    A1:  { label: 'White',  short: 'White',  color: '#F5F5F5', text: '#111' },
+    // 'White' is drawn as a light blue-grey (2026-11-17): pure white reads as plain text on the
+    // dark theme and vanishes on a light one. Light mode will draw it dark blue-grey.
+    A1:  { label: 'White',  short: 'White',  color: '#C5D0DE', text: '#111' },
     A2:  { label: 'Pink',   short: 'Pink',   color: '#F4A6C8', text: '#111' },
     A3:  { label: 'Red',    short: 'Red',    color: '#E53935' },
     AT:  { label: 'Blue',   short: 'Blue',   color: '#1E88E5' },
@@ -156,7 +158,10 @@ function withAlpha(pHex, pAlpha) {
 /** Shorthand: the colour only. */
 function zoneColor(pCode, pScheme) { return resolveZoneStyle(pCode, pScheme).color; }
 
-/** Colour for a zone group under a scheme (group headers, ZoneBar groupings). */
+/**
+ * Colour for a zone group under a scheme. Only a FALLBACK for type colours now: screens draw
+ * group headers neutral (2026-11-17), so a group never shows a colour of its own beside its types.
+ */
 function groupColor(pZone, pScheme) {
   const mScheme = pickScheme(pScheme);
   return mScheme.groups?.[pZone]?.color || GROUPS_BY_ZONE[pZone]?.color || UNKNOWN_COLOR;

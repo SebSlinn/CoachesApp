@@ -37,10 +37,13 @@ export function formatResultSummary(pResult, pInputs) {
  * @param {Object} pResult      classifySet() result
  * @param {Object} pInputs      { distM, qty, targetTime, onTime, stroke }
  * @param {Object|null} pAthlete  active athlete object (may be null)
+ * @param {Function} [pZoneStyle]  code → { name, color } in the coach's scheme (useZoneScheme().style).
+ *                                  Optional: without it the default scheme's names and colours are used.
  * @returns {string}  Full HTML document string
  */
-export function generatePrintHtml(pResult, pInputs, pAthlete) {
+export function generatePrintHtml(pResult, pInputs, pAthlete, pZoneStyle) {
   if (!pResult) return '';
+  const mStyle = (pZone) => pZoneStyle ? pZoneStyle(pZone.id) : pZone;   // breakdown rows carry default name/colour
 
   const mDate      = new Date().toLocaleDateString('en-GB');
   const mAthleteLn = pAthlete
@@ -51,8 +54,8 @@ export function generatePrintHtml(pResult, pInputs, pAthlete) {
     .filter(z => z.pct > 0)
     .map(z => `
       <tr>
-        <td style="padding:5px 8px">${z.name}</td>
-        <td style="padding:5px 8px;font-weight:700;color:${z.color}">${z.pct}%</td>
+        <td style="padding:5px 8px">${mStyle(z).name}</td>
+        <td style="padding:5px 8px;font-weight:700;color:${mStyle(z).color}">${z.pct}%</td>
         <td style="padding:5px 8px">${z.rpe}</td>
         <td style="padding:5px 8px;font-size:11px;color:#666">${z.desc}</td>
       </tr>`).join('');
@@ -86,7 +89,7 @@ export function generatePrintHtml(pResult, pInputs, pAthlete) {
   <h1>Swim Zone Classifier</h1>
   ${mAthleteLn}
   <p style="font-size:11px;color:#888;margin:0 0 12px">${mDate} · ${mSetLn}</p>
-  <h2>Primary Zone: ${pResult.primary.name} — ${pResult.primary.pct}%</h2>
+  <h2>Primary Zone: ${mStyle(pResult.primary).name} — ${pResult.primary.pct}%</h2>
   <p style="font-size:12px">${pResult.primary.desc}</p>
   ${mConsBlock}
   ${mPhvBlock}

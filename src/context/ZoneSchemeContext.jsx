@@ -1,16 +1,18 @@
 // src/context/ZoneSchemeContext.jsx
 // Makes the coach's zone scheme available to every screen (contracts/ZONES.md).
 //
-//   const { color, groupColor, style, scheme, setScheme } = useZoneScheme();
-//   color('AT')        → '#FFCC00' (or the coach's colour for AT)
-//   groupColor(3)      → Zone 3 header colour
+//   const { color, style, scheme, setScheme } = useZoneScheme();
+//   color('AT')        → '#1E88E5' (the coach's colour for AT)
 //   style('AT')        → { code, label, short, name, color, text, group }
+//
+// Zone colours only. Every other interface colour is in styles/theme.js. Group headers
+// have no colour of their own (2026-11-17), so groupColor is deliberately not offered here.
 //
 // Outside a provider the hook still works and returns the default scheme,
 // so a component can never crash or go colourless for want of a provider.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, resolveZoneStyle, groupColor } from '../zones/schemes.js';
+import { BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, resolveZoneStyle } from '../zones/schemes.js';
 import { loadZoneScheme, saveZoneScheme, listZoneSchemes, syncZoneScheme } from '../services/zoneSchemeService.js';
 import { onAuthChange } from '../services/auth';
 
@@ -21,7 +23,6 @@ function makeApi(pScheme, pSetScheme) {
     schemes:    listZoneSchemes().data,
     style:      (pCode) => resolveZoneStyle(pCode, pScheme),
     color:      (pCode) => resolveZoneStyle(pCode, pScheme).color,
-    groupColor: (pZone) => groupColor(pZone, pScheme),
   };
 }
 
