@@ -12,7 +12,7 @@
 //
 // Colour rules (styles/theme.js): zone colours from the coach's scheme, energy colours and
 // everything else from the theme. No colour literals in this folder.
-import { parseTime } from '../../zones/index.js';
+import { parseTime, resolveZoneStyle } from '../../zones/index.js';
 import { useZoneScheme } from '../../context/ZoneSchemeContext.jsx';
 import { generatePrintHtml } from '../../services/classifierService.js';
 import ResultWarnings from '../../components/ResultWarnings.jsx';
@@ -69,7 +69,9 @@ export default function ClassifierScreen(props) {
     singleResult: pSingleResult, seqResult, resultView, setResultView,
     activeAthlete, derivedProfile, selectedElement, editingBlock,
   } = props;
-  const { style: zoneStyle } = useZoneScheme();
+  const { scheme } = useZoneScheme();
+  // Paper is white whatever the screen theme, so print takes the light-theme zone colours.
+  const printStyle = (pCode) => resolveZoneStyle(pCode, scheme, 'light');
   const result = seqResult || pSingleResult;   // a Set Builder selection wins over the typed set
   const View = VIEWS[resultView] || ZonesView;
 
@@ -97,7 +99,7 @@ export default function ClassifierScreen(props) {
           <View result={result} />
           <CoachNote result={result} />
           <div style={{ textAlign: 'center', marginTop: 8, marginBottom: 24 }}>
-            <button onClick={() => printReport(result, inputs, activeAthlete, zoneStyle)} style={{ ...ui.button, padding: '10px 28px', fontSize: 12 }}>
+            <button onClick={() => printReport(result, inputs, activeAthlete, printStyle)} style={{ ...ui.button, padding: '10px 28px', fontSize: 12 }}>
               ⎙ PRINT REPORT
             </button>
           </div>

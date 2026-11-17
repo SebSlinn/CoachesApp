@@ -7,6 +7,7 @@ import RepChart from '../../components/RepChart.jsx';
 import { T, energyColor } from '../../styles/theme.js';
 import { ui } from '../../styles/ui.js';
 import { ChartPanel } from './ResultSummary.jsx';
+import { useTheme } from '../../context/ThemeContext.jsx';
 
 const SHARE_KEY = { atpcp: 'avgAtpcp', glycolytic: 'avgGlycolytic', aerobic: 'avgAerobic' };
 const share = (pResult, pId) => pResult[SHARE_KEY[pId]] || 0;
@@ -21,11 +22,12 @@ function Bullets({ title, items, color }) {
 }
 
 export default function EnergyView({ result }) {
+  const { theme } = useTheme();
   return (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
         {ENERGY_SYSTEMS.map(sys => {
-          const mC = energyColor(sys.id);
+          const mC = energyColor(sys.id, theme);
           return (
             <div key={sys.id} style={{ ...ui.accentCard(mC, 'normal'), marginBottom: 0, padding: '10px 12px' }}>
               <div style={{ ...ui.caption, fontSize: 8, marginBottom: 3 }}>{sys.label}</div>
@@ -43,7 +45,7 @@ export default function EnergyView({ result }) {
       {ENERGY_SYSTEMS.map(sys => {
         const mPct = share(result, sys.id);
         if (mPct * 100 < 3) return null;
-        const mC = energyColor(sys.id);
+        const mC = energyColor(sys.id, theme);
         return (
           <div key={sys.id} style={{ ...ui.accentCard(mC, 'faint'), borderLeft: `3px solid ${mC}`, padding: '12px 14px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>

@@ -19,6 +19,8 @@ import {
 import ClassifierScreen from '../screens/classifier/ClassifierScreen.jsx';
 import { T, FONT } from '../styles/theme.js';
 import { ui } from '../styles/ui.js';
+import { useTheme } from '../context/ThemeContext.jsx';
+import { THEME_CHOICES } from '../services/themeService.js';
 
 const POOLS = [['50LC', '50m LC'], ['25SC', '25m SC'], ['25Y', '25 yard']];
 
@@ -208,15 +210,23 @@ export default function Classifier() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   const navBtn = { ...ui.button, padding: '6px 10px', fontWeight: 400 };
+  const { theme, choice, setChoice } = useTheme();
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, fontFamily: FONT.mono, padding: '16px 12px' }}>
+    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, fontFamily: FONT.mono, padding: '16px 12px', colorScheme: theme }}>
       <div style={{ maxWidth: 620, margin: '0 auto' }}>
 
         {/* Header */}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ ...ui.caption, fontSize: 11, letterSpacing: '0.15em', marginBottom: 2 }}>ELLESMERE PORT ASC</div>
-          <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.04em' }}>TRAINING CLASSIFIER</div>
-          <div style={{ ...ui.caption, marginTop: 2 }}>SWEETENHAM ENERGY ZONE MODEL · v5</div>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+          <div>
+            <div style={{ ...ui.caption, fontSize: 11, letterSpacing: '0.15em', marginBottom: 2 }}>ELLESMERE PORT ASC</div>
+            <div style={{ fontSize: 18, fontWeight: 900, letterSpacing: '0.04em' }}>TRAINING CLASSIFIER</div>
+            <div style={{ ...ui.caption, marginTop: 2 }}>SWEETENHAM ENERGY ZONE MODEL · v5</div>
+          </div>
+          <div style={{ display: 'flex', gap: 3 }} role="group" aria-label="Screen colours">
+            {THEME_CHOICES.map(o => (
+              <button key={o.v} onClick={() => setChoice(o.v)} style={ui.toggle(choice === o.v)}>{o.l}</button>
+            ))}
+          </div>
         </div>
 
         {/* Nav */}

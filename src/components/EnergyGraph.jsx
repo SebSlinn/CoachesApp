@@ -1,11 +1,12 @@
 // components/EnergyGraph.jsx
 // Energy-system share over a single maximal rep (0–240 s), with the current rep's duration marked.
 // Colours: styles/theme.js (energy systems + neutral chart chrome). A canvas needs real colour
-// values, not CSS variables, hence themeColors().
+// values, not CSS variables, hence themeColors(theme); it redraws when the theme changes.
 import { useRef, useEffect } from 'react';
 import { fmtTime } from '../zones/helpers.js';
 import { ENERGY_SYSTEMS } from '../zones/constants.js';
 import { themeColors, energyColor, FONT } from '../styles/theme.js';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 const MAX_T = 240, STEPS = 300;
 const TICKS = [0, 60, 120, 180, 240];
@@ -33,11 +34,12 @@ const CURVE = curve();
 
 function EnergyGraph({ result }) {
   const ref = useRef(null);
+  const { theme } = useTheme();
   useEffect(() => {
     const c = ref.current; if (!c) return;
     const ctx = c.getContext('2d');
     const W = c.width, H = c.height;
-    const mC = themeColors();
+    const mC = themeColors(theme);
     const mFont = `9px ${FONT.mono}`;
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = mC.well; ctx.fillRect(0, 0, W, H);
@@ -55,7 +57,7 @@ function EnergyGraph({ result }) {
 
     // Curves
     SERIES.forEach(({ key, id }) => {
-      ctx.strokeStyle = energyColor(id); ctx.lineWidth = 1.5;
+      ctx.strokeStyle = energyColor(id, theme); ctx.lineWidth = 1.5;
       ctx.beginPath();
       CURVE.forEach((d, i) => { const x = tx(d.t), y = ty(d[key]); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
       ctx.stroke();
@@ -74,11 +76,11 @@ function EnergyGraph({ result }) {
 
     // Legend
     ENERGY_SYSTEMS.forEach((sys, i) => {
-      ctx.fillStyle = energyColor(sys.id); ctx.fillRect(W - 90, 12 + i * 14, 8, 8);
+      ctx.fillStyle = energyColor(sys.id, theme); ctx.fillRect(W - 90, 12 + i * 14, 8, 8);
       ctx.fillStyle = mC.text3; ctx.font = mFont;
       ctx.fillText(sys.label, W - 78, 20 + i * 14);
     });
-  }, [result?.workDur]);
+  }, [result?.workDur, theme]);
 
   return <canvas ref={ref} width={580} height={110}
     style={{ width: '100%', height: 110, borderRadius: 6, display: 'block' }} />;

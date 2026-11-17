@@ -17,6 +17,7 @@ import { SupabaseZoneSchemeRepository } from './supabase/SupabaseZoneSchemeRepos
 import { SupabaseSignupRepository } from './supabase/SupabaseSignupRepository';
 import { SupabaseRegisterRepository } from './supabase/SupabaseRegisterRepository';
 import { LocalRegisterStore } from './local/LocalRegisterStore';
+import { LocalThemeRepository } from './local/LocalThemeRepository';
 
 let authRepository = null;
 let membershipRepository = null;
@@ -118,4 +119,12 @@ export function getRegisterStore() {
 export function getSignupRepository() {
   if (!signupRepository) signupRepository = new SupabaseSignupRepository();
   return signupRepository;
+}
+
+// ---- Light / dark theme (added 2026-11-17) — a per-device display choice (styles/theme.js).
+// Device only for now; it can follow the account later the way the zone scheme does.
+let themeRepository = null;
+export function getThemeRepository() {
+  if (!themeRepository) themeRepository = new LocalThemeRepository();
+  return themeRepository;
 }

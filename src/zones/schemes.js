@@ -8,12 +8,17 @@
 //
 // Shape:
 //   { id, name, builtIn,
-//     types:  { CODE: { label?, short?, color?, text? } },   // per-type overrides
+//     types:  { CODE: { label?, short?, color?, light?, text? } },   // per-type overrides
+//                                    // light = the colour on the light theme (else derived)
 //     groups: { 1..5: { color } } }                            // optional group fallback
 //
 // Colour fallback order: scheme.types[code].color → scheme.groups[group].color
 //                        → GROUPS[group].color (types.js) → UNKNOWN_COLOR.
 // Label fallback order:  scheme.types[code].label → TYPES[code].label → code.
+//
+// Light theme (2026-11-17): resolveZoneStyle(code, scheme, 'light') returns the type's `light`
+// colour if the scheme gives one, otherwise its colour darkened until it shows on a white card
+// (contrast ≥ 3:1). Pale colours (White, Pink, Gold) need it; strong ones come back unchanged.
 //
 // Rule: types in the same group share the group colour unless the scheme gives the
 // type its own. Zone 3 (CS, MVO) shares one colour in every built-in scheme.
@@ -21,6 +26,9 @@
 import { TYPES, GROUPS_BY_ZONE, isTypeCode } from './types.js';
 
 const UNKNOWN_COLOR = '#8E8E93';
+// The light theme's card colour (styles/theme.js THEMES.light.surface — a test keeps them equal).
+const LIGHT_SURFACE = '#FFFFFF';
+const LIGHT_MIN_CONTRAST = 3;
 // The scheme everyone sees until they choose one (2026-10-26: Urbanchek; was Sweetenham).
 const DEFAULT_SCHEME_ID = 'urbanchek';
 
@@ -56,8 +64,8 @@ const URBANCHEK = {
   types: {
     // 'White' is drawn as a light blue-grey (2026-11-17): pure white reads as plain text on the
     // dark theme and vanishes on a light one. Light mode will draw it dark blue-grey.
-    A1:  { label: 'White',  short: 'White',  color: '#C5D0DE', text: '#111' },
-    A2:  { label: 'Pink',   short: 'Pink',   color: '#F4A6C8', text: '#111' },
+    A1:  { label: 'White',  short: 'White',  color: '#C5D0DE', light: '#475569', text: '#111' },
+    A2:  { label: 'Pink',   short: 'Pink',   color: '#F4A6C8', light: '#D6337F', text: '#111' },   // darkening pastel pink goes muddy, so a true pink
     A3:  { label: 'Red',    short: 'Red',    color: '#E53935' },
     AT:  { label: 'Blue',   short: 'Blue',   color: '#1E88E5' },
     CS:  { label: 'Purple', short: 'Purple' },
@@ -97,14 +105,41 @@ const BUILT_IN_SCHEMES = Object.freeze({   // picker order: the default first
 
 // ── Resolver ─────────────────────────────────────────────────────────────────
 
-/** '#111' or '#fff', whichever reads better on pHex. */
-function contrastText(pHex) {
+/** WCAG relative luminance of a #rrggbb colour (null if not one). */
+function luminance(pHex) {
   const m = /^#?([0-9a-f]{6})$/i.exec(String(pHex || ''));
-  if (!m) return '#fff';
+  if (!m) return null;
   const n = parseInt(m[1], 16);
   const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
-  const L = 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+
+/** Contrast ratio between two #rrggbb colours (1–21). */
+function contrastRatio(pA, pB) {
+  const a = luminance(pA), b = luminance(pB);
+  if (a === null || b === null) return 21;
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** '#111' or '#fff', whichever reads better on pHex. */
+function contrastText(pHex) {
+  const L = luminance(pHex);
+  if (L === null) return '#fff';
   return L > 0.45 ? '#111' : '#fff';
+}
+
+/** pHex darkened in 5% steps (same hue) until it reaches LIGHT_MIN_CONTRAST on a white card. */
+function inkForLight(pHex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(pHex || ''));
+  if (!m) return pHex;
+  const n = parseInt(m[1], 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  for (let k = 0; k <= 20; k++) {
+    const f = 1 - k * 0.05;
+    const hex = '#' + rgb.map(c => Math.round(c * f).toString(16).padStart(2, '0')).join('').toUpperCase();
+    if (contrastRatio(hex, LIGHT_SURFACE) >= LIGHT_MIN_CONTRAST) return k === 0 ? pHex : hex;
+  }
+  return '#000000';
 }
 
 function pickScheme(pScheme) {
@@ -116,11 +151,12 @@ function pickScheme(pScheme) {
  * How to show a type code under a scheme.
  * @param {string} pCode            type code, e.g. 'AT'. Unknown codes ('Drill', null) get a neutral grey.
  * @param {Object|string} [pScheme] scheme object or built-in id; default DEFAULT_SCHEME_ID.
+ * @param {'dark'|'light'} [pTheme='dark'] light = a colour that shows on a white card (see top).
  * @returns {{code, label, short, name, color, text, group:number|null, known:boolean}}
  *   name = the "CODE / Long name" line used in zone lists; the type's own name unless the
  *   scheme relabels the type, then "CODE / scheme label". Buttons and badges keep showing the code.
  */
-function resolveZoneStyle(pCode, pScheme) {
+function resolveZoneStyle(pCode, pScheme, pTheme = 'dark') {
   const mScheme = pickScheme(pScheme);
   if (!isTypeCode(pCode)) {
     return { code: pCode ?? null, label: pCode || '—', short: pCode || '—', name: pCode || '—',
@@ -128,17 +164,19 @@ function resolveZoneStyle(pCode, pScheme) {
   }
   const mType  = TYPES[pCode];
   const mOver  = mScheme.types?.[pCode] || {};
-  const mColor = mOver.color
+  const mBase = mOver.color
     || mScheme.groups?.[mType.group]?.color
     || GROUPS_BY_ZONE[mType.group]?.color
     || UNKNOWN_COLOR;
+  const mLight = pTheme === 'light';
+  const mColor = mLight ? (mOver.light || inkForLight(mBase)) : mBase;
   return {
     code:  pCode,
     label: mOver.label || mType.label,
     short: mOver.short || mOver.label || mType.short,
     name:  mOver.label ? `${pCode} / ${mOver.label}` : mType.name,
     color: mColor,
-    text:  mOver.text || contrastText(mColor),
+    text:  (!mLight && mOver.text) || contrastText(mColor),
     group: mType.group,
     known: true,
   };
@@ -156,7 +194,7 @@ function withAlpha(pHex, pAlpha) {
 }
 
 /** Shorthand: the colour only. */
-function zoneColor(pCode, pScheme) { return resolveZoneStyle(pCode, pScheme).color; }
+function zoneColor(pCode, pScheme, pTheme) { return resolveZoneStyle(pCode, pScheme, pTheme).color; }
 
 /**
  * Colour for a zone group under a scheme. Only a FALLBACK for type colours now: screens draw
@@ -200,6 +238,7 @@ function sanitiseScheme(pScheme) {
     if (okText(mV.label)) o.label = mV.label.trim();
     if (okText(mV.short)) o.short = mV.short.trim();
     if (okColor(mV.color)) o.color = mV.color;
+    if (okColor(mV.light)) o.light = mV.light;
     if (okColor(mV.text))  o.text  = mV.text;
     mTypes[mCode] = o;
   }
@@ -215,5 +254,6 @@ function sanitiseScheme(pScheme) {
 
 export {
   BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, UNKNOWN_COLOR,
-  resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, contrastText, withAlpha,
+  resolveZoneStyle, zoneColor, groupColor, copyScheme, sanitiseScheme, contrastText, contrastRatio, withAlpha,
+  LIGHT_SURFACE, LIGHT_MIN_CONTRAST,
 };

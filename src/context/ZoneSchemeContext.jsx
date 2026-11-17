@@ -13,20 +13,22 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { BUILT_IN_SCHEMES, DEFAULT_SCHEME_ID, resolveZoneStyle } from '../zones/schemes.js';
+import { useTheme } from './ThemeContext.jsx';
 import { loadZoneScheme, saveZoneScheme, listZoneSchemes, syncZoneScheme } from '../services/zoneSchemeService.js';
 import { onAuthChange } from '../services/auth';
 
-function makeApi(pScheme, pSetScheme) {
+function makeApi(pScheme, pSetScheme, pTheme) {
   return {
     scheme:     pScheme,
     setScheme:  pSetScheme,
     schemes:    listZoneSchemes().data,
-    style:      (pCode) => resolveZoneStyle(pCode, pScheme),
-    color:      (pCode) => resolveZoneStyle(pCode, pScheme).color,
+    // Colours suit the theme in force (light = darkened pale colours). Print asks for 'light' itself.
+    style:      (pCode) => resolveZoneStyle(pCode, pScheme, pTheme),
+    color:      (pCode) => resolveZoneStyle(pCode, pScheme, pTheme).color,
   };
 }
 
-const DEFAULT_API = makeApi(BUILT_IN_SCHEMES[DEFAULT_SCHEME_ID], () => {});
+const DEFAULT_API = makeApi(BUILT_IN_SCHEMES[DEFAULT_SCHEME_ID], () => {}, 'dark');
 const ZoneSchemeContext = createContext(DEFAULT_API);
 
 export function ZoneSchemeProvider({ children }) {
@@ -44,7 +46,8 @@ export function ZoneSchemeProvider({ children }) {
     const sub = onAuthChange((event) => { if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') setTimeout(pull, 0); });
     return () => { live = false; sub?.data?.subscription?.unsubscribe?.(); };
   }, []);
-  const api = useMemo(() => makeApi(scheme, setScheme), [scheme, setScheme]);
+  const { theme } = useTheme();
+  const api = useMemo(() => makeApi(scheme, setScheme, theme), [scheme, setScheme, theme]);
   return <ZoneSchemeContext.Provider value={api}>{children}</ZoneSchemeContext.Provider>;
 }
 

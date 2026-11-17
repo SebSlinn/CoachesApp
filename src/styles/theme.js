@@ -14,7 +14,8 @@
 // theme switch is one call to applyTheme() and no screen edits. Canvas charts and print
 // need real values: themeColors().
 //
-// Light mode: add THEMES.light with the same keys. Nothing else changes.
+// Two themes, same keys. ThemeProvider (context/ThemeContext.jsx) picks one per device.
+// Zone colours get a light-theme version from resolveZoneStyle(code, scheme, 'light') (zones/schemes.js).
 
 const THEMES = Object.freeze({
   dark: Object.freeze({
@@ -46,6 +47,32 @@ const THEMES = Object.freeze({
     energyAtpcp:      '#FF2D55',   // red / magenta  — maximal, 0–10 s
     energyGlycolytic: '#FFCC00',   // yellow / amber — 10 s – ~2 min
     energyAerobic:    '#34C759',   // green          — 2 min +
+  }),
+  // Light: dark blue-grey on a light blue-white-grey (Al, 2026-11-17). White cards on a tinted page.
+  light: Object.freeze({
+    bg:            '#EEF2F7',
+    well:          '#E4E9F1',
+    surface:       '#FFFFFF',
+    raised:        'rgba(30,41,59,0.045)',
+    active:        'rgba(30,41,59,0.11)',
+    border:        'rgba(30,41,59,0.13)',
+    borderStrong:  'rgba(30,41,59,0.30)',
+    text:          '#1E293B',
+    text2:         'rgba(30,41,59,0.80)',
+    text3:         'rgba(30,41,59,0.62)',
+    text4:         'rgba(30,41,59,0.48)',
+    warn:          '#D97706',
+    warnBg:        'rgba(217,119,6,0.10)',
+    warnLine:      'rgba(217,119,6,0.45)',
+    warnText:      '#7A3E00',
+    danger:        '#DC2626',
+    dangerBg:      'rgba(220,38,38,0.07)',
+    dangerLine:    'rgba(220,38,38,0.40)',
+    dangerText:    '#991B1B',
+    // the same heat spectrum, deepened so it reads on white
+    energyAtpcp:      '#E0244B',
+    energyGlycolytic: '#B98500',
+    energyAerobic:    '#1E9E4A',
   }),
 });
 

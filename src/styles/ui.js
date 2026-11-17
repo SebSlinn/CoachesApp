@@ -26,7 +26,7 @@ const input = {
 };
 
 /** Small stat tile (Speed, Work dur …). */
-const tile = { background: T.raised, border: `1px solid ${T.border}`, borderRadius: RADIUS, padding: '9px 11px' };
+const tile = { background: T.surface, border: `1px solid ${T.border}`, borderRadius: RADIUS, padding: '9px 11px' };
 
 /**
  * Neutral toggle button (rest type, pool, result tabs).
@@ -68,8 +68,10 @@ function zoneButton(pColor, pActive) {
  */
 function accentCard(pColor, pWeight = 'normal') {
   const mA = { strong: [0.10, 0.45, 1], normal: [0.05, 0.25, 1], faint: [0.03, 0.15, 0.35] }[pWeight] || [0.05, 0.25, 1];
+  const mTint = withAlpha(pColor, mA[0]);
   return {
-    background: withAlpha(pColor, mA[0]), border: `1px solid ${withAlpha(pColor, mA[1])}`,
+    // the tint is laid over a card colour, so it stays clean on the light theme's tinted page
+    background: `linear-gradient(${mTint}, ${mTint}), ${T.surface}`, border: `1px solid ${withAlpha(pColor, mA[1])}`,
     borderLeft: `4px solid ${withAlpha(pColor, mA[2])}`, borderRadius: RADIUS, padding: '10px 14px', marginBottom: 10,
   };
 }
@@ -86,8 +88,8 @@ const markedCard = {
  */
 function banner(pKind) {
   const mBase = { borderRadius: RADIUS, padding: '10px 14px', marginBottom: 12, fontSize: 11, lineHeight: 1.6 };
-  if (pKind === 'danger') return { ...mBase, background: T.dangerBg, border: `1px solid ${T.dangerLine}`, borderLeft: `4px solid ${T.danger}`, color: T.dangerText };
-  if (pKind === 'warn')   return { ...mBase, background: T.warnBg, border: `1px solid ${T.warnLine}`, borderLeft: `4px solid ${T.warn}`, color: T.warnText };
+  if (pKind === 'danger') return { ...mBase, background: `linear-gradient(${T.dangerBg}, ${T.dangerBg}), ${T.surface}`, border: `1px solid ${T.dangerLine}`, borderLeft: `4px solid ${T.danger}`, color: T.dangerText };
+  if (pKind === 'warn')   return { ...mBase, background: `linear-gradient(${T.warnBg}, ${T.warnBg}), ${T.surface}`, border: `1px solid ${T.warnLine}`, borderLeft: `4px solid ${T.warn}`, color: T.warnText };
   return { ...mBase, background: T.surface, border: `1px solid ${T.border}`, borderLeft: `3px solid ${T.borderStrong}`, color: T.text2 };
 }
 
