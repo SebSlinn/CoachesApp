@@ -20,12 +20,11 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listProtocols, prescribeForAthletes, getTestHistory } from '../services/protocols';
 import { ingestPoolsideSetResult } from '../services/results';
-import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel, editableRepLines, REPS_PARAM, MAX_EDIT_REPS } from '../session/protocolFormat';
+import { prescribeGroup, buildHandoff, encodeHandoff, paramValueLabel, editableRepLines, REPS_PARAM, MAX_EDIT_REPS, ladderLabel } from '../session/protocolFormat';
 import { resolveAthleteMaxHr } from '../services/athleteService.js';
 import { useZoneScheme } from '../context/ZoneSchemeContext.jsx';
 import { hrRollup, HR_MIN_COVERAGE } from '../hr/hrMetrics';
 import { recordsHref } from '../records/athleteLink.js';
-import { levelShortLabel } from '../records/testVersions.js';
 import { buildRunView } from '../records/testReport.js';
 
 const STROKE_NAME = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM', Kick: 'Kick' };
@@ -111,9 +110,9 @@ function RepsBox({ line, value, onChange }) {
   );
 }
 
-// One headline per analyser for the "previous runs" list. pProtocol (optional)
-// names ladder levels ("Club 2") from its level options.
-function headline(summary, pProtocol) {
+// One headline per analyser for the "previous runs" list. A ladder run reads as
+// what was swum ("16 × 100 @ 2:00"), old level runs included (2026-11-25).
+function headline(summary) {
   if (!summary) return '—';
   if (summary.error) return summary.error;
   switch (summary.analyser) {
@@ -123,11 +122,11 @@ function headline(summary, pProtocol) {
     case 'css': return `CSS ${fmtClock(summary.cssPer100Sec)}/100`;
     case 'double-distance': return `${fmtClock(summary.timeSec)}${summary.vsTargetSec != null ? ` (${summary.vsTargetSec > 0 ? '+' : ''}${summary.vsTargetSec} s)` : ''}${summary.fadeSec != null ? ` · fade ${summary.fadeSec} s` : ''}`;
     case 'ladder': {
-      const lv = summary.level ? `${pProtocol ? levelShortLabel(pProtocol, summary.level) : summary.level.replace(/^L/, 'Level ')} ` : '';
-      const held = summary.held === true ? '✓ held' : summary.held === false ? (summary.completed ? 'not held' : `${summary.swum}/${summary.prescribed} reps`) : '';
+      const what = summary.label || ladderLabel(summary.swum, 100, summary.sendOffSec);
+      const held = summary.held === true ? '✓ held' : summary.held === false ? (summary.completed === false ? `stopped at ${summary.swum} of ${summary.prescribed}` : 'not held') : '';
       const pace = summary.per100Sec ? `${fmtRep(summary.per100Sec)}/100` : '';
       const fade = summary.fadeSec != null ? `fade ${summary.fadeSec > 0 ? '+' : ''}${summary.fadeSec} s` : '';
-      return [lv + held, pace, fade].filter(Boolean).join(' · ') || '—';
+      return [[what, held].filter(Boolean).join(' '), pace, fade].filter(Boolean).join(' · ') || '—';
     }
     case 'blocks': return summary.dropOffSec != null ? `drop-off ${summary.dropOffSec > 0 ? '+' : ''}${summary.dropOffSec} s/rep` : '—';
     case 'swolf': return `best SWOLF ${summary.bestSwolf ?? '—'} · mean ${summary.meanSwolf ?? '—'}`;
@@ -267,7 +266,7 @@ export default function TestSets() {
         : `Already saved — this ${mEnv.protocolName || 'test'} for ${mWho} is on record.`)
       : `Saved ${data.reps} rep${data.reps === 1 ? '' : 's'} of ${mEnv.protocolName || 'the test'} for ${mWho}` +
         (data.missing && data.missing.length ? ` (rep${data.missing.length > 1 ? 's' : ''} ${data.missing.join(', ')} not timed)` : '') +
-        (data.summary ? ` — ${headline(data.summary, protocols.find((p) => p.key === mEnv.protocolKey) || protocol)}` : '') + '.' };
+        (data.summary ? ` — ${headline(data.summary)}` : '') + '.' };
     if (mEnv.protocolId && protocols.some((p) => p.id === mEnv.protocolId)) setSelectedId(mEnv.protocolId);
     setRunsTick((n) => n + 1);
     return mMsg;
@@ -406,9 +405,10 @@ export default function TestSets() {
                     <tbody>
                       {grouped.rows.map((r) => (
                         <tr key={r.from}>
-                          <td style={{ ...C.td, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{r.count > 1 ? `${r.from}–${r.to}` : r.from}</td>
+                          <td style={{ ...C.td, color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{r.rep.open ? `${r.from}…` : r.count > 1 ? `${r.from}–${r.to}` : r.from}</td>
                           <td style={C.td}>
-                            {r.count > 1 ? `${r.count}×` : ''}{r.rep.distM} {STROKE_NAME[r.rep.stroke] || r.rep.stroke}
+                            {r.rep.open ? '' : r.count > 1 ? `${r.count}×` : ''}{r.rep.distM} {STROKE_NAME[r.rep.stroke] || r.rep.stroke}
+                            {r.rep.open && <span style={{ ...C.muted, marginLeft: 6 }}>until they stop (up to {r.count})</span>}
                             {r.rep.intensity && <span style={{ ...B.measure, marginLeft: 6 }}>{r.rep.intensity}</span>}
                             {r.rep.note && <div style={{ ...C.muted, fontSize: 11 }}>{r.rep.note}</div>}
                           </td>

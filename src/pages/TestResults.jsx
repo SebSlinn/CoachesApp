@@ -65,7 +65,7 @@ export default function TestResults() {
   useEffect(() => {
     if (!athleteId || !protocolId) return;
     let cancelled = false;
-    // every version that is still the same test (e.g. a ladder that only gained levels)
+    // every version that is still the same test (every ladder version is one history)
     getTestHistory(protocolId, athleteId).then(({ data, error: e }) => {
       if (cancelled) return;
       if (e) { setError(e.message || 'Could not load this test.'); setEfforts([]); return; }
@@ -163,7 +163,7 @@ export default function TestResults() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 900, margin: 0 }}>{protocol?.name || 'Test results'}</h1>
           <p style={{ ...S.muted, margin: '6px 0 0' }}>{name}{views.length ? ` · ${views.length} run${views.length === 1 ? '' : 's'}` : ''}{protocol ? ` · ${protocol.key} v${protocol.version}` : ''}</p>
-          {held && <p style={{ margin: '8px 0 0', fontSize: 13 }}>Highest level held: <b style={{ color: GOOD }}>{held.label}</b> <span style={{ color: INK_3 }}>(first held {fmtDay(held.swumOn)})</span></p>}
+          {held && <p style={{ margin: '8px 0 0', fontSize: 13 }}>Tightest send-off held: <b style={{ color: GOOD }}>{held.label}</b> <span style={{ color: INK_3 }}>(first held {fmtDay(held.swumOn)})</span></p>}
         </div>
         {chosen.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -195,7 +195,7 @@ export default function TestResults() {
                   {v.summary?.held === true && <span style={{ color: GOOD, marginRight: 8 }}>Held</span>}
                   {v.summary?.held === false && <span style={{ color: '#f2b654', marginRight: 8 }}>Not held</span>}
                   {v.summaryRows.filter((r) => r.kind === 'time').slice(0, 1).map((r) => <span key={r.key}>{r.label.toLowerCase()} {fmtTime(r.value)}</span>)}
-                  <span style={{ color: INK_3 }}> · {v.swum} of {v.prescribed} timed</span>
+                  <span style={{ color: INK_3 }}> · {v.prescribed ? `${v.swum} of ${v.prescribed} timed` : `${v.swum} swum`}</span>
                   {addedBy(v) && <span style={{ color: INK_3 }}> · {addedBy(v)}</span>}
                 </span>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -203,7 +203,7 @@ export default function TestResults() {
                     style={{ ...btn(false), padding: '4px 10px', fontSize: 11 }}>Open run</button>
                   {confirmId === v.id ? (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, flexWrap: 'wrap' }}>
-                      <span style={{ color: '#f2b654' }}>Remove {labels[i]} ({v.swum}/{v.prescribed} timed)?</span>
+                      <span style={{ color: '#f2b654' }}>Remove {labels[i]} ({v.prescribed ? `${v.swum}/${v.prescribed} timed` : `${v.swum} swum`})?</span>
                       <button disabled={removing} onClick={() => removeRun(v.id)}
                         style={{ ...btn(false), padding: '4px 10px', fontSize: 11, borderColor: 'rgba(255,120,120,0.6)', color: '#f88' }}>{removing ? 'Removing…' : 'Yes, remove'}</button>
                       <button disabled={removing} onClick={() => { setConfirmId(null); setRemoveErr(null); }}
@@ -225,7 +225,7 @@ export default function TestResults() {
         <>
           <section style={S.section} aria-labelledby="side-h">
             <h2 id="side-h" style={S.h2}>Side by side</h2>
-            {cmp.levelsDiffer && <p style={{ fontSize: 11, color: '#f2b654', margin: '0 0 10px' }}>These runs are at different levels. A tighter send-off means a slower pace, so compare fade, rest and stroke count across levels, and pace only within one.</p>}
+            {cmp.levelsDiffer && <p style={{ fontSize: 11, color: '#f2b654', margin: '0 0 10px' }}>These runs are different sets (send-off or number of reps). A tighter send-off means a slower pace, so compare fade, rest and stroke count across them, and pace only between runs on the same send-off. Reps line up by number, so the first 16 of a 30 sit beside a 16.</p>}
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', minWidth: 190 + cmp.runs.length * 112 + 70, width: '100%' }}>
                 <thead><tr>

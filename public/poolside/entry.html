@@ -152,18 +152,30 @@
       sessionRpe: '', startClock: '', onSendOff: false, showAll: false,
       entries: {},     // repNo → { time, splits, note, sc, sr, hr, rpe, lactate }
       extras: 0,
+      openShown: 0,    // open test: rows shown (grows with "+ Rep")
     };
   }
   function save(){ try { localStorage.setItem(storeKey, JSON.stringify(st)); } catch(e){} }
   function load(){ try { const s = JSON.parse(localStorage.getItem(storeKey) || 'null'); if (s && s.entries) return s; } catch(e){} return null; }
 
   const n = () => run.reps.length;
-  const maxReps = () => Math.max(60, 2 * n());
+  // An OPEN test (2026-11-25, e.g. the 100s Ladder): n() is the most reps, not the
+  // set. Rows show as you need them; blank open reps aren't "not timed", and there
+  // are no extras past the most.
+  const isOpen = () => run.reps.some(r => r.open);
+  const maxReps = () => isOpen() ? n() : Math.max(60, 2 * n());
+  function openRows(){
+    let lastFilled = 0;
+    run.reps.forEach(r => { const e = st.entries[r.repNo]; if (r.open && e && Object.values(e).some(v => String(v ?? '').trim())) lastFilled = r.repNo; });
+    return Math.min(n(), Math.max(10, st.openShown || 0, lastFilled));
+  }
   // Prescribed reps plus any extras. An extra is swum like the last prescribed
   // rep (same line), numbered on — the same rule Poolside follows.
   function allReps(){
     const last = run.reps[n()-1];
-    const out = run.reps.map(r => ({ ...r, extra:false }));
+    const shown = isOpen() ? openRows() : n();
+    const out = run.reps.filter(r => !r.open || r.repNo <= shown).map(r => ({ ...r, extra:false }));
+    if (isOpen()) return out;
     for (let i = 1; i <= st.extras; i++) out.push({ ...last, repNo: last.repNo + i, extra: true, note: '' });
     return out;
   }
@@ -227,7 +239,7 @@
       const metrics = {};
       METRIC_KEYS.forEach(k => { const v = e[k]; if (v !== '' && v != null && isFinite(+v)) metrics[k] = +v; });
       const hasReading = Object.keys(metrics).length || (e.note || '').trim() || (e.splits || '').trim();
-      if (t == null){ if (!r.extra) missing.push(r.repNo); if (hasReading) readingsOnly.push(r.repNo); return; }
+      if (t == null){ if (!r.extra && !r.open) missing.push(r.repNo); if (hasReading) readingsOnly.push(r.repNo); return; }
       if (!isFinite(t) || t <= 0){ problems.push('rep ' + r.repNo + ': time'); return; }
       const sp = parseSplits(e.splits, r.distM, t);
       if (sp.error){ problems.push('rep ' + r.repNo + ': splits — ' + sp.error); return; }
@@ -287,7 +299,7 @@
     $('app').innerHTML =
       '<div class="sub">SwimZone · test results by hand</div>' +
       '<h1>' + esc(run.protocol.name) + '</h1>' +
-      '<div class="sub">' + esc([a.name, paramBits.join(' · '), n() + ' reps'].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="sub">' + esc([a.name, paramBits.join(' · '), (isOpen() ? 'until they stop, up to ' : '') + n() + ' reps'].filter(Boolean).join(' · ')) + '</div>' +
 
       '<div class="card"><div class="grid">' +
         '<div><label class="f" for="fDate">Date swum</label><input id="fDate" type="date" value="' + esc(st.date) + '" max="' + todayISO() + '"></div>' +
@@ -304,10 +316,10 @@
       (anySendOff() ? '<div class="sub" style="font-size:12px;margin-top:6px">Tick that only if they really went on the clock — it fills in start times, so SwimZone can work out rest.</div>' : '') +
       '</div>' +
 
-      '<div class="card"><div class="sub" style="margin-bottom:8px">Fill in what you have. Blank times are saved as "not timed". Times as <span class="mono">1:12.34</span>, <span class="mono">72.34</span> or <span class="mono">1.12.34</span>.</div>' +
+      '<div class="card"><div class="sub" style="margin-bottom:8px">' + (isOpen() ? 'Fill in each rep swum; + Rep adds a row. Only the reps with a time are saved.' : 'Fill in what you have. Blank times are saved as "not timed".') + ' Times as <span class="mono">1:12.34</span>, <span class="mono">72.34</span> or <span class="mono">1.12.34</span>.</div>' +
         '<div class="tbl-wrap"><table><thead>' + head + '</thead><tbody>' + rows + '</tbody></table></div>' +
         '<div style="margin-top:10px;display:flex;gap:10px;flex-wrap:wrap">' +
-          (reps.length < maxReps() ? '<button class="ghost" data-act="extra">+ Extra rep</button>' : '') +
+          (reps.length < maxReps() ? (isOpen() ? '<button class="ghost" data-act="more">+ Rep</button>' : '<button class="ghost" data-act="extra">+ Extra rep</button>') : '') +
           '<button class="linkbtn" data-act="clear">Clear everything</button>' +
         '</div>' +
         '<div id="msg"></div>' +
@@ -355,7 +367,7 @@
   function refreshCount(){
     const { result, problems, readingsOnly } = buildResult();
     const done = result.reps.filter(r => !r.extra).length;
-    let txt = done + ' of ' + n() + ' timed' + (result.extraReps ? ' + ' + result.extraReps + ' extra' : '');
+    let txt = isOpen() ? done + ' swum (up to ' + n() + ')' : done + ' of ' + n() + ' timed' + (result.extraReps ? ' + ' + result.extraReps + ' extra' : '');
     if (problems.length) txt += ' · fix: ' + problems.join('; ');
     else if (readingsOnly.length) txt += ' · rep' + (readingsOnly.length>1?'s ':' ') + readingsOnly.join(', ') + (readingsOnly.length>1 ? ' need' : ' needs') + ' a time to be saved';
     $('count').textContent = txt;
@@ -388,6 +400,7 @@
   }
 
   function act(what){
+    if (what === 'more'){ st.openShown = openRows() + 1; save(); render(); const l = allReps().pop(); const i = rowEl(l.repNo).querySelector('[data-k="time"]'); i && i.focus(); return; }
     if (what === 'extra'){ st.extras++; save(); render(); const l = allReps().pop(); const i = rowEl(l.repNo).querySelector('[data-k="time"]'); i && i.focus(); return; }
     if (what === 'drop'){ const l = allReps().pop(); delete st.entries[l.repNo]; st.extras = Math.max(0, st.extras - 1); save(); render(); return; }
     if (what === 'clear'){ if (!window.confirm('Clear every time and reading on this page?')) return; st = freshState(); save(); render(); return; }

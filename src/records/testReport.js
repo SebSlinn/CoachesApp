@@ -11,7 +11,7 @@
 //   toCsv(meta, runViews)           → tidy CSV, one row per rep per run
 //
 // Pure: no React, no Supabase, no Excel library. Tested by testReport.test.mjs.
-import { analyse, expandReps, paramValueLabel, editableRepLines, REPS_PARAM } from '../session/protocolFormat.js';
+import { analyse, expandReps, paramValueLabel, editableRepLines, REPS_PARAM, ladderLabel } from '../session/protocolFormat.js';
 import { parseSetTime } from '../session/setFormat.js';
 import { lapSplits } from './eventView.js';
 
@@ -29,7 +29,10 @@ const r2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
 const F = (key, label, kind, extra = {}) => ({ key, label, kind, ...extra });
 export const SUMMARY_FIELDS = {
   ladder: [
-    F('held', 'Held the level', 'bool'),
+    F('held', 'Held (every rep 5 s+ inside the send-off)', 'bool'),
+    F('swum', 'Reps swum', 'num', { better: 'high' }),
+    F('sendOffSec', 'Send-off', 'time'),
+    F('measuredSendOffSec', 'Send-off swum, start to start', 'time'),
     F('per100Sec', 'Average pace per 100', 'time', { better: 'low' }),
     F('meanSec', 'Average rep', 'time', { better: 'low' }),
     F('fastestSec', 'Fastest rep', 'time', { better: 'low' }),
@@ -202,7 +205,17 @@ export function buildRunView(pProtocol, pEffort) {
     ? stored
     : analyse(pProtocol?.analyser, (pEffort.reps || []).map((r) => ({ ...r, ...(plan.get(Number(r.repNo)) ? { blockIdx: plan.get(Number(r.repNo)).blockIdx, lineIdx: plan.get(Number(r.repNo)).lineIdx, blockRepeat: plan.get(Number(r.repNo)).blockRepeat } : {}) })), { set, params });
 
-  const paramText = Object.entries(params).map(([k, v]) => {
+  // A ladder run reads as what was swum — "16 × 100 @ 2:00" — whether it was an
+  // open ladder (2026-11-25) or swum at one of the old levels, whose code stays
+  // stored in params but is no longer shown.
+  const isLadder = (pProtocol?.analyser || summary?.analyser) === 'ladder';
+  const swumCount = reps.filter((r) => r.timeSec != null).length;
+  const ladderLine = isLadder ? (set.blocks || []).flatMap((b) => b.lines || []).find((l) => (l.type || 'swim') === 'swim') : null;
+  const ladderText = isLadder
+    ? ladderLabel(swumCount, ladderLine?.distM ?? reps[0]?.distM, ladderLine?.interval?.type === 'fixed' ? parseSetTime(ladderLine.interval.onTime) : NaN)
+    : '';
+
+  const paramText = isLadder ? ladderText : Object.entries(params).map(([k, v]) => {
     if (k === REPS_PARAM) {   // reps changed for this run: "Reps: 5×400"
       const lines = editableRepLines(pProtocol?.set || set, pProtocol?.params);
       return 'Reps: ' + Object.entries(v || {}).map(([id, n]) => { const e = lines.find((x) => x.id === id); return e ? `${n}×${e.distM}` : `${n}`; }).join(', ');
@@ -212,18 +225,22 @@ export function buildRunView(pProtocol, pEffort) {
   }).join(', ');
 
   const levelDef = Object.values(pProtocol?.params || {}).find((d) => d && d.kind === 'level');
+  const levelLabel = isLadder ? (ladderText || null)
+    : params.level ? (levelDef ? String(paramValueLabel(levelDef, params.level)).split(' — ')[0] : params.level) : null;
   return {
     id: pEffort.id,
     createdBy: pEffort.createdBy || null,
     createdAt: pEffort.createdAt || null,
     swumOn: pEffort.swumOn,
-    level: params.level || null,
-    levelLabel: params.level ? (levelDef ? String(paramValueLabel(levelDef, params.level)).split(' — ')[0] : params.level) : null,
+    // level: what a run is compared on — the ladder's "16 × 100 @ 2:00", else a level code
+    level: isLadder ? (ladderText || null) : (params.level || null),
+    levelLabel,
     paramText,
     poolType: cond.poolType || set.poolType || null,
     location: cond.location || '',
     sessionRpe: num(cond.rpe),
-    prescribed: plan.size,
+    // reps the set asked for; an open line (2026-11-25) asks for none — its rows are what was swum
+    prescribed: [...plan.values()].filter((p) => !p.open).length,
     planSwims: Object.fromEntries([...plan].map(([n, p]) => [n, `${p.distM} ${STROKE[p.stroke] || p.stroke}`])),
     swum: reps.filter((r) => r.timeSec != null).length,
     hasHrStream: !!(cond.hrStream && cond.hrStream.samples && cond.hrStream.samples.length),
@@ -258,7 +275,8 @@ export function fmtDay(iso) {
 // Runs oldest → newest as columns.
 //   summary: [{ label, kind, unit, better, values[], best[], change }]  (change = newest − oldest)
 //   reps:    [{ repNo, swim, times[], best[] }]  — fastest marked only when ≥ 2 runs have the rep
-//   levelsDiffer: true when runs were at different levels (pace isn't like-for-like)
+//   levelsDiffer: true when runs were different sets (a ladder on another send-off or
+//                 length, or an old level) — pace isn't like-for-like
 export function compareRuns(pRunViews) {
   const runs = pRunViews.slice().sort((a, b) => (a.swumOn < b.swumOn ? -1 : a.swumOn > b.swumOn ? 1 : 0));
   const order = [];
@@ -321,7 +339,7 @@ export function compareRuns(pRunViews) {
 // Numbers, R or a pivot table. UTF-8 with BOM so Excel reads the dashes.
 export const CSV_COLUMNS = [
   ['athlete', (m) => m.athleteName], ['test', (m) => m.testName], ['test_key', (m) => m.testKey], ['test_version', (m) => m.testVersion],
-  ['run_date', (m, rv) => rv.swumOn], ['level', (m, rv) => rv.levelLabel || rv.level || ''], ['settings', (m, rv) => rv.paramText],
+  ['run_date', (m, rv) => rv.swumOn], ['set_swum', (m, rv) => rv.levelLabel || rv.level || ''], ['settings', (m, rv) => rv.paramText],
   ['pool', (m, rv) => rv.poolType || ''], ['location', (m, rv) => rv.location],
   ['rep', (m, rv, r) => (r.flush ? '' : r.repNo)], ['block', (m, rv, r) => r.block ?? ''], ['extra_rep', (m, rv, r) => (r.extra ? 'yes' : '')],
   ['flush_after_rep', (m, rv, r) => (r.flush ? r.afterRepNo : '')],

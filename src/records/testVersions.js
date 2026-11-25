@@ -9,7 +9,12 @@
 // measures, analyser, or a level whose reps/send-off changed) stays separate,
 // because the runs would no longer be like-for-like.
 //
+// The 100s Ladder (2026-11-25) is the exception: every version of it is one
+// history. Each run reads as what was swum ("16 × 100 @ 2:00"), so runs from the
+// old level versions and the open version compare rep by rep.
+//
 // Pure — tested by testVersions.test.mjs.
+import { ladderLabel } from '../session/protocolFormat.js';
 
 const stable = (v) => JSON.stringify(v, (k, x) => (x && typeof x === 'object' && !Array.isArray(x)
   ? Object.fromEntries(Object.keys(x).sort().map((key) => [key, x[key]])) : x));
@@ -25,6 +30,7 @@ export function isCompatible(newer, older) {
   if (newer.id === older.id) return true;
   if (newer.key !== older.key || (newer.ownerOrgId || null) !== (older.ownerOrgId || null)) return false;
   if (newer.analyser !== older.analyser) return false;
+  if (newer.analyser === 'ladder') return true;     // one ladder, one history (2026-11-25)
   if (stable(newer.set) !== stable(older.set)) return false;
   if (stable([...(newer.measures || [])].sort()) !== stable([...(older.measures || [])].sort())) return false;
   const lnNew = levelParam(newer), lnOld = levelParam(older);
@@ -59,14 +65,18 @@ export function levelShortLabel(pProtocol, pValue) {
   return o ? String(o.label || o.value).split(' — ')[0] : (pValue || '');
 }
 
-// The highest level held across runs (views from buildRunView). null if none held.
+// The tightest ladder held across runs (views from buildRunView): the fastest
+// send-off held, then the most reps on it, then the first date. pProtocol is not
+// needed any more (kept so callers don't change). null if nothing was held.
+//   → { sendOffSec, reps, swumOn, label:"30 × 100 @ 1:20" }
 export function highestHeld(pProtocol, pViews) {
   let best = null;
   for (const v of pViews || []) {
-    if (!v.level || v.summary?.held !== true) continue;
-    const r = levelRank(pProtocol, v.level);
-    if (r < 0) continue;
-    if (!best || r > best.rank || (r === best.rank && v.swumOn < best.swumOn)) best = { rank: r, value: v.level, swumOn: v.swumOn };
+    const s = v.summary;
+    if (!s || s.held !== true || !Number.isFinite(Number(s.sendOffSec))) continue;
+    const c = { sendOffSec: Number(s.sendOffSec), reps: Number(s.swum) || 0, swumOn: v.swumOn };
+    if (!best || c.sendOffSec < best.sendOffSec
+        || (c.sendOffSec === best.sendOffSec && (c.reps > best.reps || (c.reps === best.reps && c.swumOn < best.swumOn)))) best = c;
   }
-  return best ? { ...best, label: levelShortLabel(pProtocol, best.value) } : null;
+  return best ? { ...best, label: ladderLabel(best.reps, 100, best.sendOffSec) } : null;
 }

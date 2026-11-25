@@ -2,7 +2,7 @@
 // The formatted Excel download for test-set results, built in the browser from
 // the same model as the screen and the CSV (records/testReport.js).
 //
-//   Summary        — the runs side by side: when, level, the analyser's
+//   Summary        — the runs side by side: when, what was swum, the analyser's
 //                    numbers, best per row, change newest vs oldest (formula)
 //   Reps compared  — rep × run times; fastest per rep highlighted by a rule,
 //                    average / fastest / slowest / spread as formulas
@@ -89,7 +89,8 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
   const runs = cmp.runs;
   const exported = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
   const SUMMARY = sheetName('Summary', used), REPS = sheetName('Reps compared', used);
-  const names = runs.map((rv, i) => sheetName(`Run ${cmp.labels[i]}`, used));
+  // sheet names can't hold ':' and stop at 31 characters: "Run 4 Jul 2026 · 20×100@1.30"
+  const names = runs.map((rv, i) => sheetName(`Run ${cmp.labels[i]}`.replace(/ × /g, '×').replace(/ @ /g, '@').replace(/:/g, '.'), used));
   const DATA = sheetName('Data', used);
 
   // ── Summary ────────────────────────────────────────────────────────────────
@@ -97,7 +98,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
     const ws = wb.addWorksheet(SUMMARY, { views: [{ showGridLines: false }] });
     let r = topLines(ws, `${pMeta.testName}: ${pMeta.athleteName}`, [
       `${runs.length} run${runs.length === 1 ? '' : 's'}, ${fmtDay(runs[0].swumOn)} to ${fmtDay(runs[runs.length - 1].swumOn)}`,
-      pMeta.highestHeld ? `highest level held ${pMeta.highestHeld}` : null,
+      pMeta.highestHeld ? `tightest send-off held ${pMeta.highestHeld}` : null,
       `${pMeta.testKey} v${pMeta.testVersion}`,
       `exported ${exported} from SwimZone`,
     ].filter(Boolean).join('; '));
@@ -152,7 +153,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
     const notes = [
       'Green marks the best run for each measure (lowest time, fade or stroke count; highest speed or rest).',
       'Change is newest minus oldest: a negative time or fade means faster or less slowing.',
-      cmp.levelsDiffer ? 'These runs were at different levels. A tighter send-off naturally means a slower pace, so compare runs at the same level, or use the fade and stroke-count rows.' : null,
+      cmp.levelsDiffer ? 'These runs were different sets (send-off or number of reps). A tighter send-off naturally means a slower pace, so compare pace only between runs on the same send-off, or use the fade, rest and stroke-count rows.' : null,
       'Results are worked out by SwimZone from the timed reps. Each run has its own sheet with every rep.',
     ].filter(Boolean);
     for (const n of notes) {
@@ -243,7 +244,7 @@ export async function buildTestWorkbook(pMeta, pRunViews, { ExcelJS } = {}) {
     });
     r++;
     ws.mergeCells(r, 1, r, Math.max(4, 2 + nRuns));
-    ws.getCell(r, 1).value = 'Green is the fastest run for that rep. Reps beyond a shorter level or a shorter run are left blank; "not timed" means the rep was in the set but has no time.' +
+    ws.getCell(r, 1).value = 'Green is the fastest run for that rep. Reps beyond a shorter run are left blank; "not timed" means the rep was in the set but has no time.' +
       (stats.some((x) => x[1] === 'AVG_N') ? ` The runs did different numbers of reps, so "Average, reps 1–${commonN}" compares the reps they all did.` : '');
     style(ws.getCell(r, 1), { color: MUTED, italic: true, wrap: true });
     ws.getRow(r).height = stats.some((x) => x[1] === 'AVG_N') ? 42 : 28;

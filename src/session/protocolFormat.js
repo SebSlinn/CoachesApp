@@ -50,6 +50,12 @@ const STROKE_LABEL = { FS: 'Free', BK: 'Back', BR: 'Breast', Fly: 'Fly', IM: 'IM
 //   { kind:'level', label:'Level', default:'L1', options:[
 //       { value:'L1', label:'Level 1 — 20×100 on 1:30', qty:20, onTime:'1:30' }, … ] }
 // Lines opt in exactly like the other params: interval.param = "level".
+// (Kept for older runs: the 100s Ladder dropped its levels on 2026-11-25.)
+//
+// An OPEN line (2026-11-25): line.open = true means qty is the MOST reps, not
+// the set. The swimmer stops when they stop — reps not swum are not "missing",
+// and nothing past qty is taken. The 100s Ladder is one open line: 100s on a
+// send-off the coach picks, up to 60. Its reps are what was swum.
 const KEY_RE = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
 const round = (n, dp = 2) => (Number.isFinite(n) ? Math.round(n * 10 ** dp) / 10 ** dp : null);
@@ -201,6 +207,7 @@ export function editableRepLines(set, paramDefs = {}) {
       if ((ln.type || 'swim') !== 'swim') continue;
       const pn = ln.interval && ln.interval.param;
       if (pn && paramDefs?.[pn]?.kind === 'level') continue;
+      if (ln.open) continue;                       // an open line has no set number of reps
       out.push({ id: `${b}.${l}`, qty: Math.max(1, Number(ln.qty) || 1), distM: Number(ln.distM), stroke: ln.stroke, note: ln.note || '' });
     }
   }
@@ -276,6 +283,7 @@ export function expandReps(set, protocol = null) {
             intensity: ln.intensity || null, note: ln.note || '',
             measures: lineMeasures(protocol, ln),
             constraints: ln.constraints || null,
+            ...(ln.open ? { open: true } : {}),
           });
         }
       }
@@ -404,19 +412,31 @@ function splitAt(rep, distM) {
 // A coaching judgement — change here if the coach wants a different margin.
 export const LADDER_MIN_REST_SEC = 5;
 
+/** How a ladder run reads everywhere (2026-11-25): "16 × 100 @ 2:00". */
+export function ladderLabel(pReps, pDistM, pSendOffSec) {
+  const n = Number(pReps), d = Number(pDistM), so = Number(pSendOffSec);
+  if (!Number.isFinite(n) || !n) return '';
+  return `${n} × ${Number.isFinite(d) && d ? d : 100}` + (Number.isFinite(so) && so > 0 ? ` @ ${fmtSetTime(so).replace(/\.0+$/, '')}` : '');
+}
+
 export const ANALYSERS = {
   // A rep-count + send-off ladder (e.g. 20×100 @1:30 → 25 @1:25 → 30 @1:20).
   // Everything here is comparable ACROSS levels: per-100 pace, slowing per rep,
   // first-5 vs last-5 (a fixed window, not halves, so 20 and 30 reps compare),
   // stroke-count change and rest gained. Within a level everything compares.
   ladder: {
-    v: 1,
-    label: 'Ladder — level held, pace, fade',
+    v: 2,
+    label: 'Ladder — reps on a send-off, pace, fade',
+    // v2 (2026-11-25): an OPEN ladder line (no levels) — the run is the reps swum
+    // on the send-off chosen. held = every rep swum finished at least
+    // LADDER_MIN_REST_SEC inside the send-off. Runs swum at a level keep their
+    // v1 meaning (all the level's reps swum, and every one inside the send-off).
     run(reps, ctx = {}) {
       const ts = timed(reps).slice().sort((a, b) => a.repNo - b.repNo);
       const set = ctx.set || null;
-      const prescribed = set ? expandReps(set).length : null;
       const swimLine = set && (set.blocks || []).flatMap((b) => b.lines || []).find((l) => (l.type || 'swim') === 'swim');
+      const open = !!(swimLine && swimLine.open);
+      const prescribed = set && !open ? expandReps(set).length : null;
       const iv = swimLine && swimLine.interval;
       const sendOff = iv && iv.type === 'fixed' ? parseSetTime(iv.onTime) : NaN;
       const times = ts.map(t);
@@ -427,11 +447,24 @@ export const ANALYSERS = {
       const s = seriesStats(ts);
       const minRest = Number.isFinite(sendOff) && times.length ? sendOff - Math.max(...times) : NaN;
       const completed = prescribed != null ? ts.length >= prescribed : null;
+      const restOk = Number.isFinite(minRest) ? minRest >= LADDER_MIN_REST_SEC : null;
+      // the send-off actually swum: median start-to-start of consecutive reps (Poolside's start times)
+      const gaps = [];
+      for (let i = 1; i < ts.length; i++) {
+        if (ts[i].repNo !== ts[i - 1].repNo + 1) continue;
+        const a = Date.parse(ts[i - 1].startedAt), b = Date.parse(ts[i].startedAt);
+        if (Number.isFinite(a) && Number.isFinite(b) && b > a) gaps.push((b - a) / 1000);
+      }
+      gaps.sort((a, b) => a - b);
+      const measured = gaps.length ? (gaps.length % 2 ? gaps[(gaps.length - 1) / 2] : (gaps[gaps.length / 2 - 1] + gaps[gaps.length / 2]) / 2) : NaN;
+      const distM = swimLine ? Number(swimLine.distM) : (ts[0] ? Number(ts[0].distM) : NaN);
       return {
         level: (ctx.params && ctx.params.level) || null,
-        prescribed, swum: ts.length, completed,
-        held: completed === false ? false : (completed === true && Number.isFinite(minRest) ? minRest >= LADDER_MIN_REST_SEC : null),
+        open, prescribed, swum: ts.length, completed,
+        held: open ? (ts.length ? restOk : null) : (completed === false ? false : (completed === true ? restOk : null)),
+        label: ladderLabel(ts.length, distM, sendOff),
         sendOffSec: round(sendOff),
+        measuredSendOffSec: round(measured, 1),
         meanSec: s.meanSec ?? null, fastestSec: s.fastestSec ?? null, slowestSec: s.slowestSec ?? null,
         sdSec: s.sdSec ?? null, driftSecPerRep: s.driftSecPerRep ?? null,
         per100Sec: round(mean(ts.map((r) => (t(r) / Number(r.distM)) * 100))),
@@ -636,6 +669,7 @@ export function buildHandoff(prescription, athleteId, { sessionId, location, hr,
     targetLabel: r.targetTime || (r.target && r.target.display) || '',
     restSec: Number.isFinite(r.restSec) ? r.restSec : null, pbAtSwim: r.pbAtSwim ?? null,
     measures: r.measures || ['time'], constraints: r.constraints || null,
+    ...(r.open ? { open: true } : {}),
   }));
   return {
     fmt: HANDOFF_FMT,

@@ -8,7 +8,7 @@ const ok = (n, c, x) => { c ? pass++ : fail++; console.log((c ? '  ✓ ' : '  �
 console.log('\none run, comprehensive');
 const v2 = buildRunView(ladderProtocol, ladderRuns[1]);
 ok('20 reps, all swum', v2.reps.length === 20 && v2.swum === 20 && v2.prescribed === 20, [v2.reps.length, v2.swum, v2.prescribed]);
-ok('level and settings text', v2.level === 'L1' && v2.paramText === 'Level 1 — 20×100 on 1:30', v2.paramText);
+ok('a ladder run reads as what was swum', v2.level === '20 × 100 @ 1:30' && v2.levelLabel === '20 × 100 @ 1:30' && v2.paramText === '20 × 100 @ 1:30', v2.paramText);
 const rr1 = v2.reps[0], r2s = v2.reps[1];
 const measured = +((Date.parse(r2s.startedAt) - Date.parse(rr1.startedAt)) / 1000 - rr1.timeSec).toFixed(2);
 ok('rest after rep 1 measured from start times (next start − this finish)', rr1.restFrom === 'measured' && rr1.restSec === measured && measured !== +(90 - rr1.timeSec).toFixed(2), [rr1.restSec, measured]);
@@ -20,12 +20,12 @@ ok('pace per 100', v2.reps[0].pace100Sec === v2.reps[0].timeSec);
 ok('lengths from cumulative splits', v2.reps[0].lengths.length === 4 && v2.reps[0].lengths[3].cumSec === v2.reps[0].timeSec, v2.reps[0].lengths);
 ok('HR columns carried', v2.reps[0].hrPeak === 163 && v2.has.includes('hrPeak'));
 ok('empty columns not flagged (no lactate)', !v2.has.includes('lactate'));
-ok('summary rows labelled, held first', v2.summaryRows[0].key === 'held' && v2.summaryRows[0].value === true && v2.summaryRows[1].label === 'Average pace per 100', v2.summaryRows.slice(0, 2));
+ok('summary rows labelled, held first', v2.summaryRows[0].key === 'held' && v2.summaryRows[0].value === true && v2.summaryRows.find((r) => r.key === 'per100Sec')?.label === 'Average pace per 100', v2.summaryRows.slice(0, 2));
 const v3 = buildRunView(ladderProtocol, ladderRuns[2]);
 ok('L2 run: 25 prescribed, one not timed', v3.prescribed === 25 && v3.swum === 24, [v3.prescribed, v3.swum]);
 ok('L2 send-off 1:25', v3.reps[0].sendOffSec === 85);
 ok('L2 not held (a rep missing)', v3.summary.held === false);
-ok('settings for L2', v3.paramText === 'Level 2 — 25×100 on 1:25');
+ok('an old L2 run with a rep missing reads 24 × 100 @ 1:25', v3.paramText === '24 × 100 @ 1:25' && v3.prescribed === 25, v3.paramText);
 
 console.log('\nsummary recomputed when missing');
 const bare = buildRunView(ladderProtocol, { ...ladderRuns[0], summary: null });
@@ -38,7 +38,7 @@ ok('blocks list each block', summaryRows({ analyser: 'blocks', dropOffSec: 0.8, 
 console.log('\nside by side');
 const cmp = compareRuns(ladderRuns.map((r) => buildRunView(ladderProtocol, r)).reverse());
 ok('runs oldest → newest regardless of input order', cmp.runs.map((r) => r.id).join() === 'run-1,run-2,run-3');
-ok('labels carry the level name', cmp.labels[2] === '3 Oct 2026 · Level 2', cmp.labels);
+ok('labels carry what was swum', cmp.labels[2] === '3 Oct 2026 · 24 × 100 @ 1:25' && cmp.labels[0] === '4 Jul 2026 · 20 × 100 @ 1:30', cmp.labels);
 ok('levels differ flagged', cmp.levelsDiffer === true);
 ok('rep rows to the longest prescribed set (25)', cmp.reps.length === 25 && cmp.reps[24].swim === '100 Free' && cmp.reps[24].times.every((t) => t == null), cmp.reps[24]);
 const r21 = cmp.reps[20];
@@ -61,8 +61,8 @@ const lines = csv.replace(/^﻿/, '').trim().split('\r\n');
 ok('BOM for Excel', csv.charCodeAt(0) === 0xfeff);
 ok('one row per rep per run + header', lines.length === 1 + 20 + 20 + 24, lines.length);
 ok('header names', lines[0].split(',').length === CSV_COLUMNS.length && lines[0].startsWith('athlete,test,test_key'));
-ok('row starts with athlete, test, run', lines[1].startsWith('Esme Slinn,100s Ladder (20 · 25 · 30),ladder-100s,1,2026-07-04,Level 1,'), lines[1]);
-ok('settings column', /,Level 1 — 20×100 on 1:30,/.test(lines[1]));
+ok('row starts with athlete, test, run', lines[1].startsWith('Esme Slinn,100s Ladder (20 · 25 · 30),ladder-100s,1,2026-07-04,20 × 100 @ 1:30,'), lines[1]);
+ok('settings column', /,20 × 100 @ 1:30,20 × 100 @ 1:30,25SC,/.test(lines[1]));
 ok('note with comma is quoted', toCsv({}, [{ ...cmp.runs[0], reps: [{ ...cmp.runs[0].reps[0], note: 'tired, slow turn' }] }]).includes('"tired, slow turn"'));
 
 console.log('\nflushes (2026-10-25): inline, reps stay aligned');

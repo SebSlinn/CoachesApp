@@ -1354,13 +1354,18 @@ const SwimCore = (function(){
   // Extra reps past the prescription are kept (2026-10-25) — "open-ended within
   // reason": up to EXTRA_MAX_TOTAL reps in all (or twice the test, if longer).
   const EXTRA_MAX_TOTAL = 60;
+  // An OPEN test (2026-11-25, e.g. the 100s Ladder): its reps carry open:true and
+  // the run's rep count is the most, not the set. Swim until you stop; reps not
+  // swum aren't "missing", there's no "of N", and nothing goes past the most.
+  const isOpenRun = (run) => !!(run && run.reps && run.reps.some(r => r.open));
+  const repCap = (run) => isOpenRun(run) ? run.reps.length : Math.max(EXTRA_MAX_TOTAL, run.reps.length * 2);
   // Every swim of every test-linked set, labelled. Flushes are skipped when
   // numbering, so a flush after rep 5 leaves the next swim as rep 6. Swims past
   // a set's prescribed reps are extra reps, numbered on after the whole test.
   //   Map key setIdx+':'+startTime → { kind:'test'|'extra'|'flush'|'over', repNo?, likeRepNo?, afterRepNo? }
   function testMap(){
     const out = new Map(); const t = state.test; if (!t) return out;
-    const total = t.run.reps.length, cap = Math.max(EXTRA_MAX_TOTAL, total * 2);
+    const total = t.run.reps.length, cap = repCap(t.run);
     let extraNo = total, lastNo = 0;
     state.sets.forEach((set, si) => {
       if (!set.testRepNos) return;
@@ -1430,7 +1435,8 @@ const SwimCore = (function(){
     const pg = testProgress(); const run = t.run;
     const cur = pg.running ? repPlan(pg.running.repNo) : pg.next;
     let go = '', goCls = '';
-    if (!pg.running && !pg.next){ go = 'All ' + pg.total + ' reps timed' + (pg.extra ? ' + ' + pg.extra + ' extra' : '') + ' — keep going, or tap Results to save for SwimZone'; goCls = 'done'; }
+    const openRun = isOpenRun(run);
+    if (!pg.running && !pg.next){ go = (openRun ? 'All ' + pg.total + ' reps timed — the most for this test. Tap Results to save for SwimZone' : 'All ' + pg.total + ' reps timed' + (pg.extra ? ' + ' + pg.extra + ' extra' : '') + ' — keep going, or tap Results to save for SwimZone'); goCls = 'done'; }
     else if (pg.running){ go = 'Swimming rep ' + pg.running.repNo; }
     else if (!pg.last){ go = 'Ready — rep 1, ' + goLabel(cur.interval); }
     else {
@@ -1447,23 +1453,25 @@ const SwimCore = (function(){
         else { go = 'Rep ' + cur.repNo + ' — ' + SwimCore.fmtClock(-left).replace(/\.\d\d$/,'') + ' past the send-off'; goCls = 'late'; }
       }
     }
-    const dots = run.reps.map(r => '<span class="'+(pg.doneNos.has(r.repNo)?'done':(pg.notDoneNos.has(r.repNo)?'skip':(cur && r.repNo===cur.repNo?'next':'')))+'"></span>').join('');
+    // an open run shows a dot for each rep swum (and the next), not all 60
+    const dots = run.reps.filter(r => !r.open || pg.doneNos.has(r.repNo) || pg.notDoneNos.has(r.repNo) || (cur && r.repNo === cur.repNo)).map(r => '<span class="'+(pg.doneNos.has(r.repNo)?'done':(pg.notDoneNos.has(r.repNo)?'skip':(cur && r.repNo===cur.repNo?'next':'')))+'"></span>').join('');
     // pool size is the one thing the orange event card showed that this
     // panel didn't — now that the event card is hidden while a test is
     // loaded (it only repeated what's here), this is its only home.
     const poolLength = POOL_LEN[run.set && run.set.poolType] || 25;
     panel.innerHTML =
       '<div class="t-head"><b>'+escapeHtml(run.protocol.name)+(run.protocol.version>1?' v'+run.protocol.version:'')+'</b><span>'+poolLength+'m pool</span></div>'+
-      (cur ? '<div class="t-row"><div class="t-rep">Rep '+cur.repNo+' of '+pg.total+
+      (cur ? '<div class="t-row"><div class="t-rep">Rep '+cur.repNo+(cur.open ? '' : ' of '+pg.total)+
         '<span class="sub">'+cur.distM+' '+(PS_STROKE_NAME[cur.stroke]||cur.stroke)+(cur.intensity?' · '+escapeHtml(cur.intensity):'')+' · '+goLabel(cur.interval)+
         (cur.targetLabel ? ' · target '+escapeHtml(cur.targetLabel) : '')+(cur.note?' · '+escapeHtml(cur.note):'')+'</span>'+
+        (cur.open ? '<span class="sub">Swim until they stop — '+pg.doneNos.size+' swum so far (up to '+pg.total+'). Tap Results when done.</span>' : '')+
         HRZONES.targetLine(cur.intensity)+'</div></div>' : '')+
       '<div class="t-go '+goCls+'">'+go+'</div>'+
       '<div class="t-dots">'+dots+'</div>'+
       ((pg.extra || pg.flushes.length || pg.over) ? '<div class="rep-meta">'+
         [pg.extra ? pg.extra+' extra rep'+(pg.extra===1?'':'s')+' beyond the test — kept' : '',
          pg.flushes.length ? pg.flushes.length+' flush'+(pg.flushes.length===1?'':'es')+' — not numbered' : '',
-         pg.over ? pg.over+' over the '+Math.max(EXTRA_MAX_TOTAL, pg.total*2)+'-rep limit — left out' : ''].filter(Boolean).join(' · ')+'</div>' : '');
+         pg.over ? pg.over+' over the '+repCap(run)+'-rep limit — left out' : ''].filter(Boolean).join(' · ')+'</div>' : '');
     // keep the clock/buttons on the set that holds the next prescribed rep
     if (!pg.running && cur){
       const idx = state.sets.findIndex(st => st.testRepNos && st.testRepNos.includes(cur.repNo));
@@ -1575,7 +1583,8 @@ const SwimCore = (function(){
         ...(pg.flushes.length ? { recoveries: pg.flushes.slice().sort((a,b) => a.rep.startTime - b.rep.startTime).map(f => ({
           afterRepNo: f.afterRepNo, distM: Number(f.rep.distance) || null, stroke: (planOrLike(f.afterRepNo) || run.reps[0] || {}).stroke || null,
           timeSec: Math.round((f.rep.finishTime - f.rep.startTime)/10)/100, startedAt: new Date(f.rep.startTime).toISOString() })) } : {}) },
-      reps, missing: run.reps.filter(r => !pg.doneNos.has(r.repNo)).map(r => r.repNo), extraReps: pg.extra,
+      // open reps not swum aren't missing — the swimmer stopped (2026-11-25)
+      reps, missing: run.reps.filter(r => !r.open && !pg.doneNos.has(r.repNo)).map(r => r.repNo), extraReps: pg.extra,
       ...(function(){
         const all = pg.done.concat(pg.extras);
         if (!all.length) return {};
@@ -2618,7 +2627,9 @@ const SwimCore = (function(){
     $('qtyInput').value = tested ? '' : ((set.plan && set.plan.qty) || '');
     $('onInput').value = tested ? '' : ((set.plan && set.plan.onTime) || '');
     $('planHint').className = 'plan-hint';
-    $('planHint').textContent = tested
+    $('planHint').textContent = tested && isOpenRun(state.test.run)
+      ? 'Open test: swim until they stop, up to ' + set.testRepNos.length + ' reps. Only the reps swum are saved; mark a flush from its rep card.'
+      : tested
       ? 'This set is ' + set.testRepNos.length + ' rep' + (set.testRepNos.length===1?'':'s') + ' of the test. Swim more and they are kept as extra reps; mark a flush from its rep card.'
       : 'Leave Reps blank for an open set. The send-off is only a guide — Poolside records the real rest.';
     syncEventChips();
