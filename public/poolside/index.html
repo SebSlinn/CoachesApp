@@ -1155,7 +1155,10 @@ const SwimCore = (function(){
         timeSec: Math.round(r.totalMs / 10) / 100,   // ms → s, 2dp
         splits: (r.lengths || []).map(l => ({ from:l.from, to:l.to, ms:l.ms, sc:l.sc, sr:l.sr, ...(l.hr || {}) })),
         source: 'stopwatch',
-        note: r.set || '',                  // which Poolside set this rep came from
+        // dive | push (2026-11-25). Optional — SwimZone doesn't store it yet, so a push start
+        // is also named in the note, where it shows on the swim.
+        ...(r.startType ? { startType: r.startType } : {}),
+        note: [r.set || '', r.startType === 'push' ? 'push start' : ''].filter(Boolean).join(' · '),   // which Poolside set this rep came from
         // live heart rate for this swim, plus the max HR Poolside was using (if it knew one)
         ...(r.hr ? { metrics: { ...r.hr, ...(maxP ? { hrMax: maxP.maxHr, hrMaxEst: maxP.estimated ? 1 : 0 } : {}) } } : {}),
         ...(r.marks15 && r.marks15.length ? { marks15: r.marks15 } : {}),   // race analysis 15 m points (not yet stored by SwimZone)
@@ -1551,7 +1554,7 @@ const SwimCore = (function(){
       }
       const m15 = (rep.marks15 || []).map(m => ({ dist: m.distance, legIndex: m.legIndex, sec: m.sec, fromWallSec: m.fromWallSec }));
       return { repNo, distM: pr.distM, stroke: pr.stroke, timeSec: Math.round((rep.finishTime - rep.startTime)/10)/100, ...(m15.length ? { marks15: m15 } : {}),
-               startedAt: new Date(rep.startTime).toISOString(), targetTime: pr.targetTime || null, pbAtSwim: pr.pbAtSwim ?? null,
+               startedAt: new Date(rep.startTime).toISOString(), ...(rep.startType ? { startType: rep.startType } : {}), targetTime: pr.targetTime || null, pbAtSwim: pr.pbAtSwim ?? null,
                splits, metrics: m, note: rep.status === 'complete' ? '' : 'check timing: ' + rep.finishFlags.join(', '),
                // an extra rep carries the line it continued, so SwimZone's block/line analysers can place it
                ...(isExtra ? { extra: true, blockIdx: pr.blockIdx, lineIdx: pr.lineIdx, blockRepeat: pr.blockRepeat } : {}) };
@@ -2534,7 +2537,28 @@ const SwimCore = (function(){
   addTapListener(btnDive, () => addEvent('start', poolScene === 'race' ? { startType:'dive', scene:'race' } : { startType:'dive' }, btnDive));
   addTapListener(btnPush, () => addEvent('start', { startType:'push' }, btnPush));
   const btnM15 = $('btnM15');
-  addTapListener(btnM15, () => { if (derived().status === 'running') addEvent('m15', null, btnM15); });
+  // Race (2026-11-25): one button, two jobs. While no rep is running it is
+  // Push start (the button that replaced Start Push); once the swim is going it
+  // is the 15 m timing point again. Two guards stop one button doing both by
+  // accident:
+  //   • a 15 m tap within M15_MIN_MS of the start or a wall is ignored (nobody
+  //     reaches 15 m that fast — it's a double tap on Push start);
+  //   • Push start within PUSH_AFTER_FINISH_MS of a Finish is ignored (a late
+  //     15 m tap must not start a phantom rep). Undo clears anything else.
+  const M15_MIN_MS = 4000, PUSH_AFTER_FINISH_MS = 3000;
+  addTapListener(btnM15, () => {
+    const d = derived(), now = Date.now();
+    if (d.status === 'running'){
+      const cur = d.current, last = cur.splits[cur.splits.length-1];
+      const wallT = last ? last.t : cur.startTime;
+      if (now - wallT < M15_MIN_MS){ showToast('15m ignored — too soon after the ' + (last ? 'wall' : 'start')); return; }
+      addEvent('m15', null, btnM15);
+      return;
+    }
+    const lastRep = d.reps[d.reps.length-1];
+    if (lastRep && lastRep.finishTime && now - lastRep.finishTime < PUSH_AFTER_FINISH_MS){ showToast('Push start ignored — just finished. Tap again in a moment'); return; }
+    addEvent('start', { startType:'push', scene:'race' }, btnM15);
+  });
   addTapListener(btnTurn, () => {
     const d = derived(); if (d.status !== 'running') return;
     // Big buttons: one bottom button — Turn, then Finish on the last length.
@@ -2557,13 +2581,13 @@ const SwimCore = (function(){
     const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     const act = {
       d: () => addEvent('start', poolScene === 'race' ? { startType:'dive', scene:'race' } : { startType:'dive' }, btnDive),
-      p: () => addEvent('start', { startType:'push' }, btnPush),
+      p: () => addEvent('start', poolScene === 'race' ? { startType:'push', scene:'race' } : { startType:'push' }, poolScene === 'race' ? btnM15 : btnPush),
       t: () => running && addEvent('turn', null, btnTurn),
       f: () => running && addEvent('finish', null, btnFinish),
       s: () => running && addEvent('sr', null, btnSR),
       c: () => running && addEvent('sc', null, btnSC),
       ' ': () => { const d = derived();
-        if (!running) addEvent('start', { startType:'push' }, btnPush);
+        if (!running) addEvent('start', poolScene === 'race' ? { startType:'push', scene:'race' } : { startType:'push' }, poolScene === 'race' ? btnM15 : btnPush);
         else addEvent(d.next && d.next.kind === 'finish' ? 'finish' : 'turn', null, d.next && d.next.kind === 'finish' ? btnFinish : btnTurn); },
       z: () => undoBtn.click(), Backspace: () => undoBtn.click(),
       h: () => HR.openSheet(),
@@ -3507,8 +3531,14 @@ const SwimCore = (function(){
     if (poolScene === 'race'){
       const cur = d.current, li = cur ? cur.splits.length : 0;
       const done = !!(cur && cur.marks15.some(m => m.legIndex === li));
-      btnM15.className = 'tap' + (!running || done ? ' off' : (li === 0 ? ' expected' : ''));
-      btnM15.innerHTML = (li === 0 || !running ? '15m' : '15m off wall') + '<span class="small">' + (done ? 'taken' : 'timing point') + '</span>';
+      if (!running){
+        // idle: this button is Push start (2026-11-25), styled as a start so it reads differently
+        btnM15.className = 'tap start';
+        btnM15.innerHTML = 'Push start<span class="small">then 15m</span>';
+      } else {
+        btnM15.className = 'tap' + (done ? ' off' : (li === 0 ? ' expected' : ''));
+        btnM15.innerHTML = (li === 0 ? '15m' : '15m off wall') + '<span class="small">' + (done ? 'taken' : 'timing point') + '</span>';
+      }
     }
     grid.classList.toggle('open-set', big && !plan());
     if (!big){ if (btnTurn.dataset.big){ btnTurn.textContent = 'Turn'; delete btnTurn.dataset.big; } return; }
